@@ -1,0 +1,48 @@
+# Secrets & credentials
+config/.env
+config/credentials.json
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Data locale
+data/*.db
+data/*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Azure
+local.settings.json
+.azure/
+
+# MLflow / ML artifacts
+mlruns/
+mlflow.db
+
+# Debug / scripts temporaires
+debug_*.py
+add_debug_panel.py
+run_debug.bat
+*.log
+dash_data.json
+dashboard_data.json
+Service_Achat/
+
+# Données brutes (volumineuses / sensibles)
+data/

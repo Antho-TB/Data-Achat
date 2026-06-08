@@ -1,0 +1,25 @@
+📄 Note de Cadrage : Projet "Data-Achat"
+1. Contexte & Enjeu Métier
+
+La situation : Le service Achats (Andréa) maintient un fichier Excel contenant une "mine d'or" d'informations à forte valeur ajoutée.
+Le besoin : Exploiter ces données pour enrichir les processus avals de l'entreprise (notamment le système de contrôle qualité des magasiniers).
+L'enjeu : Capter cette donnée sans imposer de conduite du changement à Andréa (elle continue d'utiliser son Excel) tout en la rendant robuste pour la production.
+2. La Contrainte Technique (Le "Goulot d'étranglement")
+
+Le fichier est stocké sur un lecteur réseau local (Z:\Achats par exemple) restreint par des droits NTFS stricts (seuls les Achats et toi y avez accès).
+Risque : Une intégration directe dans les applications de terrain (comme le scanner) provoquerait des crashs de type Permission Denied.
+Règle d'architecture : Il faut obligatoirement découpler l'extraction (celui qui lit l'Excel) de la consommation (celui qui l'utilise).
+3. Les Scénarios d'Implémentation (Solutions Data) Pour transformer ce fichier "Shadow IT" en véritable référentiel d'entreprise, trois voies sont possibles :
+
+Option A : L'ETL Classique (Via MyReport)
+
+Méthode : Le compte de service MyReport (qui a des droits transverses) aspire l'Excel la nuit et pousse les données dans une table du Data Warehouse Azure PostgreSQL.
+Avantage : Centralisation propre dans les outils décisionnels existants.
+Option B : L'Agent Local (Script Python)
+
+Méthode : Un script Python s'exécute automatiquement (tâche planifiée) sur une session autorisée. Il lit, nettoie et exporte un sous-ensemble des données (sans les infos confidentielles) vers un fichier plat ou une base accessible par les applications locales.
+Avantage : Rapide à mettre en place, contrôle total sur le code (pandas).
+Option C : L'Approche Cloud & Temps Réel (Via n8n / SharePoint) - La Cible Idéale
+
+Méthode : Le fichier est basculé sur un espace collaboratif moderne (SharePoint/Teams). Dès qu'Andréa le modifie, un webhook déclenche un workflow n8n qui parse le fichier et met à jour instantanément la table Azure PostgreSQL.
+Avantage : Temps réel, zéro gestion de vieux serveurs de fichiers, architecture MLOps/Data 100% moderne.
