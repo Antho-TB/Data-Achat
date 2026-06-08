@@ -174,13 +174,30 @@ Emmanuelle crée le CODE ARTICLE dans Sylob  →  PK définitive
 | BDD cible | `dtpf_sylob_prod` schéma `achat` (Azure PostgreSQL) |
 | Source DWH Sylob (POC) | `tarrerias_production_dwh` — données brutes Sylob directes |
 | Source DWH Sylob (prod) | `dtpf_sylob_prod` schéma `public` — quand MyReport terminé + validation Emmanuelle |
-| Clé primaire produit | Code article Sylob (créé par Emmanuelle) |
+| Clé primaire produit | Code article Sylob (créé par Emmanuelle) → EAN13 dans Sylob (clé de jointure vers `dtpf_sylob_prod` en prod) |
 | Avant code article | Code provisoire `JJMMAAHHMM` |
 | Interface | HTML statique → Streamlit si besoin d'écriture |
 | Email | Gmail MCP — email-first |
 | Plugin | Cowork `.plugin` — installable postes Andréa + Marlène |
 | Secrets | Azure Key Vault via `DefaultAzureCredential` |
 | Connection URL | `sqlalchemy.engine.URL.create()` — gère les caractères spéciaux dans le mot de passe |
+
+---
+
+## Contraintes calendrier (Antho)
+
+| Période | Type | Semaine | Impact projet |
+|---------|------|---------|--------------|
+| 01/07/2026 (1j) | HSNPM | S27 | Négligeable |
+| 13-17/07/2026 | Formation DataScientest | S29 | ⚠️ Semaine bloquée — décale J4 |
+| 07/08 + 10-14/08 | Formation DataScientest | S32-S33 | Capacité réduite |
+| 17-31/08/2026 | CP | S34-S35 | Bloqué |
+| 01/09/2026 (1j) | HSNPM | S36 | Négligeable |
+| 28/09-02/10/2026 | CP | S40 | Post-POC |
+| 24-31/12/2026 | CP | S52-S53 | Post-POC |
+| Sept → Nov 2026 | Formation DataScientest (récurrent) | S37+ | Charge réduite phases 3-4 |
+
+> Formation DataScientest = programme long (présence récurrente sur le calendrier jusqu'en 2027). Planifier les sprints en tenant compte de ~1-2 jours/semaine bloqués.
 
 ---
 
@@ -241,19 +258,24 @@ Emmanuelle crée le CODE ARTICLE dans Sylob  →  PK définitive
 **Livrable** : `dashboard_achats.html` — standalone, utilisable sans installation  
 **Prochaine étape** : présentation à Andréa + Marlène le 09/06 → itérations sur retours
 
-### Phase 2 — Circuit A + Plugin Cowork (S26-S28, 2026-06-29)
+### Phase 2 — Circuit A + Plugin Cowork (S26-S27, avant 01/07)
+
+> ⚠️ S29 (13-17/07) = formation DataScientest — terminer la phase 2 avant.
 
 - [ ] Analyser 2 fils Gmail Circuit A → `process_map_nouveau_produit.md`
 - [ ] Fiche produit collaborative (5 blocs, code provisoire JJMMAAHHMM, photos)
 - [ ] Plugin Cowork v0 (skills : nouveau-produit, remplir-bloc, analyser-mail, suivi-commande, historique-prix, verif-doc)
 
-### Phase 3 — Intégration Gmail & cohérence (S29-S30, 2026-07-13)
+### Phase 3 — Intégration Gmail & cohérence (S30-S33, avant CP 17/08)
+
+> S29 (13-17/07) = formation DataScientest (semaine bloquée).  
+> S32-S33 = formation + début CP → viser livraison avant 17/08.
 
 - [ ] Connecter MCP Gmail (Andréa + Marlène)
 - [ ] Parser fils de discussion → enrichir BDD produit
 - [ ] Rapport cohérence mail ↔ BDD (incohérences prix, quantités)
 
-### Phase 4 — Vérification documentaire & Paiement (après 31/07/2026)
+### Phase 4 — Vérification documentaire & Paiement (S37+, après 01/09)
 
 - [ ] Comparaison facture fournisseur vs commande Sylob
 - [ ] Checklist réglementaire (affichage France/EU, douanes, conteneurs)
@@ -269,6 +291,6 @@ Emmanuelle crée le CODE ARTICLE dans Sylob  →  PK définitive
 | J1 — Dashboard HTML + données Sylob croisées | S23 (08/06) | `dashboard_achats.html` v1 | ✅ **2 sem. d'avance** |
 | J2 — Validation métier + process map Circuit B | S24 (15/06) | Retours Andréa/Marlène + `process_map_reappro.md` | 🔜 Mardi 09/06 |
 | J3 — Process map Circuit A validé | S26 (29/06) | `process_map_nouveau_produit.md` | ⏳ |
-| J4 — Plugin Cowork v0 | S28 (13/07) | 3 skills opérationnels | ⏳ |
-| J5 — Intégration Gmail | S30 (27/07) | Cohérence mail ↔ BDD | ⏳ |
-| **Deadline POC** | **31/07/2026** | **Validation métier** | ⏳ |
+| J4 — Plugin Cowork v0 | S27 (06/07) ~~S28~~ | 3 skills opérationnels | ⏳ — avancé car S29 = FORM |
+| J5 — Intégration Gmail | S33 (10/08) ~~S30~~ | Cohérence mail ↔ BDD | ⏳ — après S29 FORM, avant CP |
+| **Deadline POC** | **S33 (14/08/2026)** ~~31/07~~ | **Validation métier** | ⏳ — décalé (S29 FORM + S34-S35 CP) |
