@@ -189,15 +189,16 @@ Emmanuelle crée le CODE ARTICLE dans Sylob  →  PK définitive
 | Période | Type | Semaine | Impact projet |
 |---------|------|---------|--------------|
 | 01/07/2026 (1j) | HSNPM | S27 | Négligeable |
-| 13-17/07/2026 | Formation DataScientest | S29 | ⚠️ Semaine bloquée — décale J4 |
-| 07/08 + 10-14/08 | Formation DataScientest | S32-S33 | Capacité réduite |
-| 17-31/08/2026 | CP | S34-S35 | Bloqué |
-| 01/09/2026 (1j) | HSNPM | S36 | Négligeable |
+| 13-17/07/2026 | Formation DataScientest | S29 | ⚠️ Semaine bloquée — tampon avant deadline 31/07 |
+| **31/07/2026** | **Départ Andréa** | **S31** | **🔴 DEADLINE DURE — validation POC avant cette date** |
+| 07/08 + 10-14/08 | Formation DataScientest | S32-S33 | Post-POC |
+| 17-31/08/2026 | CP | S34-S35 | Post-POC |
+| 01/09/2026 (1j) | HSNPM | S36 | Post-POC |
 | 28/09-02/10/2026 | CP | S40 | Post-POC |
 | 24-31/12/2026 | CP | S52-S53 | Post-POC |
-| Sept → Nov 2026 | Formation DataScientest (récurrent) | S37+ | Charge réduite phases 3-4 |
+| Sept → Nov 2026 | Formation DataScientest (récurrent) | S37+ | Phases 3-4 à cadence réduite |
 
-> Formation DataScientest = programme long (présence récurrente sur le calendrier jusqu'en 2027). Planifier les sprints en tenant compte de ~1-2 jours/semaine bloqués.
+> Formation DataScientest = programme long (jusqu'en 2027). Prévoir ~1-2 jours/semaine bloqués post-POC.
 
 ---
 
@@ -266,10 +267,11 @@ Emmanuelle crée le CODE ARTICLE dans Sylob  →  PK définitive
 - [ ] Fiche produit collaborative (5 blocs, code provisoire JJMMAAHHMM, photos)
 - [ ] Plugin Cowork v0 (skills : nouveau-produit, remplir-bloc, analyser-mail, suivi-commande, historique-prix, verif-doc)
 
-### Phase 3 — Intégration Gmail & cohérence (S30-S33, avant CP 17/08)
+### Phase 3 — Intégration Gmail & cohérence (S30, avant 31/07)
 
 > S29 (13-17/07) = formation DataScientest (semaine bloquée).  
-> S32-S33 = formation + début CP → viser livraison avant 17/08.
+> **Andréa absente à partir du 31/07 -- deadline dure pour la validation.**  
+> Phase 3 doit être livrée S30 (20-26/07) pour laisser S31 à la validation.
 
 - [ ] Connecter MCP Gmail (Andréa + Marlène)
 - [ ] Parser fils de discussion → enrichir BDD produit
@@ -290,7 +292,7 @@ Emmanuelle crée le CODE ARTICLE dans Sylob  →  PK définitive
 | J0 — Schema `achat` créé + ETL en prod | S23 (08/06) | Premier chargement réel DB | ✅ |
 | J1 — Dashboard HTML + données Sylob croisées | S23 (08/06) | `dashboard_achats.html` v1 | ✅ **2 sem. d'avance** |
 | J2 — Validation métier + process map Circuit B | S24 (15/06) | Retours Andréa/Marlène + `process_map_reappro.md` | 🔜 Mardi 09/06 |
-| J3 — Process map Circuit A validé | S26 (29/06) | `process_map_nouveau_produit.md` | ⏳ |
-| J4 — Plugin Cowork v0 | S27 (06/07) ~~S28~~ | 3 skills opérationnels | ⏳ — avancé car S29 = FORM |
-| J5 — Intégration Gmail | S33 (10/08) ~~S30~~ | Cohérence mail ↔ BDD | ⏳ — après S29 FORM, avant CP |
-| **Deadline POC** | **S33 (14/08/2026)** ~~31/07~~ | **Validation métier** | ⏳ — décalé (S29 FORM + S34-S35 CP) |
+| J3 — Process map Circuit A validé | S26 (26/06) | `process_map_nouveau_produit.md` | ⏳ |
+| J4 — Plugin Cowork v0 | S28 (10/07) | 3 skills opérationnels | ⏳ — doit être fini avant S29 FORM |
+| J5 — Intégration Gmail | S30 (24/07) | Cohérence mail ↔ BDD | ⏳ — après S29 FORM |
+| **Deadline POC — Andréa part le 31/07** | **31/07/2026 (S31)** | **Validation métier** | ⏳ -- deadline dure, Andréa absente après |
