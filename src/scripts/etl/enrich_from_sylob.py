@@ -224,18 +224,19 @@ def run() -> None:
     stats = enrich_produits(achat_engine, sylob_engine)
 
     total_enrichis = stats["match_code"] + stats["match_ean"]
-    print("\n" + "=" * 55)
-    print("  Rapport enrichissement Sylob v3 — multi-schéma")
-    print("=" * 55)
-    print(f"  Articles total             : {stats['total']}")
-    print(f"  Match code_article (total) : {stats['match_code']}")
-    print(f"  Match EAN13 (fallback)     : {stats['match_ean']}")
-    print(f"  Total enrichis             : {total_enrichis}")
-    print(f"  Vraiment absents Sylob     : {stats['non_trouves']}")
-    print(f"  Taux couverture            : {total_enrichis / stats['total'] * 100:.1f}%")
-    print("=" * 55)
-    print("  Détail par schéma :")
-    # Clés construites de façon cohérente avec enrich_produits()
+    sep = "=" * 55
+    logger.info(sep)
+    logger.info("  Rapport enrichissement Sylob v3 — multi-schéma")
+    logger.info(sep)
+    logger.info("  Articles total             : %d", stats["total"])
+    logger.info("  Match code_article (total) : %d", stats["match_code"])
+    logger.info("  Match EAN13 (fallback)     : %d", stats["match_ean"])
+    logger.info("  Total enrichis             : %d", total_enrichis)
+    logger.info("  Vraiment absents Sylob     : %d", stats["non_trouves"])
+    logger.info("  Taux couverture            : %.1f%%",
+                total_enrichis / stats["total"] * 100)
+    logger.info(sep)
+    logger.info("  Détail par schéma :")
     schema_keys = {
         s: s.split("_Article")[0].split("TARRERIAS_")[-1][:6]
         for s in SCHEMAS
@@ -243,15 +244,14 @@ def run() -> None:
     for schema, key in schema_keys.items():
         code_n = stats.get(f"schema_{key}_code", 0)
         ean_n  = stats.get(f"schema_{key}_ean", 0)
-        # Label lisible : retire préfixe TARRERIAS_ commun
         label = schema.replace("_Article", "")
         for pfx in ["TARRERIAS_GENERALE_DE_DECOUPAGE", "TARRERIAS_SE_TARRERIAS_BONJEAN",
                     "TARRERIAS_TARRERIAS_BONJEAN_ET_CIE"]:
             if schema.startswith(pfx):
                 label = pfx.replace("TARRERIAS_", "").replace("_", " ")
                 break
-        print(f"    {label:<38} code={code_n:4d}  ean={ean_n:3d}")
-    print("=" * 55)
+        logger.info("    %-38s code=%4d  ean=%3d", label, code_n, ean_n)
+    logger.info(sep)
 
 
 if __name__ == "__main__":
