@@ -1,6 +1,13 @@
+# -*- coding: utf-8 -*-
 """
-Extraction des fichiers Excel du service Achats.
-Chaque fonction retourne un DataFrame pandas brut (colonnes originales conservées).
+[DATA ENGINEERING]
+Extraction des fichiers Excel du service Achats TB Groupe vers des DataFrames pandas.
+
+Stratégie : chaque fonction est responsable d'un seul fichier source et retourne
+un DataFrame brut avec les colonnes originales conservées. Aucune transformation
+métier n'est effectuée ici -- c'est le contrat Extract du pipeline ETL.
+Les trois sources couvrent le catalogue produit (Matrice), le suivi commandes
+(IMPORT) et les dimensions logistiques (Base article).
 """
 import logging
 from pathlib import Path
@@ -18,23 +25,30 @@ def extract_matrice(file_path: str | Path) -> pd.DataFrame:
     et la colonne Référence n'est renseignée qu'une fois par groupe de variantes.
     Le ffill() est appliqué ici pour propager la référence vers le bas.
 
+    Junior Tip : header=2 signifie que pandas saute les 2 premières lignes
+    (index 0 et 1) et utilise la ligne d'index 2 comme noms de colonnes.
+    C'est une convention fréquente dans les fichiers Excel de gestion où
+    les premières lignes contiennent des métadonnées ou un logo.
+
     Args:
         file_path: Chemin vers Matrice TB Import.xlsx
     Returns:
         DataFrame avec colonnes nommées et Référence propagée.
     """
     path = Path(file_path)
-    logger.info("Extraction Matrice TB Import : %s", path.name)
+    logger.info("[INFO] Extraction Matrice TB Import : %s", path.name)
 
     df = pd.read_excel(path, sheet_name="Lot-Vrac Produits uniques", header=2)
 
-    # Propager la référence (structure hiérarchique Excel)
+    # Propager la référence vers le bas car Excel ne répète pas la valeur
+    # sur chaque ligne d'un groupe de variantes (économie de saisie côté acheteur)
     df["Référence"] = df["Référence"].ffill()
 
-    # Supprimer les lignes sans aucune donnée utile
+    # Supprimer les lignes entièrement vides qui apparaissent parfois
+    # en bas de tableau quand Excel étend la plage nommée au-delà des données
     df = df.dropna(subset=["Référence"])
 
-    logger.info("Matrice extraite : %d lignes, %d colonnes", len(df), len(df.columns))
+    logger.info("[SUCCÈS] Matrice extraite : %d lignes, %d colonnes", len(df), len(df.columns))
     return df
 
 
@@ -45,20 +59,25 @@ def extract_import(file_path: str | Path) -> pd.DataFrame:
     Structure particulière : les 3 premières lignes sont des en-têtes
     administratifs (EORI, SIREN, etc.). Le vrai header est à la ligne 3 (index 3).
 
+    Junior Tip : Les fichiers douaniers placent souvent les numéros EORI/SIREN
+    en haut du tableur pour les déclarations officielles. header=3 permet de
+    sauter ces 3 lignes administratives et d'atteindre le vrai tableau de données.
+
     Args:
         file_path: Chemin vers IMPORT 2026.xlsx
     Returns:
         DataFrame avec les colonnes du suivi de commandes.
     """
     path = Path(file_path)
-    logger.info("Extraction IMPORT 2026 : %s", path.name)
+    logger.info("[INFO] Extraction IMPORT 2026 : %s", path.name)
 
     df = pd.read_excel(path, sheet_name="IMPORT 2025", header=3)
 
-    # Supprimer les lignes sans PO# (lignes vides ou sous-totaux)
+    # Supprimer les lignes sans PO# -- ce sont soit des lignes vides,
+    # soit des sous-totaux Excel qui n'ont pas de numéro de commande
     df = df.dropna(subset=["PO#"])
 
-    logger.info("Import extrait : %d commandes", len(df))
+    logger.info("[SUCCÈS] Import extrait : %d commandes", len(df))
     return df
 
 
@@ -66,7 +85,12 @@ def extract_dimensions(file_path: str | Path) -> pd.DataFrame:
     """
     Lit Base article dimensions volume.xlsx.
 
-    Structure propre avec header en ligne 0  -- pas de transformation nécessaire.
+    Structure propre avec header en ligne 0 -- pas de transformation nécessaire.
+
+    Junior Tip : Le BOM (Byte Order Mark) est un caractère invisible U+FEFF
+    que certains éditeurs Excel ajoutent en début de fichier UTF-8. Il se glisse
+    parfois dans le nom de la première colonne et casse les jointures sur Référence.
+    lstrip() l'élimine proprement.
 
     Args:
         file_path: Chemin vers Base article dimensions volume.xlsx
@@ -74,13 +98,14 @@ def extract_dimensions(file_path: str | Path) -> pd.DataFrame:
         DataFrame avec colonnes logistiques par article.
     """
     path = Path(file_path)
-    logger.info("Extraction Base dimensions : %s", path.name)
+    logger.info("[INFO] Extraction Base dimensions : %s", path.name)
 
     df = pd.read_excel(path, header=0)
 
-    # Nettoyer le BOM éventuel sur la colonne Référence
+    # Supprimer le BOM éventuel (U+FEFF) sur le nom de la première colonne
+    # pour garantir que les jointures sur "Référence" fonctionnent correctement
     df.columns = [c.lstrip("﻿") for c in df.columns]
     df = df.dropna(subset=["Référence"])
 
-    logger.info("Dimensions extraites : %d articles", len(df))
+    logger.info("[SUCCÈS] Dimensions extraites : %d articles", len(df))
     return df

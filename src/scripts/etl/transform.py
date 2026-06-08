@@ -1,5 +1,13 @@
+# -*- coding: utf-8 -*-
 """
-Transformations métier  -- nettoyage et normalisation des données Achats.
+[DATA ENGINEERING]
+Transformations métier du pipeline ETL Data-Achat TB Groupe.
+
+Stratégie : ce module est le coeur du pipeline -- il normalise les données
+brutes issues des fichiers Excel vers un format cohérent et typé, prêt pour
+l'insertion PostgreSQL. Les deux fonctions principales (transform_produit,
+transform_commande) constituent la couche "T" du pattern ETL et ne doivent
+jamais effectuer d'I/O (lecture fichier ou écriture DB).
 """
 import logging
 import re
@@ -9,10 +17,12 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# Regex pour extraire une date au format JJ/MM/AAAA
+# Regex pour extraire une date au format JJ/MM/AAAA depuis un champ texte libre
+# Utilisé pour parser "Livrée le 18/09/2025" et en extraire la date
 _DATE_PATTERN = re.compile(r"(\d{2})/(\d{2})/(\d{4})")
 
 # Mapping des mots-clés vers les statuts normalisés
+# Clés en minuscules car on applique .lower() avant la recherche
 _STATUTS_MAP: dict[str, str] = {
     "en production": "En production",
     "en cours de livraison": "En cours de livraison",
@@ -23,7 +33,9 @@ _STATUTS_MAP: dict[str, str] = {
     "bloqu": "Bloquée",
 }
 
-# Mapping normalisation Lot/Vrac (False = booléen Excel pour "aucun lot")
+# Mapping normalisation Lot/Vrac
+# False (booléen) provient d'Excel qui interprète une cellule vide comme False
+# dans certaines versions d'openpyxl -- on le traite comme "Unitaire"
 _LOT_MAP: dict = {
     "Lot": "Lot",
     "Vrac": "Vrac",
@@ -36,10 +48,18 @@ def parse_statut_commande(texte: str) -> tuple[str, Optional[str]]:
     """
     Parse le champ libre 'Etat de la commande' vers un statut normalisé + date ISO.
 
+    Ce champ est rempli manuellement par les acheteurs avec des formulations
+    variables. La stratégie est une recherche par sous-chaîne (et non regex
+    exacte) pour absorber les variations orthographiques courantes.
+
+    Junior Tip : On utilise .lower() avant la comparaison pour ignorer la casse,
+    et des mots-clés tronqués (ex: "livr" capture "Livrée", "livré", "livraison")
+    pour couvrir les variantes sans multiplier les entrées du dictionnaire.
+
     Exemples :
-        'Livrée le 18/09/2025' → ('Livrée', '2025-09-18')
-        'En production'        → ('En production', None)
-        'Annulée'              → ('Annulée', None)
+        'Livrée le 18/09/2025' -> ('Livrée', '2025-09-18')
+        'En production'        -> ('En production', None)
+        'Annulée'              -> ('Annulée', None)
 
     Args:
         texte: Valeur brute du champ Excel.
@@ -64,19 +84,37 @@ def parse_statut_commande(texte: str) -> tuple[str, Optional[str]]:
 
 
 def _to_date_or_none(val: object) -> Optional[str]:
-    """Convertit une valeur Excel (datetime ou NaT) en date ISO, sinon None."""
+    """
+    Convertit une valeur Excel (datetime, NaT, str) en date ISO, sinon None.
+
+    Junior Tip : pandas lit les colonnes date Excel comme des objets datetime64
+    ou NaT (Not a Time). pd.Timestamp() unifie tous ces formats, et pd.isna()
+    détecte les valeurs manquantes (NaN, NaT, None) de façon robuste.
+
+    Args:
+        val: Valeur brute issue d'un DataFrame pandas (any type).
+    Returns:
+        Date au format 'YYYY-MM-DD' ou None si non convertible.
+    """
     try:
         ts = pd.Timestamp(val)  # type: ignore[arg-type]
         if pd.isna(ts):
             return None
         return ts.date().isoformat()
     except Exception as exc:  # noqa: BLE001
-        logger.warning("_to_date_or_none: valeur non convertible %r -- %s", val, exc)
+        logger.warning("[ATTENTION] _to_date_or_none: valeur non convertible %r -- %s", val, exc)
         return None
 
 
 def _to_numeric_or_none(val: object) -> Optional[float]:
-    """Convertit en float, retourne None si non numérique."""
+    """
+    Convertit en float, retourne None si non numérique ou NaN.
+
+    Args:
+        val: Valeur brute (peut être str, float, int ou None).
+    Returns:
+        float si convertible, None sinon.
+    """
     try:
         result = float(val)  # type: ignore[arg-type]
         return None if pd.isna(result) else result
@@ -90,6 +128,15 @@ def transform_produit(
     """
     Construit la table produit en fusionnant Matrice + Dimensions.
 
+    La Matrice contient la fiche produit complète (désignation, fournisseur,
+    gamme, matières...) et les Dimensions apportent les données logistiques
+    (poids, volume, EAN). La jointure se fait sur Référence article.
+
+    Junior Tip : pd.merge() avec how='left' garantit qu'un produit présent
+    dans la Matrice mais absent de la base Dimensions sera quand même inclus
+    dans le résultat (avec des NaN pour les colonnes logistiques manquantes),
+    ce qui est préférable à un INNER JOIN qui l'exclurait silencieusement.
+
     Opérations :
     - Dédoublonnage sur Référence (garder première occurrence)
     - Normalisation type_lot
@@ -102,15 +149,18 @@ def transform_produit(
     Returns:
         DataFrame prêt pour load_produit().
     """
-    logger.info("Transformation produit...")
+    logger.info("[INFO] Transformation produit...")
 
-    # Dédoublonner sur Référence
+    # Dédoublonner sur Référence : la Matrice peut contenir plusieurs lignes
+    # pour un même article (variantes couleur/taille) -- on garde la première
+    # qui contient la fiche produit principale
     df = df_matrice.drop_duplicates(subset=["Référence"], keep="first").copy()
 
-    # Normaliser Lot/Vrac
+    # Normaliser Lot/Vrac via le dictionnaire de mapping défini en tête de module
     df["type_lot"] = df["Lot/Vrac"].map(_LOT_MAP).fillna("Unitaire")
 
-    # Fusionner avec dimensions logistiques
+    # Fusionner avec dimensions logistiques -- renommage préventif pour éviter
+    # une collision de colonnes "Référence" après le merge (pandas suffixerait _x/_y)
     df_dim = df_dimensions.rename(columns={"Référence": "ref_dim"}).copy()
     df_dim["ref_dim"] = df_dim["ref_dim"].astype(str)
     df["Référence"] = df["Référence"].astype(str)
@@ -124,7 +174,8 @@ def transform_produit(
         how="left",
     )
 
-    # Construire le DataFrame cible
+    # Construire le DataFrame cible avec les noms de colonnes PostgreSQL
+    # (snake_case, sans accents) -- mapping explicite Matrice -> achat.produit
     result = pd.DataFrame({
         "code_article":    df["Référence"],
         "ean13":           df.get("EAN 13_y", df.get("EAN 13")),
@@ -152,7 +203,9 @@ def transform_produit(
         "date_creation":   df.get("Date céation", df.get("Date de création")),
     })
 
-    # Forcer les types numériques (certaines cellules Excel contiennent du texte ex: "2CR14")
+    # Forcer les types numériques -- certaines cellules Excel contiennent du texte
+    # (ex: référence acier "2CR14") que pandas lit comme str au lieu de float ;
+    # errors='coerce' transforme ces valeurs non convertibles en NaN proprement
     numeric_cols = [
         "poids_uvc_g", "longueur_mm", "epaisseur_mm",
         "longueur_pcb_cm", "largeur_pcb_cm", "hauteur_pcb_cm",
@@ -165,7 +218,7 @@ def transform_produit(
         result["date_creation"], errors="coerce"
     ).dt.date
 
-    logger.info("Produits transformés : %d articles", len(result))
+    logger.info("[SUCCÈS] Produits transformés : %d articles", len(result))
     return result
 
 
@@ -173,8 +226,18 @@ def transform_commande(df_import: pd.DataFrame) -> pd.DataFrame:
     """
     Nettoie et normalise le DataFrame IMPORT 2026 vers la table commande.
 
+    Le fichier IMPORT est la source de vérité pour le suivi des commandes
+    fournisseurs import Chine (Circuit A2). Ce pipeline normalise les champs
+    libres (statut, dates) et uniformise les types pour garantir la cohérence
+    dans PostgreSQL.
+
+    Junior Tip : Les colonnes d'un DataFrame chargé depuis Excel peuvent
+    contenir des espaces ou des retours à la ligne (\n) dans leur nom si le
+    header Excel était multi-ligne. Le strip().replace() ci-dessous assainit
+    ces noms avant toute opération sur les colonnes.
+
     Opérations clés :
-    - Parse 'Etat de la commande' → statut + date_statut
+    - Parse 'Etat de la commande' -> statut + date_statut
     - Nettoyage des noms de colonnes (espaces, newlines)
     - Conversion des types (dates, numériques)
 
@@ -183,18 +246,20 @@ def transform_commande(df_import: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame prêt pour load_commande().
     """
-    logger.info("Transformation commande...")
+    logger.info("[INFO] Transformation commande...")
     df = df_import.copy()
 
-    # Normaliser les noms de colonnes (supprimer espaces trailing et newlines)
+    # Normaliser les noms de colonnes -- supprimer les espaces en fin de chaîne
+    # et les retours à la ligne présents dans les en-têtes Excel multi-lignes
     df.columns = [str(c).strip().replace("\n", " ") for c in df.columns]
 
-    # Parser le statut
+    # Parser le statut depuis le champ libre -- deux valeurs extraites en une passe
     statuts = df["Etat de la commande"].apply(parse_statut_commande)
     df["statut"] = statuts.apply(lambda x: x[0])
     df["date_statut"] = statuts.apply(lambda x: x[1])
 
-    # Colonnes date  -- 'Payé ?' peut contenir une date ou un booléen
+    # Colonnes date -- 'Payé ?' peut contenir une date ISO ou un booléen Excel
+    # selon que la commande est payée avec ou sans date confirmée
     def safe_date(col: str) -> pd.Series:
         return df[col].apply(_to_date_or_none) if col in df.columns else pd.Series(None, index=df.index)
 
@@ -229,12 +294,15 @@ def transform_commande(df_import: pd.DataFrame) -> pd.DataFrame:
         "colis_manquants": df.get("Colis/pièces manquantes"),
     })
 
-    # Convertir code_article en str propre
+    # Convertir code_article en str propre -- Excel stocke les codes numériques
+    # (ex: 12345) en float (12345.0) ; on retire le ".0" pour la cohérence
+    # avec les références texte de la Matrice (ex: "GDD-001")
     result["code_article"] = result["code_article"].apply(
         lambda x: str(int(x)) if pd.notna(x) and str(x).replace(".0", "").isdigit() else str(x) if pd.notna(x) else None
     )
 
-    # Forcer les colonnes DATE en datetime.date (pas en str ISO)
+    # Forcer les colonnes DATE en datetime.date (pas en str ISO) pour que
+    # psycopg2 les insère comme type DATE PostgreSQL sans conversion manuelle
     date_cols = [
         "date_statut", "date_commande", "date_paiement",
         "etd_confirme", "etd_reel", "eta", "date_livraison",
@@ -242,5 +310,5 @@ def transform_commande(df_import: pd.DataFrame) -> pd.DataFrame:
     for col in date_cols:
         result[col] = pd.to_datetime(result[col], errors="coerce").dt.date
 
-    logger.info("Commandes transformées : %d lignes", len(result))
+    logger.info("[SUCCÈS] Commandes transformées : %d lignes", len(result))
     return result

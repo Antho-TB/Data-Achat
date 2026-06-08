@@ -1,6 +1,14 @@
+# -*- coding: utf-8 -*-
 """
-Régénération de dashboard_achats.html avec données fraîches de la DB.
-Stratégie : injection directe `var D={...}` dans le HTML (évite JSON.parse).
+[DATA ENGINEERING]
+Régénération du dashboard HTML Achats TB Groupe avec données fraîches depuis PostgreSQL.
+
+Stratégie : au lieu de générer un nouveau fichier HTML depuis un template, ce script
+injecte directement un bloc `var D={...}` dans le dashboard existant. Cette approche
+"HTML-in-place" préserve tous les styles, scripts et personnalisations du dashboard
+sans nécessiter de moteur de template (Jinja2, etc.). Les données sont sérialisées
+en JSON et substituées via regex dans le bloc script dédié.
+Conçu pour être appelé après chaque exécution du pipeline ETL principal.
 
 Usage :
     python -m src.scripts.gen_dashboard
@@ -43,17 +51,36 @@ SQL_COMMANDES = """
 # ---------------------------------------------------------------------------
 
 def _safe_str(v: Any) -> str:
-    """Convertit une valeur pandas en str propre (sans NaN/NaT)."""
+    """
+    Convertit une valeur pandas en str propre, en remplaçant NaN/NaT par une chaîne vide.
+
+    Junior Tip : `v != v` est le test NaN le plus rapide en Python -- NaN est la seule
+    valeur pour laquelle l'égalité avec elle-même est False (norme IEEE 754).
+    On teste aussi les représentations textuelles car pd.read_sql peut produire
+    des strings "nan" ou "NaT" selon la version de pandas et le driver psycopg2.
+
+    Args:
+        v: Valeur quelconque issue d'un DataFrame pandas.
+    Returns:
+        Représentation str propre, chaîne vide si valeur manquante.
+    """
     if v is None:
         return ""
-    if isinstance(v, float) and v != v:  # NaN
+    if isinstance(v, float) and v != v:  # NaN IEEE 754 -- seule valeur != elle-même
         return ""
     s = str(v)
     return "" if s in ("nan", "NaT", "None", "NaN") else s
 
 
 def _safe_num(v: Any) -> float | None:
-    """Convertit en float, retourne None si NaN/None."""
+    """
+    Convertit en float, retourne None si NaN/None/non convertible.
+
+    Args:
+        v: Valeur quelconque (int, float, str, None...).
+    Returns:
+        float ou None.
+    """
     if v is None:
         return None
     try:
@@ -64,7 +91,14 @@ def _safe_num(v: Any) -> float | None:
 
 
 def _fmt_date(v: Any) -> str:
-    """Formate une date YYYY-MM-DD → DD/MM/YYYY."""
+    """
+    Formate une date YYYY-MM-DD en DD/MM/YYYY pour affichage dans le dashboard.
+
+    Args:
+        v: Date au format ISO (str, date, datetime ou None).
+    Returns:
+        Date au format DD/MM/YYYY, chaîne vide si non convertible.
+    """
     if v is None:
         return ""
     s = _safe_str(v)
@@ -73,7 +107,18 @@ def _fmt_date(v: Any) -> str:
 
 
 def _first_etd(row: pd.Series) -> Any:
-    """Retourne la première valeur ETD non nulle (confirme > réel)."""
+    """
+    Retourne la première valeur ETD non nulle (confirme > réel) pour un PO donné.
+
+    ETD confirme est la date contractuelle avec le fournisseur ; ETD réel est
+    la date effective de départ du port. On affiche confirme en priorité car
+    c'est la référence de suivi commerciale jusqu'à ce que le réel soit connu.
+
+    Args:
+        row: Ligne du DataFrame commandes.
+    Returns:
+        Valeur ETD (date ou None).
+    """
     for col in ("etd_confirme", "etd_reel"):
         val = row.get(col)
         if val is not None and not pd.isna(val):
@@ -186,7 +231,22 @@ def _build_en_cours(df: pd.DataFrame) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def _inject_data(html: str, json_str: str) -> str:
-    """Injecte var D={...} dans le HTML en remplaçant le bloc data existant."""
+    """
+    Injecte le bloc `var D={...}` dans le HTML en remplaçant le bloc data existant.
+
+    Deux cas sont gérés pour la rétrocompatibilité :
+    1. Bloc script inline `<script>var D=...;</script>` (format actuel)
+    2. Ancien bloc JSON `<script type="application/json" id="D">` (format legacy)
+
+    Junior Tip : re.DOTALL permet au point "." dans le pattern de matcher
+    les sauts de ligne, indispensable quand le JSON est formaté sur plusieurs lignes.
+
+    Args:
+        html: Contenu HTML du dashboard (lecture fichier .html).
+        json_str: Payload JSON sérialisé à injecter.
+    Returns:
+        HTML modifié avec le nouveau bloc data.
+    """
     new_block = f'<script>var D={json_str};</script>'
 
     # Cas 1 : bloc <script>var D=...;</script> déjà présent (réinjection)
@@ -207,9 +267,9 @@ def _inject_data(html: str, json_str: str) -> str:
         )
 
     if result == html:
-        logger.warning("Aucun bloc data trouvé  -- injection impossible")
+        logger.warning("[ATTENTION] Aucun bloc data trouvé -- injection impossible")
     else:
-        logger.info("Bloc data injecté (%d chars)", len(json_str))
+        logger.info("[SUCCÈS] Bloc data injecté (%d chars)", len(json_str))
 
     # Remplacer l'appel JSON.parse si encore présent
     result = re.sub(
@@ -225,17 +285,31 @@ def _inject_data(html: str, json_str: str) -> str:
 # ---------------------------------------------------------------------------
 
 def generate(dashboard_path: Path = DASHBOARD_PATH) -> None:
-    """Régénère le dashboard avec les données fraîches de la DB."""
+    """
+    Régénère le dashboard HTML avec les données fraîches de la DB PostgreSQL.
+
+    Orchestre l'extraction SQL, la construction des KPI/structures JSON,
+    la sérialisation et l'injection dans le fichier HTML existant.
+
+    Junior Tip : sys.path.insert(0, ...) en début de fonction (et non en tête
+    de module) est un pattern délibéré pour éviter les imports circulaires au
+    chargement du module -- config_manager n'est résolu qu'à l'appel de generate().
+
+    Args:
+        dashboard_path: Chemin vers le fichier dashboard_achats.html à mettre à jour.
+    Returns:
+        None
+    """
     sys.path.insert(0, str(PROJECT_ROOT))
     from src.utils.config_manager import Config  # noqa: PLC0415
 
     engine = create_engine(Config.get_pg_url())
-    logger.info("Extraction achat.commande...")
+    logger.info("[INFO] Extraction achat.commande...")
 
     with engine.connect() as conn:
         df = pd.read_sql(text(SQL_COMMANDES), conn)
 
-    logger.info("Lignes extraites : %d", len(df))
+    logger.info("[SUCCÈS] Lignes extraites : %d", len(df))
 
     commandes   = _build_commandes(df)
     statuts     = _build_statuts(df)
@@ -248,7 +322,7 @@ def generate(dashboard_path: Path = DASHBOARD_PATH) -> None:
         for po in {r["po"] for r in commandes}
     )
 
-    logger.info("KPIs  -- POs: %d | en cours: %d | CA: $%,.0f | frs: %d | prix: %d",
+    logger.info("[INFO] KPIs -- POs: %d | en cours: %d | CA: $%,.0f | frs: %d | prix: %d",
                 df["po_number"].nunique(), len(en_cours),
                 ca_total, len(fournisseurs), len(prix))
 
@@ -262,12 +336,12 @@ def generate(dashboard_path: Path = DASHBOARD_PATH) -> None:
     }
 
     json_str = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
-    logger.info("JSON sérialisé : %d chars", len(json_str))
+    logger.info("[INFO] JSON sérialisé : %d chars", len(json_str))
 
     html = dashboard_path.read_text(encoding="utf-8")
     html_new = _inject_data(html, json_str)
     dashboard_path.write_text(html_new, encoding="utf-8")
-    logger.info("Dashboard régénéré : %s (%d chars)", dashboard_path, len(html_new))
+    logger.info("[SUCCÈS] Dashboard régénéré : %s (%d chars)", dashboard_path, len(html_new))
 
 
 def main() -> None:

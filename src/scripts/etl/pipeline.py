@@ -1,6 +1,13 @@
+# -*- coding: utf-8 -*-
 """
-Pipeline ETL principal  -- Data-Achat
-Orchestre extract → transform → load pour le Circuit B (réappro).
+[DATA ENGINEERING]
+Pipeline ETL principal du projet Data-Achat TB Groupe.
+
+Stratégie : ce module est le point d'entrée unique qui orchestre les trois
+étapes Extract -> Transform -> Load. Il gère les erreurs à chaque étape de
+façon indépendante (une erreur en LOAD ne masque pas les stats TRANSFORM)
+et supporte un mode --dry-run pour valider les fichiers sans toucher la DB.
+Ce pipeline couvre principalement le Circuit B (réappro) et les imports Chine.
 
 Usage :
     python -m src.etl.pipeline
@@ -22,7 +29,18 @@ logger = logging.getLogger(__name__)
 
 
 def _get_data_dir() -> Path:
-    """Localise le répertoire Service_Achat depuis la racine du projet."""
+    """
+    Localise le répertoire Service_Achat depuis la racine du projet.
+
+    Junior Tip : get_base_path() gère deux cas d'exécution distincts --
+    le mode script normal (Path(__file__)) et le mode PyInstaller (sys.executable).
+    Cette abstraction permet de packager le pipeline en .exe sans modifier ce code.
+
+    Returns:
+        Path vers le répertoire contenant les fichiers Excel source.
+    Raises:
+        FileNotFoundError: Si le répertoire DATA_DIR n'existe pas.
+    """
     from src.utils.config_manager import Config, get_base_path
     base = get_base_path()
     data_dir = base / Config.DATA_DIR
@@ -33,7 +51,15 @@ def _get_data_dir() -> Path:
 
 def run(dry_run: bool = False) -> dict[str, int]:
     """
-    Exécute le pipeline complet.
+    Exécute le pipeline ETL complet (Extract -> Transform -> Load).
+
+    Chaque étape est encapsulée dans un try/except indépendant pour retourner
+    des statistiques partielles même en cas d'erreur, plutôt que de propager
+    une exception non gérée vers le scheduler ou l'appelant.
+
+    Junior Tip : Le pattern "stats dict + erreurs += 1" permet au processus
+    appelant (CI, orchestrateur n8n) de détecter un échec partiel via le
+    compteur erreurs sans avoir à analyser les logs.
 
     Args:
         dry_run: Si True, skip le chargement PostgreSQL (test extract+transform).
@@ -47,36 +73,36 @@ def run(dry_run: bool = False) -> dict[str, int]:
     data_dir = _get_data_dir()
 
     # ── EXTRACT ──────────────────────────────────────────────────────────────
-    logger.info("=== EXTRACT ===")
+    logger.info("[INFO] === EXTRACT ===")
     try:
         df_matrice = extract_matrice(data_dir / "Matrice TB Import.xlsx")
         df_dimensions = extract_dimensions(data_dir / "Base article dimensions volume.xlsx")
         df_import = extract_import(data_dir / "IMPORT 2026.xlsx")
     except Exception as exc:
-        logger.error("Échec extraction : %s", exc, exc_info=True)
+        logger.error("[ÉCHEC] Pipeline interrompu -- extraction impossible : %s", exc, exc_info=True)
         stats["erreurs"] += 1
         return stats
 
     # ── TRANSFORM ────────────────────────────────────────────────────────────
-    logger.info("=== TRANSFORM ===")
+    logger.info("[INFO] === TRANSFORM ===")
     try:
         df_produit = transform_produit(df_matrice, df_dimensions)
         df_commande = transform_commande(df_import)
     except Exception as exc:
-        logger.error("Échec transformation : %s", exc, exc_info=True)
+        logger.error("[ÉCHEC] Pipeline interrompu -- transformation impossible : %s", exc, exc_info=True)
         stats["erreurs"] += 1
         return stats
 
     # ── RAPPORT DRY-RUN ──────────────────────────────────────────────────────
     if dry_run:
-        logger.info("=== DRY-RUN  -- pas d'écriture PostgreSQL ===")
+        logger.info("[INFO] === DRY-RUN -- pas d'écriture PostgreSQL ===")
         _print_report(df_produit, df_commande, dry_run=True)
         stats["produits"] = len(df_produit)
         stats["commandes"] = len(df_commande)
         return stats
 
     # ── LOAD ─────────────────────────────────────────────────────────────────
-    logger.info("=== LOAD ===")
+    logger.info("[INFO] === LOAD ===")
     try:
         from sqlalchemy import create_engine
         from src.utils.config_manager import Config
@@ -87,7 +113,7 @@ def run(dry_run: bool = False) -> dict[str, int]:
         stats["produits"] = load_produit(df_produit, engine)
         stats["commandes"] = load_commande(df_commande, engine)
     except Exception as exc:
-        logger.error("Échec chargement PostgreSQL : %s", exc, exc_info=True)
+        logger.error("[ERREUR] Chargement PostgreSQL échoué : %s", exc, exc_info=True)
         stats["erreurs"] += 1
 
     _print_report(df_produit, df_commande, dry_run=False)
@@ -99,7 +125,19 @@ def _print_report(
     df_commande: "pd.DataFrame",
     dry_run: bool,
 ) -> None:
-    """Affiche un rapport lisible du résultat du pipeline."""
+    """
+    Affiche un rapport lisible du résultat du pipeline dans les logs.
+
+    La répartition des statuts commandes permet de détecter rapidement
+    des anomalies (ex: 0 commande "En cours" alors qu'il devrait y en avoir).
+
+    Args:
+        df_produit: DataFrame produit transformé.
+        df_commande: DataFrame commande transformé.
+        dry_run: True si le pipeline a été exécuté en mode test.
+    Returns:
+        None
+    """
     import pandas as pd  # noqa: F401 (import local pour éviter dépendance circulaire)
 
     mode = "[DRY-RUN]" if dry_run else "[PROD]"

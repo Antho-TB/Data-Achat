@@ -1,12 +1,14 @@
+# -*- coding: utf-8 -*-
 """
-Enrichissement achat.produit depuis tarrerias_production_dwh.
-Trois schémas Sylob interrogés en cascade (GDD → SE → CIE) :
-  - TARRERIAS_GENERALE_DE_DECOUPAGE_Article  → produits GDD/import Chine
-  - TARRERIAS_SE_TARRERIAS_BONJEAN_Article   → catalogue TB principal (SE)
-  - TARRERIAS_TARRERIAS_BONJEAN_ET_CIE_Article → CIE
-Deux stratégies de jointure par schéma :
-  1. code_article exact (match direct)
-  2. EAN13 (fallback quand le code article diffère)
+[DATA ENGINEERING]
+Enrichissement de achat.produit depuis le DWH Sylob On-Premise (tarrerias_production_dwh).
+
+Stratégie : la table achat.produit contient les articles issus des fichiers Excel
+Achats. Ce script la complète avec les données de référence Sylob (ERP TB Groupe) :
+prix d'achat, délai réappro, désignation officielle. Trois schémas correspondant
+aux trois entités juridiques (GDD, SE, CIE) sont interrogés en cascade -- le premier
+schéma qui répond pour un code article ou un EAN13 gagne (priorité GDD > SE > CIE).
+Ce script nécessite un accès réseau au serveur Sylob (VPN Stormshield obligatoire).
 """
 import logging
 import sys
@@ -22,7 +24,20 @@ SCHEMAS = [
 
 
 def fetch_sylob_by_code(codes: list[str], schema: str, conn) -> dict[str, dict]:
-    """Jointure directe sur code_article dans un schéma donné."""
+    """
+    Jointure directe sur code_article dans un schéma Sylob donné.
+
+    Junior Tip : La jointure par batch (voir enrich_produits) découpe la liste
+    en tranches de 200 pour éviter de dépasser la limite de paramètres SQL
+    ou de générer une requête IN() trop longue que le parseur PostgreSQL refuse.
+
+    Args:
+        codes: Liste de codes articles à rechercher.
+        schema: Nom du schéma Sylob (ex: 'TARRERIAS_GENERALE_DE_DECOUPAGE_Article').
+        conn: Connexion SQLAlchemy active sur tarrerias_production_dwh.
+    Returns:
+        Dictionnaire {code_article: data_sylob}.
+    """
     from sqlalchemy import text
     if not codes:
         return {}
@@ -40,7 +55,20 @@ def fetch_sylob_by_code(codes: list[str], schema: str, conn) -> dict[str, dict]:
 
 
 def fetch_sylob_by_ean(eans: list[str], schema: str, conn) -> dict[str, dict]:
-    """Jointure par EAN13 dans un schéma donné  -- retourne {ean: data_sylob}."""
+    """
+    Jointure par EAN13 dans un schéma Sylob donné -- retourne {ean: data_sylob}.
+
+    Ce fallback est nécessaire quand le code article de la Matrice Excel ne
+    correspond pas au code article Sylob (cas fréquent pour les articles
+    récents ou les articles GDD pas encore intégrés dans SE/CIE).
+
+    Args:
+        eans: Liste d'EAN13 à rechercher.
+        schema: Nom du schéma Sylob.
+        conn: Connexion SQLAlchemy active sur tarrerias_production_dwh.
+    Returns:
+        Dictionnaire {ean13: data_sylob}.
+    """
     from sqlalchemy import text
     if not eans:
         return {}
@@ -58,7 +86,8 @@ def fetch_sylob_by_ean(eans: list[str], schema: str, conn) -> dict[str, dict]:
 
 
 def _to_dict(r, schema: str) -> dict:
-    # Déduire la société depuis le schéma
+    # Déduire la société depuis le nom du schéma pour tracer l'origine de la donnée
+    # et permettre des analyses par entité juridique dans le dashboard
     if "SE_TARRERIAS_BONJEAN" in schema:
         societe = "SE"
     elif "TARRERIAS_BONJEAN_ET_CIE" in schema:
@@ -78,6 +107,22 @@ def _to_dict(r, schema: str) -> dict:
 
 
 def ensure_sylob_columns(engine) -> None:
+    """
+    Ajoute les colonnes Sylob à achat.produit si elles n'existent pas encore.
+
+    ADD COLUMN IF NOT EXISTS est idempotent -- on peut appeler cette fonction
+    à chaque exécution sans risque d'erreur, même si les colonnes existent déjà.
+    C'est le pattern de migration "forward-only" sans outil de migration dédié.
+
+    Junior Tip : ALTER TABLE avec ADD COLUMN IF NOT EXISTS est disponible depuis
+    PostgreSQL 9.6. Contrairement à CREATE TABLE IF NOT EXISTS, cette instruction
+    n'est pas standard SQL -- elle est spécifique à PostgreSQL.
+
+    Args:
+        engine: SQLAlchemy engine connecté à achat (PostgreSQL bitb-2025).
+    Returns:
+        None
+    """
     from sqlalchemy import text
     with engine.begin() as conn:
         conn.execute(text("""
@@ -89,10 +134,29 @@ def ensure_sylob_columns(engine) -> None:
               ADD COLUMN IF NOT EXISTS sylob_synced_at       TIMESTAMPTZ,
               ADD COLUMN IF NOT EXISTS sylob_societe         TEXT;
         """))
-    logger.info("Colonnes Sylob vérifiées.")
+    logger.info("[SUCCÈS] Colonnes Sylob vérifiées.")
 
 
 def enrich_produits(achat_engine, sylob_engine) -> dict[str, int]:
+    """
+    Enrichit achat.produit avec les données de référence Sylob (prix, délais, désignations).
+
+    Algorithme en deux passes :
+    1. Collecte tous les codes/EAN depuis achat.produit
+    2. Pour chaque schéma Sylob (GDD -> SE -> CIE), récupère les données manquantes
+       en batch et consolide les résultats (premier schéma qui répond gagne)
+    3. UPDATE en base article par article avec les données trouvées
+
+    Junior Tip : L'ordre GDD -> SE -> CIE n'est pas arbitraire -- GDD est l'entité
+    qui gère les imports Chine, donc elle a le plus de chances de matcher les articles
+    de la Matrice TB Import. SE et CIE sont des fallbacks pour les articles multi-entités.
+
+    Args:
+        achat_engine: SQLAlchemy engine connecté à PostgreSQL bitb-2025 (schéma achat).
+        sylob_engine: SQLAlchemy engine connecté à tarrerias_production_dwh (Sylob).
+    Returns:
+        Dictionnaire de statistiques : total, match_code, match_ean, non_trouves.
+    """
     from sqlalchemy import text
 
     stats: dict[str, int] = {
@@ -116,12 +180,13 @@ def enrich_produits(achat_engine, sylob_engine) -> dict[str, int]:
     all_codes = [r[0] for r in rows]
     all_eans  = [r[1] for r in rows if r[1] and len(r[1]) > 8]
     stats["total"] = len(all_codes)
-    logger.info("Articles à traiter : %d (%d avec EAN)", len(all_codes), len(all_eans))
+    logger.info("[INFO] Articles à traiter : %d (%d avec EAN)", len(all_codes), len(all_eans))
 
     batch = 200
 
-    # Construire les mappings consolidés : {code: data} {ean: data}
-    # Premier schéma qui répond gagne (GDD → SE → CIE)
+    # Construire les mappings consolidés : {code: data} et {ean: data}
+    # Stratégie "first wins" : GDD -> SE -> CIE -- on n'écrase pas un match
+    # déjà trouvé dans un schéma prioritaire avec un résultat d'un schéma secondaire
     by_code: dict[str, dict] = {}
     by_ean:  dict[str, dict] = {}
 
@@ -154,7 +219,7 @@ def enrich_produits(achat_engine, sylob_engine) -> dict[str, int]:
                 schema, len(schema_code), len(schema_ean)
             )
 
-    logger.info("Total match code_article : %d | Total match EAN : %d",
+    logger.info("[INFO] Total match code_article : %d | Total match EAN : %d",
                 len(by_code), len(by_ean))
 
     now = datetime.now(timezone.utc)

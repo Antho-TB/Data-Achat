@@ -1,6 +1,13 @@
+# -*- coding: utf-8 -*-
 """
-Chargement des données transformées dans PostgreSQL (schéma achat).
-Toutes les opérations sont des UPSERT  -- l'ETL est idempotent et re-exécutable.
+[DATA ENGINEERING]
+Chargement des données transformées dans PostgreSQL (schéma achat) du DWH TB Groupe.
+
+Stratégie : les opérations sont idempotentes et re-exécutables sans risque.
+achat.produit utilise un UPSERT (INSERT ... ON CONFLICT DO UPDATE) pour préserver
+les enrichissements Sylob ajoutés hors-pipeline. achat.commande utilise un
+full-refresh (TRUNCATE + INSERT) car la granularité ligne-article rend l'UPSERT
+complexe et le volume reste faible (< 10 000 lignes).
 """
 import logging
 
@@ -105,33 +112,53 @@ CREATE TABLE IF NOT EXISTS achat.commande (
 def create_tables_if_not_exist(engine: Engine) -> None:
     """
     Crée les tables achat.produit et achat.commande si elles n'existent pas.
-    Note : le schéma `achat` doit être créé manuellement une fois par un admin
-    (via pgAdmin avec platform_team) car CREATE SCHEMA requiert des droits DATABASE-level.
+
+    Le DDL utilise CREATE TABLE IF NOT EXISTS pour être idempotent -- aucune
+    erreur si les tables existent déjà. Le schéma achat doit être pré-créé
+    manuellement par un admin car CREATE SCHEMA requiert des droits DATABASE-level
+    que l'utilisateur ETL ne possède pas (principe du moindre privilège).
+
+    Junior Tip : engine.begin() ouvre une transaction DDL. PostgreSQL autorise
+    les DDL en transaction (contrairement à MySQL), ce qui garantit l'atomicité :
+    soit les deux tables sont créées, soit aucune.
+
+    Args:
+        engine: SQLAlchemy engine connecté à PostgreSQL (schéma achat accessible).
+    Returns:
+        None
     """
-    logger.info("Création des tables PostgreSQL (si nécessaire)...")
+    logger.info("[INFO] Création des tables PostgreSQL (si nécessaire)...")
     with engine.begin() as conn:
-        # DDL_SCHEMA retiré  -- schéma créé manuellement par platform_team
+        # DDL_SCHEMA retiré -- schéma créé manuellement par platform_team
         conn.execute(text(DDL_PRODUIT))
         conn.execute(text(DDL_COMMANDE))
-    logger.info("Tables prêtes.")
+    logger.info("[SUCCÈS] Tables prêtes.")
 
 
 def load_produit(df: pd.DataFrame, engine: Engine) -> int:
     """
-    Upsert de la table achat.produit.
-    En cas de conflit sur code_article, met à jour toutes les colonnes sauf la PK.
+    UPSERT de la table achat.produit via table temporaire intermédiaire.
+
+    Stratégie en deux temps : on écrit d'abord dans une table temporaire
+    achat._tmp_produit, puis on exécute l'INSERT ... ON CONFLICT depuis cette
+    table vers achat.produit. Cette approche évite de construire une requête
+    paramétrée avec N*M paramètres (trop lourd pour psycopg2 au-delà de ~500 lignes).
+
+    Junior Tip : ON CONFLICT DO UPDATE (UPSERT PostgreSQL) garantit l'idempotence :
+    re-exécuter le pipeline deux fois ne créera pas de doublons. EXCLUDED est un
+    pseudo-alias PostgreSQL qui désigne la ligne "candidate" qui a provoqué le conflit.
 
     Args:
-        df: DataFrame produit transformé.
+        df: DataFrame produit transformé (issu de transform_produit).
         engine: SQLAlchemy engine PostgreSQL.
     Returns:
         Nombre de lignes insérées ou mises à jour.
     """
     if df.empty:
-        logger.warning("DataFrame produit vide  -- rien à charger.")
+        logger.warning("[ATTENTION] DataFrame produit vide -- rien à charger.")
         return 0
 
-    logger.info("Chargement produit : %d articles...", len(df))
+    logger.info("[INFO] Chargement produit : %d articles...", len(df))
 
     cols = [c for c in df.columns if c != "code_article"]
     set_clause = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols)
@@ -149,7 +176,7 @@ def load_produit(df: pd.DataFrame, engine: Engine) -> int:
         conn.execute(text(f"DROP TABLE IF EXISTS {tmp_table};"))
 
     count = len(df)
-    logger.info("Produit chargé : %d articles.", count)
+    logger.info("[SUCCÈS] Produit chargé : %d articles.", count)
     return count
 
 
@@ -158,19 +185,25 @@ def load_commande(df: pd.DataFrame, engine: Engine) -> int:
     Full-refresh de la table achat.commande (TRUNCATE + INSERT).
 
     La table commande a une granularité ligne-article (plusieurs lignes par PO#),
-    donc pas d'UPSERT possible sur po_number seul. On recharge tout à chaque exécution.
+    donc pas d'UPSERT possible sur po_number seul car il n'est pas unique.
+    On préfère le full-refresh : TRUNCATE vide la table puis INSERT recharge tout.
+    RESTART IDENTITY remet le compteur SERIAL à 1 pour éviter une dérive infinie des ID.
+
+    Junior Tip : engine.begin() garantit que TRUNCATE et INSERT sont dans la même
+    transaction -- si l'INSERT échoue, le TRUNCATE est annulé (rollback automatique)
+    et les données précédentes restent intactes.
 
     Args:
-        df: DataFrame commande transformé.
+        df: DataFrame commande transformé (issu de transform_commande).
         engine: SQLAlchemy engine PostgreSQL.
     Returns:
         Nombre de lignes insérées.
     """
     if df.empty:
-        logger.warning("DataFrame commande vide  -- rien à charger.")
+        logger.warning("[ATTENTION] DataFrame commande vide -- rien à charger.")
         return 0
 
-    logger.info("Chargement commande (full-refresh) : %d lignes...", len(df))
+    logger.info("[INFO] Chargement commande (full-refresh) : %d lignes...", len(df))
 
     with engine.begin() as conn:
         conn.execute(text("TRUNCATE TABLE achat.commande RESTART IDENTITY;"))
@@ -178,5 +211,5 @@ def load_commande(df: pd.DataFrame, engine: Engine) -> int:
                   if_exists="append", index=False, method="multi")
 
     count = len(df)
-    logger.info("Commande chargée : %d lignes.", count)
+    logger.info("[SUCCÈS] Commande chargée : %d lignes.", count)
     return count
