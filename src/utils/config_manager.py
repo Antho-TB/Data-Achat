@@ -1,5 +1,5 @@
 """
-Configuration centralisée — Data-Achat
+Configuration centralisée  -- Data-Achat
 Charge les paramètres depuis Azure Key Vault (prod) ou .env (dev local).
 """
 import logging
@@ -27,7 +27,7 @@ class Config:
     # Azure Key Vault (prod)
     KEY_VAULT_NAME: str = os.getenv("KEY_VAULT_NAME", "")
 
-    # PostgreSQL — valeurs fallback pour dev local (.env)
+    # PostgreSQL  -- valeurs fallback pour dev local (.env)
     PG_HOST: str = os.getenv("PG_HOST", "")
     PG_PORT: int = int(os.getenv("PG_PORT", "5432"))
     PG_DB: str = os.getenv("PG_DB", "dtpf_sylob_prod")

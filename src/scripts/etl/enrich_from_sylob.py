@@ -40,7 +40,7 @@ def fetch_sylob_by_code(codes: list[str], schema: str, conn) -> dict[str, dict]:
 
 
 def fetch_sylob_by_ean(eans: list[str], schema: str, conn) -> dict[str, dict]:
-    """Jointure par EAN13 dans un schéma donné — retourne {ean: data_sylob}."""
+    """Jointure par EAN13 dans un schéma donné  -- retourne {ean: data_sylob}."""
     from sqlalchemy import text
     if not eans:
         return {}
@@ -208,7 +208,7 @@ def enrich_produits(achat_engine, sylob_engine) -> dict[str, int]:
 
 def run() -> None:
     logging.basicConfig(level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s — %(message)s")
+        format="%(asctime)s [%(levelname)s] %(name)s  -- %(message)s")
     for noisy in ("azure.core.pipeline", "azure.identity", "urllib3"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
@@ -226,7 +226,7 @@ def run() -> None:
     total_enrichis = stats["match_code"] + stats["match_ean"]
     sep = "=" * 55
     logger.info(sep)
-    logger.info("  Rapport enrichissement Sylob v3 — multi-schéma")
+    logger.info("  Rapport enrichissement Sylob v3  -- multi-schéma")
     logger.info(sep)
     logger.info("  Articles total             : %d", stats["total"])
     logger.info("  Match code_article (total) : %d", stats["match_code"])
@@ -256,3 +256,4 @@ def run() -> None:
 
 if __name__ == "__main__":
     run()
+                                     

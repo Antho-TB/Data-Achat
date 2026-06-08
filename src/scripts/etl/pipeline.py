@@ -1,5 +1,5 @@
 """
-Pipeline ETL principal — Data-Achat
+Pipeline ETL principal  -- Data-Achat
 Orchestre extract → transform → load pour le Circuit B (réappro).
 
 Usage :
@@ -69,7 +69,7 @@ def run(dry_run: bool = False) -> dict[str, int]:
 
     # ── RAPPORT DRY-RUN ──────────────────────────────────────────────────────
     if dry_run:
-        logger.info("=== DRY-RUN — pas d'écriture PostgreSQL ===")
+        logger.info("=== DRY-RUN  -- pas d'écriture PostgreSQL ===")
         _print_report(df_produit, df_commande, dry_run=True)
         stats["produits"] = len(df_produit)
         stats["commandes"] = len(df_commande)

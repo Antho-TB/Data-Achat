@@ -1,6 +1,6 @@
 """
 Chargement des données transformées dans PostgreSQL (schéma achat).
-Toutes les opérations sont des UPSERT — l'ETL est idempotent et re-exécutable.
+Toutes les opérations sont des UPSERT  -- l'ETL est idempotent et re-exécutable.
 """
 import logging
 
@@ -36,13 +36,13 @@ CREATE TABLE IF NOT EXISTS achat.produit (
     -- Catalogue
     type_lot             TEXT,              -- 'Lot' | 'Vrac' | 'Unitaire'
     nomenclature         TEXT,             -- code douanier HS Code
-    -- Bloc Design — matières
+    -- Bloc Design  -- matières
     matiere_lame         TEXT,
     chrome_pct           NUMERIC,          -- % chrome acier
     traitement_thermique TEXT,
     matiere_manche       TEXT,
     finition             TEXT,
-    -- Bloc Design — marquage
+    -- Bloc Design  -- marquage
     marquage_libelle     TEXT,
     artwork              TEXT,             -- référence artwork/visuel
     -- Dimensions produit
@@ -110,7 +110,7 @@ def create_tables_if_not_exist(engine: Engine) -> None:
     """
     logger.info("Création des tables PostgreSQL (si nécessaire)...")
     with engine.begin() as conn:
-        # DDL_SCHEMA retiré — schéma créé manuellement par platform_team
+        # DDL_SCHEMA retiré  -- schéma créé manuellement par platform_team
         conn.execute(text(DDL_PRODUIT))
         conn.execute(text(DDL_COMMANDE))
     logger.info("Tables prêtes.")
@@ -128,7 +128,7 @@ def load_produit(df: pd.DataFrame, engine: Engine) -> int:
         Nombre de lignes insérées ou mises à jour.
     """
     if df.empty:
-        logger.warning("DataFrame produit vide — rien à charger.")
+        logger.warning("DataFrame produit vide  -- rien à charger.")
         return 0
 
     logger.info("Chargement produit : %d articles...", len(df))
@@ -167,7 +167,7 @@ def load_commande(df: pd.DataFrame, engine: Engine) -> int:
         Nombre de lignes insérées.
     """
     if df.empty:
-        logger.warning("DataFrame commande vide — rien à charger.")
+        logger.warning("DataFrame commande vide  -- rien à charger.")
         return 0
 
     logger.info("Chargement commande (full-refresh) : %d lignes...", len(df))

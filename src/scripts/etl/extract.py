@@ -66,7 +66,7 @@ def extract_dimensions(file_path: str | Path) -> pd.DataFrame:
     """
     Lit Base article dimensions volume.xlsx.
 
-    Structure propre avec header en ligne 0 — pas de transformation nécessaire.
+    Structure propre avec header en ligne 0  -- pas de transformation nécessaire.
 
     Args:
         file_path: Chemin vers Base article dimensions volume.xlsx

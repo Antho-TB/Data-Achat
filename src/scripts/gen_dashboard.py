@@ -207,7 +207,7 @@ def _inject_data(html: str, json_str: str) -> str:
         )
 
     if result == html:
-        logger.warning("Aucun bloc data trouvé — injection impossible")
+        logger.warning("Aucun bloc data trouvé  -- injection impossible")
     else:
         logger.info("Bloc data injecté (%d chars)", len(json_str))
 
@@ -248,7 +248,7 @@ def generate(dashboard_path: Path = DASHBOARD_PATH) -> None:
         for po in {r["po"] for r in commandes}
     )
 
-    logger.info("KPIs — POs: %d | en cours: %d | CA: $%,.0f | frs: %d | prix: %d",
+    logger.info("KPIs  -- POs: %d | en cours: %d | CA: $%,.0f | frs: %d | prix: %d",
                 df["po_number"].nunique(), len(en_cours),
                 ca_total, len(fournisseurs), len(prix))
 
@@ -273,7 +273,7 @@ def generate(dashboard_path: Path = DASHBOARD_PATH) -> None:
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+        format="%(asctime)s [%(levelname)s] %(name)s  -- %(message)s",
     )
     for noisy in ("azure.core.pipeline", "azure.identity", "urllib3"):
         logging.getLogger(noisy).setLevel(logging.WARNING)

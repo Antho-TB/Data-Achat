@@ -1,5 +1,5 @@
 """
-Transformations métier — nettoyage et normalisation des données Achats.
+Transformations métier  -- nettoyage et normalisation des données Achats.
 """
 import logging
 import re
@@ -70,7 +70,8 @@ def _to_date_or_none(val: object) -> Optional[str]:
         if pd.isna(ts):
             return None
         return ts.date().isoformat()
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("_to_date_or_none: valeur non convertible %r -- %s", val, exc)
         return None
 
 
@@ -193,7 +194,7 @@ def transform_commande(df_import: pd.DataFrame) -> pd.DataFrame:
     df["statut"] = statuts.apply(lambda x: x[0])
     df["date_statut"] = statuts.apply(lambda x: x[1])
 
-    # Colonnes date — 'Payé ?' peut contenir une date ou un booléen
+    # Colonnes date  -- 'Payé ?' peut contenir une date ou un booléen
     def safe_date(col: str) -> pd.Series:
         return df[col].apply(_to_date_or_none) if col in df.columns else pd.Series(None, index=df.index)
 
