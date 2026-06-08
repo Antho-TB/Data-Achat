@@ -1,7 +1,7 @@
 # Plan d'action — Système Data-Achat TB Groupe
 
 > Issu de la réunion de cadrage · 2026-06-01  
-> Mis à jour : 2026-06-03 (post-its équipe Achat intégrés)  
+> Mis à jour : **2026-06-08** (session debug dashboard + push GitHub)  
 > Périmètre : Achats Import · Utilisateurs finaux : Andréa, Marlène, Olivier, Eric, Charles, David, Jonatan, Julia, Emmanuelle
 
 ---
@@ -184,55 +184,62 @@ Emmanuelle crée le CODE ARTICLE dans Sylob  →  PK définitive
 
 ---
 
-## État d'avancement — 2026-06-03
+## État d'avancement — 2026-06-08
 
-### ✅ Accompli cette session
+### ✅ Accompli (sessions 2026-06-03 → 2026-06-08)
 
-| Livrable | Statut |
-|---------|--------|
-| Cartographie des 4 sources de données | ✅ `docs/cartographie_sources.md` |
-| Profil complet des fichiers Excel Andréa | ✅ `docs/profil_donnees.md` |
-| Prise de note réunion intégrée | ✅ Architecture multi-blocs, PK code article |
-| ETL Python complet (extract + transform + load) | ✅ `src/scripts/etl/` — testé dry-run |
-| Structure projet aux standards TB Groupe | ✅ `src/utils/`, `src/scripts/`, `config/`, `data/`, `docs/` |
-| Credentials Key Vault opérationnels | ✅ `DefaultAzureCredential` → Key Vault → PostgreSQL |
-| Connexion TCP PostgreSQL résolue | ✅ `URL.create()` — problème `@` dans le mot de passe corrigé |
-| Cartographie DWH Sylob complète | ✅ 3 sociétés, 16 modules, tables Achat/Article/Fournisseur documentées |
+| Livrable | Statut | Détail |
+|---------|--------|--------|
+| Cartographie des 4 sources de données | ✅ | `docs/cartographie_sources.md` |
+| Profil complet des fichiers Excel Andréa | ✅ | `docs/profil_donnees.md` |
+| ETL Python complet (extract + transform + load) | ✅ | `src/scripts/etl/` — pipeline en prod |
+| Structure projet aux standards TB Groupe | ✅ | `src/utils/`, `src/scripts/`, `config/` |
+| Credentials Key Vault opérationnels | ✅ | `DefaultAzureCredential` → Key Vault → PostgreSQL |
+| Connexion TCP PostgreSQL résolue | ✅ | `URL.create()` — problème `@` dans le mot de passe |
+| Cartographie DWH Sylob complète | ✅ | 3 sociétés, 16 modules, tables Achat/Article documentées |
+| CREATE SCHEMA achat + chargement en prod | ✅ | 720 lignes commande, 1 198 produits |
+| Enrichissement Sylob multi-schéma | ✅ | `enrich_from_sylob.py` — cascade GDD → SE → CIE — **99,7% couverture** (884/888 articles SE retrouvés) |
+| Dashboard HTML Circuit B | ✅ | `dashboard_achats.html` — KPIs, Chart.js, table filtrée, en cours, historique prix |
+| Fix SyntaxError template dashboard | ✅ | `showTab` : adjacent string literals → `getAttribute` loop |
+| Push GitHub | ✅ | `Antho-TB/Data-Achat` — commit `60cbb51` |
 
 ### 🔴 Bloqué — action requise
 
 | Blocage | Impact | Action |
 |---------|--------|--------|
-| `CREATE SCHEMA achat` — permission denied | ETL ne peut pas écrire en DB | Exécuter en pgAdmin avec credentials platform_team, OU PR Terraform sur repo `DTPF-PostgreSQL` |
 | Accès Gmail Andréa + Marlène | Phase 3 bloquée | Autorisation + MCP Gmail |
 
 ### 🟡 Non démarré
 
-| Tâche | Phase |
-|-------|-------|
-| Analyse 2 fils Gmail Circuit B bout en bout | Phase 0 |
-| Validation schéma BDD avec Andréa + e.georgeon | Phase 0 |
-| Exploration `public` schema dtpf_sylob_prod (54 tables MyReport) | Prerequis Phase prod |
-| Exploration tables Achat/Fournisseur/Article sur tarrerias_production_dwh | Phase 1 |
+| Tâche | Phase | Priorité |
+|-------|-------|---------|
+| Présentation dashboard à Andréa + Marlène | Phase 1 | 🔥 Mardi 09/06 |
+| Validation schéma BDD avec Andréa + e.georgeon | Phase 1 | Haute |
+| Analyse 2 fils Gmail Circuit B bout en bout | Phase 1 | Haute |
+| Exploration `public` schema dtpf_sylob_prod (54 tables MyReport) | Prérequis prod | Moyenne |
+| Streamlit si besoin d'écriture (signalement retard, notes) | Phase 2 | Basse |
 
 ---
 
 ## Phases
 
-### Phase 0 — Initialisation (S23, 2026-06-08)
+### Phase 0 — Initialisation ✅ (S23, 2026-06-08)
 
-- [ ] **Débloquer CREATE SCHEMA** : pgAdmin platform_team OU PR Terraform `DTPF-PostgreSQL`
+- [x] **Débloquer CREATE SCHEMA** — résolu
+- [x] ETL pipeline en prod — 720 commandes, 1 198 produits chargés
+- [x] Enrichissement Sylob 3 schémas — 99,7% couverture
 - [ ] Analyser 2 fils Gmail Circuit B bout en bout → `process_map_reappro.md`
 - [ ] Valider schéma BDD avec Andréa + e.georgeon
 
-### Phase 1 — Circuit B opérationnel (S24-S25, 2026-06-15)
+### Phase 1 — Circuit B opérationnel ✅ (livré S23, 2 sem. d'avance)
 
-- [ ] Lancer `python -m src.scripts.etl.pipeline` en prod (schéma `achat` créé)
-- [ ] Explorer `tarrerias_production_dwh` — requêter `vue_commande_achat`, `af_fournisseur`, `af_article`
-- [ ] Croiser données Excel Andréa ↔ données Sylob (fournisseurs, articles)
-- [ ] Prototype HTML v0 : suivi commandes + historique prix + recherche dynamique
+- [x] Lancer `python -m src.scripts.etl.pipeline` en prod
+- [x] Explorer `tarrerias_production_dwh` — 3 schémas Article, jointure Sylob
+- [x] Croiser données Excel Andréa ↔ données Sylob
+- [x] Dashboard HTML v1 : KPIs + Chart.js + table filtrée + en cours + historique prix
 
-**Livrable** : `dashboard.html` v0 — utilisable par Andréa et Marlène sans installation
+**Livrable** : `dashboard_achats.html` — standalone, utilisable sans installation  
+**Prochaine étape** : présentation à Andréa + Marlène le 09/06 → itérations sur retours
 
 ### Phase 2 — Circuit A + Plugin Cowork (S26-S28, 2026-06-29)
 
@@ -256,12 +263,12 @@ Emmanuelle crée le CODE ARTICLE dans Sylob  →  PK définitive
 
 ## Jalons
 
-| Jalon | Semaine | Livrable |
-|-------|---------|---------|
-| J0 — Schema `achat` créé + ETL en prod | S23 (08/06) | Premier chargement réel DB |
-| J1 — Process map Circuit B + schéma validé | S23 (08/06) | `process_map_reappro.md` |
-| J2 — Dashboard HTML v0 + données Sylob croisées | S25 (22/06) | `dashboard.html` v0 |
-| J3 — Process map Circuit A validé | S26 (29/06) | `process_map_nouveau_produit.md` |
-| J4 — Plugin Cowork v0 | S28 (13/07) | 3 skills opérationnels |
-| J5 — Intégration Gmail | S30 (27/07) | Cohérence mail ↔ BDD |
-| **Deadline POC** | **31/07/2026** | **Validation métier** |
+| Jalon | Semaine | Livrable | Statut |
+|-------|---------|---------|--------|
+| J0 — Schema `achat` créé + ETL en prod | S23 (08/06) | Premier chargement réel DB | ✅ |
+| J1 — Dashboard HTML + données Sylob croisées | S23 (08/06) | `dashboard_achats.html` v1 | ✅ **2 sem. d'avance** |
+| J2 — Validation métier + process map Circuit B | S24 (15/06) | Retours Andréa/Marlène + `process_map_reappro.md` | 🔜 Mardi 09/06 |
+| J3 — Process map Circuit A validé | S26 (29/06) | `process_map_nouveau_produit.md` | ⏳ |
+| J4 — Plugin Cowork v0 | S28 (13/07) | 3 skills opérationnels | ⏳ |
+| J5 — Intégration Gmail | S30 (27/07) | Cohérence mail ↔ BDD | ⏳ |
+| **Deadline POC** | **31/07/2026** | **Validation métier** | ⏳ |
