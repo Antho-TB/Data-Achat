@@ -71,6 +71,9 @@ class Config:
     # Clé exigée sur les endpoints d'écriture (header X-API-Key).
     # Vide = écriture refusée (fail-closed) : la définir dans config/.env.
     API_KEY: str = os.getenv("API_KEY", "")
+    # Hot-reload uvicorn (dev uniquement). Désactivé par défaut : WatchFiles
+    # s'est montré non fiable sous Windows (workers orphelins, reloads manqués).
+    API_RELOAD: bool = os.getenv("API_RELOAD", "0") == "1"
     # Origines CORS autorisées (liste séparée par virgules). Le frontend est
     # servi par FastAPI (même origine) : seuls les accès cross-origin explicites
     # sont listés ici.

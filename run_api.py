@@ -12,6 +12,6 @@ if __name__ == "__main__":
         "app.main:app",
         host=Config.API_HOST,
         port=Config.API_PORT,
-        reload=True,  # hot-reload en POC
+        reload=Config.API_RELOAD,  # API_RELOAD=1 dans .env pour le dev uniquement
         log_level="info",
     )
