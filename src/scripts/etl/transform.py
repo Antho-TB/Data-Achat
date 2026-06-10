@@ -330,18 +330,26 @@ def transform_commande(df_import: pd.DataFrame) -> pd.DataFrame:
     # (float Excel 12345.0 -> "12345", valeurs poubelle "/" -> None)
     result["code_article"] = result["code_article"].apply(_clean_ref)
 
-    # Écarter les lignes sans clé métier exploitable (PO# ou article manquant) --
-    # typiquement des lignes de sous-totaux ou de séparation dans le fichier Excel
+    # Écarter uniquement les lignes sans PO# (sous-totaux, séparations Excel).
+    # Règle Circuit B : le code article peut être ABSENT sur les lignes de frais
+    # (molding fee, etc. -- valeur "/" dans le fichier) -> on les CONSERVE avec
+    # code_article NULL, leurs montants font partie du coût des commandes.
     avant = len(result)
-    result = result.dropna(subset=["po_number", "code_article"])
+    result = result.dropna(subset=["po_number"])
     if avant - len(result):
-        logger.warning("[ATTENTION] %d lignes écartées (PO# ou code article manquant)", avant - len(result))
+        logger.warning("[ATTENTION] %d lignes écartées (PO# manquant)", avant - len(result))
 
     # Dédoublonner sur la clé métier (po_number, code_article) -- décision plan
     # d'action 2026-06 : on garde la dernière occurrence (la plus récente dans
     # le fichier). Prérequis de la contrainte UNIQUE uq_commande_po_article.
+    # Les lignes de frais (code_article NULL) sont exclues du dédoublonnage :
+    # drop_duplicates considérerait NaN == NaN et fusionnerait des frais distincts.
     avant = len(result)
-    result = result.drop_duplicates(subset=["po_number", "code_article"], keep="last")
+    has_article = result["code_article"].notna()
+    dedup = result[has_article].drop_duplicates(
+        subset=["po_number", "code_article"], keep="last"
+    )
+    result = pd.concat([dedup, result[~has_article]], ignore_index=True)
     if avant - len(result):
         logger.warning("[ATTENTION] %d doublons (po_number, code_article) dédoublonnés", avant - len(result))
 

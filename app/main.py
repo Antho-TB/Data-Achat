@@ -151,8 +151,12 @@ def get_kpis():
                     COUNT(*) FILTER (
                         WHERE statut NOT IN ('Livrée','Annulée')
                           AND etd_eff >= CURRENT_DATE)                AS lignes_dans_delais,
+                    -- total_prix est un SUMIF par PO repete sur chaque ligne Excel :
+                    -- on ne le somme JAMAIS ligne a ligne (surcompte massif).
+                    -- Valeur ligne = PU*qte ; lignes de frais (article NULL) = total_prix.
                     ROUND(COALESCE(SUM(
-                        COALESCE(total_prix, prix_unitaire * quantite)), 0), 2) AS valeur_totale
+                        CASE WHEN code_article IS NULL THEN COALESCE(total_prix, 0)
+                             ELSE COALESCE(prix_unitaire * quantite, 0) END), 0), 2) AS valeur_totale
                 FROM lignes
             """))
             row = r.fetchone()
@@ -468,7 +472,9 @@ def get_previsionnel():
                     COUNT(DISTINCT c.po_number)              AS nb_po,
                     COUNT(*)                                 AS nb_articles,
                     SUM(c.quantite)                          AS total_quantite,
-                    ROUND(SUM(COALESCE(c.total_prix, c.prix_unitaire * c.quantite)), 2) AS valeur
+                    -- cf. KPI valeur_totale : total_prix = SUMIF par PO, jamais somme ligne a ligne
+                    ROUND(SUM(CASE WHEN c.code_article IS NULL THEN COALESCE(c.total_prix, 0)
+                                   ELSE COALESCE(c.prix_unitaire * c.quantite, 0) END), 2) AS valeur
                 FROM {SCHEMA}.commande c
                 WHERE {SQL_ETD_EFF} IS NOT NULL
                   AND {SQL_ETD_EFF} >= CURRENT_DATE - INTERVAL '1 month'

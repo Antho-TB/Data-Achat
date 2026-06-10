@@ -93,10 +93,28 @@ class TestTransformCommande:
         assert "150073.0" not in result["po_number"].tolist()
         assert "150073" in result["po_number"].tolist()
 
-    def test_lignes_poubelle_ecartees(self, df_import):
-        # La ligne PO=1.0 / REF=" /" doit être écartée (pas de clé métier)
+    def test_lignes_frais_conservees(self, df_import):
+        # Règle Circuit B : REF "/" = ligne de frais (molding fee) -> conservée
+        # avec code_article NULL, jamais écartée
         result = transform_commande(df_import)
-        assert " /" not in result["code_article"].tolist()
+        frais = result[result["code_article"].isna()]
+        assert len(frais) == 1
+        assert frais["po_number"].iloc[0] == "1"
+
+    def test_frais_multiples_non_fusionnes(self):
+        # Plusieurs lignes de frais d'un même PO (code_article NULL) ne doivent
+        # PAS être dédoublonnées entre elles (NaN == NaN pour drop_duplicates)
+        df = pd.DataFrame({
+            "PO#":                 [1.0, 1.0, 1.0],
+            "MEN#":                [None, None, None],
+            "REF":                 ["/", "/", "/"],
+            "Fournisseur":         [None, None, None],
+            "Quantité":            [None, None, None],
+            "PU":                  [None, None, None],
+            "Etat de la commande": [None, None, None],
+        })
+        result = transform_commande(df)
+        assert len(result) == 3
 
     def test_dedoublonnage_cle_metier(self, df_import):
         # (150073, 20480002) présent 2 fois -> 1 seule ligne, la dernière gagne
@@ -105,8 +123,9 @@ class TestTransformCommande:
         assert mask.sum() == 1
         assert result.loc[mask, "statut"].iloc[0] == "Livrée"
 
-    def test_cle_metier_jamais_nulle(self, df_import):
-        # Prérequis de la contrainte UNIQUE uq_commande_po_article
+    def test_po_number_jamais_nul(self, df_import):
+        # Prérequis : toute ligne chargée a un PO#. Le code_article peut être
+        # NULL (lignes de frais) -- la contrainte UNIQUE PostgreSQL traite les
+        # NULL comme distincts, pas de conflit possible.
         result = transform_commande(df_import)
         assert result["po_number"].notna().all()
-        assert result["code_article"].notna().all()
