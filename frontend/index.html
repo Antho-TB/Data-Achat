@@ -402,7 +402,7 @@ button { cursor: pointer; }
     <div id="planning-grid" class="planning-grid"></div>
 
     <div class="section-header">
-      <span class="section-title">Prochaines arrivées (J-7 → J+30)</span>
+      <span class="section-title">Prochaines arrivées (ETA/ETD → J+30, retards inclus)</span>
       <button class="btn btn-ghost btn-sm" onclick="loadPrevisionnel()">&#8635; Actualiser</button>
     </div>
     <div id="table-previsionnel">
@@ -1061,7 +1061,7 @@ function renderPlanningGrid(rows) {
 function renderPrevisionnel(rows) {
   if (!rows.length) {
     document.getElementById('table-previsionnel').innerHTML =
-      '<div class="empty"><div class="empty-icon">📦</div>Aucune arrivée dans la fenêtre J-7/J+30</div>';
+      '<div class="empty"><div class="empty-icon">📦</div>Aucune arrivée attendue d\'ici J+30 (retards inclus)</div>';
     return;
   }
 

@@ -173,6 +173,7 @@ def get_kpis():
                 "valeur_totale":      float(row[5] or 0),
             })
         except Exception as e:
+            conn.rollback()  # purge la transaction avortee avant le bloc suivant
             logger.warning("[ATTENTION] KPI commande indisponible : %s", e)
             kpis.update({
                 "total_lignes": 0, "total_po": 0, "nb_fournisseurs": 0,
@@ -190,6 +191,7 @@ def get_kpis():
             """))
             kpis["top_retards_fournisseurs"] = rows_to_dicts(r)
         except Exception as e:
+            conn.rollback()
             logger.warning("[ATTENTION] KPI top retards indisponible : %s", e)
             kpis["top_retards_fournisseurs"] = []
 
@@ -209,7 +211,8 @@ def get_kpis():
                 "artwork_en_attente": int(row[2] or 0),
             })
         except Exception as e:
-            logger.warning("[ATTENTION] KPI artwork indisponible (table a creer, P5) : %s", e)
+            conn.rollback()
+            logger.warning("[ATTENTION] KPI artwork indisponible : %s", str(e).splitlines()[0])
             kpis.update({"artwork_total": 0, "artwork_valides": 0, "artwork_en_attente": 0})
 
         try:
@@ -217,7 +220,9 @@ def get_kpis():
             val = r.scalar()
             kpis["derniere_maj_prix"] = val.isoformat() if val else None
         except Exception as e:
-            logger.warning("[ATTENTION] KPI historique_prix indisponible (table a creer, P4) : %s", e)
+            conn.rollback()
+            logger.warning("[ATTENTION] KPI historique_prix indisponible (table a creer, P4) : %s",
+                           str(e).splitlines()[0])
             kpis["derniere_maj_prix"] = None
 
     return kpis
@@ -381,7 +386,11 @@ def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
             """), params)
             return {"source": "historique_prix", "data": rows_to_dicts(r)}
         except Exception as e:
-            logger.info("[INFO] historique_prix indisponible (%s) -- fallback commande", e)
+            # rollback OBLIGATOIRE : une requete echouee avorte la transaction
+            # de la connexion, le fallback echouerait en InFailedSqlTransaction
+            conn.rollback()
+            logger.info("[INFO] historique_prix indisponible -- fallback commande (%s)",
+                        str(e).splitlines()[0])
 
         try:
             r = conn.execute(text(f"""
@@ -489,15 +498,21 @@ def get_previsionnel():
             """))
             planning = rows_to_dicts(r)
 
+            # Prochaines arrivees = lignes NON livrees/annulees attendues d'ici J+30.
+            # Date d'arrivee estimee = ETA (arrivee port) si connue, sinon ETD effectif.
+            # Les lignes EN RETARD restent visibles (un retard non livre va arriver) --
+            # borne basse large (J-120) pour ecarter seulement les tres vieux dossiers.
             r2 = conn.execute(text(f"""
                 SELECT c.po_number, c.code_article, c.fournisseur,
-                       {SQL_ETD_EFF} AS date_etd, c.quantite, c.prix_unitaire,
+                       COALESCE(c.eta, {SQL_ETD_EFF}) AS date_etd,
+                       c.eta, c.quantite, c.prix_unitaire,
                        {SQL_STATUT_RETARD} AS statut
                 FROM {SCHEMA}.commande c
                 LEFT JOIN {SCHEMA}.commande_annotation a
                     ON a.po_number = c.po_number AND a.code_article = c.code_article
-                WHERE {SQL_ETD_EFF} BETWEEN CURRENT_DATE - 7 AND CURRENT_DATE + 30
-                  AND c.statut NOT IN ('Livrée', 'Annulée')
+                WHERE c.statut NOT IN ('Livrée', 'Annulée')
+                  AND COALESCE(c.eta, {SQL_ETD_EFF})
+                      BETWEEN CURRENT_DATE - 120 AND CURRENT_DATE + 30
                 ORDER BY 4 ASC
                 LIMIT 100
             """))
