@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
     logger.info("Arret API ERP Achat.")
 
 
-app = FastAPI(title="ERP Achat TB Groupe", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="FUSEAU -- ERP Achat TB Groupe", version="0.2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

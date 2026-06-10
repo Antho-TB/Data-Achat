@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ERP Achat — TB Groupe</title>
+<title>FUSEAU — ERP Achat TB Groupe</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 /* ── Variables ─────────────────────────────────────────────────────────── */
@@ -291,8 +291,8 @@ button { cursor: pointer; }
 <!-- ── Header ──────────────────────────────────────────────────────────────── -->
 <div class="header">
   <div>
-    <div class="header-logo">TB <span>Achats</span></div>
-    <div class="header-sub">Pilotage Import · Service Achats</div>
+    <div class="header-logo">FUSEAU <span>· TB Achats</span></div>
+    <div class="header-sub">Pilotage Import · Service Achats · Chine ↔ France</div>
   </div>
   <div class="header-spacer"></div>
   <div class="header-db">
@@ -432,7 +432,7 @@ function esc(v) {
 function getApiKey(force = false) {
   let k = localStorage.getItem('erp_api_key');
   if (!k || force) {
-    k = prompt('Clé API ERP Achat (fournie par Antho) :') || '';
+    k = prompt('Clé API FUSEAU (fournie par Antho) :') || '';
     if (k) localStorage.setItem('erp_api_key', k.trim());
   }
   return (k || '').trim();
