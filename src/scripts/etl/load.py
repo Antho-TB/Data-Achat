@@ -166,13 +166,17 @@ GROUP BY c.code_article, c.fournisseur;
 DDL_ARTWORK = """
 CREATE TABLE IF NOT EXISTS achat.artwork (
     id              SERIAL PRIMARY KEY,
-    code_article    TEXT NOT NULL UNIQUE,
+    po_number       TEXT NOT NULL,
+    code_article    TEXT NOT NULL,
     designation     TEXT,
-    statut_artwork  TEXT DEFAULT 'Aucun',  -- Aucun / Demandé / En cours / Validé / Archivé
+    -- Statuts natifs IMPORT col N : Aucun / A envoyer / Envoyé /
+    -- Attente Clarisse / Attente Carrefour (+ Validé / Archivé via ERP)
+    statut_artwork  TEXT DEFAULT 'Aucun',
     responsable     TEXT,
     commentaire     TEXT,
     date_demande    DATE,
-    updated_at      TIMESTAMPTZ DEFAULT now()
+    updated_at      TIMESTAMPTZ DEFAULT now(),
+    CONSTRAINT uq_artwork_po_article UNIQUE (po_number, code_article)
 );
 """
 
@@ -301,7 +305,7 @@ def load_artwork(df: pd.DataFrame, engine: Engine) -> int:
         result = conn.execute(text(f"""
             INSERT INTO achat.artwork ({', '.join(cols)})
             SELECT {', '.join(cols)} FROM {tmp_table}
-            ON CONFLICT (code_article) DO NOTHING;
+            ON CONFLICT (po_number, code_article) DO NOTHING;
         """))
         conn.execute(text(f"DROP TABLE IF EXISTS {tmp_table};"))
 

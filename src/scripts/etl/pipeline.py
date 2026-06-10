@@ -92,7 +92,7 @@ def run(dry_run: bool = False) -> dict[str, int]:
     try:
         df_produit = transform_produit(df_matrice, df_dimensions)
         df_commande = transform_commande(df_import)
-        df_artwork = transform_artwork(df_matrice)
+        df_artwork = transform_artwork(df_import)
     except Exception as exc:
         logger.error("[ÉCHEC] Pipeline interrompu -- transformation impossible : %s", exc, exc_info=True)
         stats["erreurs"] += 1

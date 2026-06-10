@@ -380,8 +380,10 @@ button { cursor: pointer; }
       <select id="f-art-statut" onchange="filterArtwork()">
         <option value="">Tous les statuts</option>
         <option>Aucun</option>
-        <option>Demandé</option>
-        <option>En cours</option>
+        <option>A envoyer</option>
+        <option>Envoyé</option>
+        <option>Attente Clarisse</option>
+        <option>Attente Carrefour</option>
         <option>Validé</option>
         <option>Archivé</option>
       </select>
@@ -476,6 +478,10 @@ function badge(statut) {
     'En cours':          'badge-blue',
     'En cours de livraison': 'badge-blue',
     'Demandé':           'badge-orange',
+    'Envoyé':            'badge-green',
+    'A envoyer':         'badge-orange',
+    'Attente Clarisse':  'badge-orange',
+    'Attente Carrefour': 'badge-orange',
     'Bloquée':           'badge-red',
     'Annulée':           'badge-gray',
     'Aucun':             'badge-gray',
@@ -920,7 +926,7 @@ function filterArtwork() {
 function renderArtworkStats(rows) {
   const counts = {};
   rows.forEach(r => { counts[r.statut_artwork] = (counts[r.statut_artwork] || 0) + 1; });
-  const statuts = ['Aucun','Demandé','En cours','Validé','Archivé'];
+  const statuts = ['Aucun','A envoyer','Envoyé','Attente Clarisse','Attente Carrefour','Validé'];
   document.getElementById('artwork-stats').innerHTML = [
     { lbl: 'Total', num: rows.length, color: 'var(--blue-light)' },
     ...statuts.map(s => ({ lbl: s, num: counts[s] || 0, color: s === 'Validé' ? 'var(--green)' : s === 'Aucun' ? 'var(--muted)' : 'var(--orange)' }))
@@ -942,18 +948,19 @@ function renderArtwork(rows) {
     <div class="table-wrap">
     <table>
       <thead><tr>
-        <th>Article</th><th>Désignation</th><th>Statut</th>
+        <th>PO#</th><th>Article</th><th>Désignation</th><th>Statut</th>
         <th>Responsable</th><th>Commentaire</th><th>MAJ</th><th>Action</th>
       </tr></thead>
       <tbody>
         ${rows.map(r => `<tr>
+          <td class="mono">${esc(r.po_number) || '—'}</td>
           <td class="mono">${esc(r.code_article) || '—'}</td>
           <td>${esc(r.designation) || '—'}</td>
           <td class="editable-cell" id="awk-${r.id}">
             <span class="view-mode" onclick="editCell(this,'select')">${badge(r.statut_artwork)}</span>
             <span class="edit-mode">
               <select>
-                ${['Aucun','Demandé','En cours','Validé','Archivé'].map(s =>
+                ${['Aucun','A envoyer','Envoyé','Attente Clarisse','Attente Carrefour','Validé','Archivé'].map(s =>
                   `<option ${r.statut_artwork===s?'selected':''}>${s}</option>`).join('')}
               </select>
               <button class="save-btn" onclick="saveArtworkStatut(${r.id}, this)">✓</button>

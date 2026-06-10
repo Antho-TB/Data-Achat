@@ -104,7 +104,11 @@ class ArtworkUpdate(BaseModel):
 
 
 STATUTS_RETARD = ["EN RETARD", "DANS LES DELAIS", "INCONNU", "CLOTUREE"]
-STATUTS_ARTWORK = ["Aucun", "Demandé", "En cours", "Validé", "Archivé"]
+# Statuts natifs du fichier IMPORT (col N) + statuts de cloture ERP
+STATUTS_ARTWORK = [
+    "Aucun", "A envoyer", "Envoyé", "Attente Clarisse", "Attente Carrefour",
+    "Validé", "Archivé",
+]
 
 
 # -- Helper --------------------------------------------------------------------
@@ -193,8 +197,9 @@ def get_kpis():
             r = conn.execute(text(f"""
                 SELECT
                     COUNT(*)                                                      AS total_artwork,
-                    COUNT(*) FILTER (WHERE statut_artwork = 'Validé')             AS valides,
-                    COUNT(*) FILTER (WHERE statut_artwork IN ('Aucun','Demandé')) AS en_attente
+                    COUNT(*) FILTER (WHERE statut_artwork IN ('Envoyé','Validé')) AS valides,
+                    COUNT(*) FILTER (WHERE statut_artwork IN
+                        ('A envoyer','Attente Clarisse','Attente Carrefour'))     AS en_attente
                 FROM {SCHEMA}.artwork
             """))
             row = r.fetchone()

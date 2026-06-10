@@ -254,54 +254,49 @@ def transform_produit(
     return result
 
 
-def transform_artwork(df_matrice: pd.DataFrame) -> pd.DataFrame:
+def transform_artwork(df_import: pd.DataFrame) -> pd.DataFrame:
     """
-    Bootstrap du suivi artwork depuis la Matrice TB Import (colonne 'Artwork').
+    Suivi artwork depuis IMPORT 2026, colonne N 'Artwork' (source de verite
+    confirmee par Antho le 2026-06-10 -- la colonne Artwork de la Matrice est
+    quasi vide et ne reflete pas le workflow reel).
 
-    Semantique observee dans le fichier (2026-06-10) :
-    - date            -> artwork valide a cette date -> statut 'Validé'
-    - 'Oui'           -> artwork existant            -> statut 'Validé'
-    - 'Non'/'Aucun'/'/'/vide -> pas d'artwork        -> statut 'Aucun'
+    C'est un workflow d'ENVOI d'artwork au fournisseur, suivi par ligne de
+    commande (po_number, code_article). Statuts natifs observes :
+    Aucun / Envoyé / Attente Clarisse / A envoyer / Attente Carrefour.
+    On conserve les libelles natifs ('A envoyé' normalise en 'A envoyer').
 
-    Seuls les articles avec un Marquage renseigne sont suivis (les autres n'ont
-    pas de besoin artwork). La table cible est editee par le metier via l'ERP :
-    le chargement est insert-only (voir load_artwork), jamais d'ecrasement.
+    La table cible est editee par le metier via l'ERP : chargement insert-only
+    (voir load_artwork), jamais d'ecrasement des statuts saisis.
 
     Args:
-        df_matrice: Resultat de extract_matrice().
+        df_import: Resultat de extract_import() (IMPORT 2026.xlsx).
     Returns:
-        DataFrame (code_article, designation, statut_artwork, commentaire, date_demande).
+        DataFrame (po_number, code_article, designation, statut_artwork, date_demande).
     """
-    logger.info("[INFO] Transformation artwork...")
-    df = df_matrice.drop_duplicates(subset=["Référence"], keep="first").copy()
+    logger.info("[INFO] Transformation artwork (IMPORT col N)...")
+    df = df_import.copy()
+    df.columns = [str(c).strip().replace("\n", " ") for c in df.columns]
 
-    # Ne garder que les articles avec un marquage exploitable
-    marquage = df.get("Marquage")
-    df = df[marquage.notna() & (~marquage.astype(str).str.strip().isin(["/", ""]))]
+    _NORMALISATION = {"a envoyé": "A envoyer", "a envoyer": "A envoyer"}
 
-    def map_statut(val: object) -> tuple[str, Optional[str]]:
-        if isinstance(val, (pd.Timestamp,)) or hasattr(val, "date"):
-            d = _to_date_or_none(val)
-            return ("Validé", d)
-        s = str(val).strip().lower() if val is not None and not pd.isna(val) else ""
-        if s == "oui":
-            return ("Validé", None)
-        return ("Aucun", None)
-
-    statuts = df.get("Artwork").apply(map_statut)
+    def map_statut(val: object) -> str:
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            return "Aucun"
+        s = str(val).strip()
+        return _NORMALISATION.get(s.lower(), s) if s else "Aucun"
 
     result = pd.DataFrame({
-        "code_article":   df["Référence"].apply(_clean_ref),
-        "designation":    df.get("Description FR"),
-        "statut_artwork": statuts.apply(lambda x: x[0]),
-        "date_demande":   pd.to_datetime(
-            statuts.apply(lambda x: x[1]), errors="coerce"
-        ).dt.date,
-        "commentaire":    "Marquage : " + df["Marquage"].astype(str).str.strip(),
+        "po_number":      df["PO#"].apply(_clean_ref),
+        "code_article":   df.get("REF").apply(_clean_ref),
+        "designation":    df.get("Désignation"),
+        "statut_artwork": df.get("Artwork").apply(map_statut),
+        "date_demande":   df.get("Date envoi de la commande").apply(_to_date_or_none),
     })
-    result = result.dropna(subset=["code_article"])
+    result["date_demande"] = pd.to_datetime(result["date_demande"], errors="coerce").dt.date
+    result = result.dropna(subset=["po_number", "code_article"])
+    result = result.drop_duplicates(subset=["po_number", "code_article"], keep="last")
 
-    logger.info("[SUCCÈS] Artwork transformés : %d articles à marquage", len(result))
+    logger.info("[SUCCÈS] Artwork transformés : %d lignes de commande", len(result))
     return result
 
 

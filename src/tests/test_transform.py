@@ -124,20 +124,24 @@ class TestTransformCommande:
         assert mask.sum() == 1
         assert result.loc[mask, "statut"].iloc[0] == "Livrée"
 
-    def test_artwork_mapping_statuts(self):
-        # Semantique colonne Artwork de la Matrice : date -> Validé,
-        # 'Oui' -> Validé, 'Non'/'Aucun'/'/' -> Aucun. Marquage '/' = pas suivi.
+    def test_artwork_depuis_import_col_n(self):
+        # Source de verite : IMPORT col N, suivi par (po, article).
+        # Statuts natifs conserves, 'A envoyé' normalise en 'A envoyer'.
         df = pd.DataFrame({
-            "Référence":      ["A1", "A2", "A3", "A4", "A5"],
-            "Description FR": ["P1", "P2", "P3", "P4", "P5"],
-            "Marquage":       ["TB COLLECTION", "LAGUIOLE", "TB", " /", "TB"],
-            "Artwork":        [pd.Timestamp("2024-01-25"), "Oui", "Non", "Oui", None],
+            "PO#":                       [150073.0, 150073.0, 165368.0, 165368.0],
+            "REF":                       ["20480002", "10890001", "10110035", " /"],
+            "Désignation":               ["P1", "P2", "P3", "frais"],
+            "Artwork":                   ["Envoyé", "Attente Clarisse", "A envoyé", "Aucun"],
+            "Date envoi de la commande": [pd.Timestamp("2026-01-26")] * 4,
         })
         result = transform_artwork(df)
         statuts = dict(zip(result["code_article"], result["statut_artwork"]))
-        assert statuts == {"A1": "Validé", "A2": "Validé", "A3": "Aucun", "A5": "Aucun"}
-        assert "A4" not in statuts  # marquage '/' -> pas de suivi artwork
-        assert result.set_index("code_article").loc["A1", "date_demande"].isoformat() == "2024-01-25"
+        assert statuts == {
+            "20480002": "Envoyé",
+            "10890001": "Attente Clarisse",
+            "10110035": "A envoyer",
+        }
+        assert result["po_number"].notna().all()  # frais (REF '/') exclus du suivi artwork
 
     def test_po_number_jamais_nul(self, df_import):
         # Prérequis : toute ligne chargée a un PO#. Le code_article peut être
