@@ -270,7 +270,9 @@ def get_commandes(
                         c.eta, c.date_livraison,
                         {SQL_STATUT_RETARD}        AS statut_retard,
                         a.commentaire,
-                        GREATEST(c.updated_at, a.updated_at) AS updated_at
+                        -- Dernier evenement METIER : annotation ERP sinon date du statut
+                        -- (c.updated_at = date du run ETL full-refresh, sans valeur metier)
+                        COALESCE(a.updated_at::date, c.date_statut) AS derniere_maj
                     FROM {SCHEMA}.commande c
                     LEFT JOIN {SCHEMA}.commande_annotation a
                         ON a.po_number = c.po_number AND a.code_article = c.code_article
@@ -352,7 +354,7 @@ def get_fournisseurs():
                         WHERE v.statut_retard = 'EN RETARD')          AS nb_retards,
                     ROUND(AVG(v.jours_retard) FILTER (
                         WHERE v.statut_retard = 'EN RETARD'), 0)      AS retard_moyen_jours,
-                    MAX(c.updated_at)                                 AS derniere_activite
+                    MAX(COALESCE(c.date_statut, c.date_commande))     AS derniere_activite
                 FROM {SCHEMA}.commande c
                 LEFT JOIN {SCHEMA}.v_retard_article v
                     ON v.code_article = c.code_article AND v.fournisseur = c.fournisseur

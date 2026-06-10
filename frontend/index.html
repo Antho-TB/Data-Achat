@@ -671,7 +671,7 @@ function renderCommandes(rows) {
         <th>ETD</th>
         <th>Statut retard</th>
         <th>Statut cde</th>
-        <th>MAJ</th>
+        <th>Dernier évènement</th>
         <th>Action</th>
       </tr></thead>
       <tbody>
@@ -703,7 +703,7 @@ function renderCommandes(rows) {
             </span>
           </td>
           <td>${badge(r.statut)}</td>
-          <td style="font-size:11px;color:var(--muted)">${fmt(r.updated_at, 'date')}</td>
+          <td style="font-size:11px;color:var(--muted)">${fmt(r.derniere_maj, 'date')}</td>
           <td>
             <button class="btn btn-ghost btn-sm"
               onclick="openCommentaire('${esc(r.po_number)}', '${esc(r.code_article)}', '${esc(r.commentaire)}')">
