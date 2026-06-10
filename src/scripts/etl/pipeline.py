@@ -67,9 +67,13 @@ def run(dry_run: bool = False) -> dict[str, int]:
         Dictionnaire avec les compteurs : produits, commandes, erreurs.
     """
     from src.scripts.etl.extract import extract_dimensions, extract_import, extract_matrice
-    from src.scripts.etl.transform import transform_commande, transform_produit
+    from src.scripts.etl.transform import (
+        transform_artwork,
+        transform_commande,
+        transform_produit,
+    )
 
-    stats: dict[str, int] = {"produits": 0, "commandes": 0, "erreurs": 0}
+    stats: dict[str, int] = {"produits": 0, "commandes": 0, "artwork": 0, "erreurs": 0}
     data_dir = _get_data_dir()
 
     # ── EXTRACT ──────────────────────────────────────────────────────────────
@@ -88,6 +92,7 @@ def run(dry_run: bool = False) -> dict[str, int]:
     try:
         df_produit = transform_produit(df_matrice, df_dimensions)
         df_commande = transform_commande(df_import)
+        df_artwork = transform_artwork(df_matrice)
     except Exception as exc:
         logger.error("[ÉCHEC] Pipeline interrompu -- transformation impossible : %s", exc, exc_info=True)
         stats["erreurs"] += 1
@@ -108,10 +113,13 @@ def run(dry_run: bool = False) -> dict[str, int]:
         from src.utils.config_manager import Config
         from src.scripts.etl.load import create_tables_if_not_exist, load_commande, load_produit
 
+        from src.scripts.etl.load import load_artwork
+
         engine = create_engine(Config.get_pg_url())
         create_tables_if_not_exist(engine)
         stats["produits"] = load_produit(df_produit, engine)
         stats["commandes"] = load_commande(df_commande, engine)
+        stats["artwork"] = load_artwork(df_artwork, engine)
     except Exception as exc:
         logger.error("[ERREUR] Chargement PostgreSQL échoué : %s", exc, exc_info=True)
         stats["erreurs"] += 1

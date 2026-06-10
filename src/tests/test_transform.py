@@ -16,6 +16,7 @@ from src.scripts.etl.transform import (
     _clean_ref,
     _to_date_or_none,
     parse_statut_commande,
+    transform_artwork,
     transform_commande,
 )
 
@@ -122,6 +123,21 @@ class TestTransformCommande:
         mask = (result["po_number"] == "150073") & (result["code_article"] == "20480002")
         assert mask.sum() == 1
         assert result.loc[mask, "statut"].iloc[0] == "Livrée"
+
+    def test_artwork_mapping_statuts(self):
+        # Semantique colonne Artwork de la Matrice : date -> Validé,
+        # 'Oui' -> Validé, 'Non'/'Aucun'/'/' -> Aucun. Marquage '/' = pas suivi.
+        df = pd.DataFrame({
+            "Référence":      ["A1", "A2", "A3", "A4", "A5"],
+            "Description FR": ["P1", "P2", "P3", "P4", "P5"],
+            "Marquage":       ["TB COLLECTION", "LAGUIOLE", "TB", " /", "TB"],
+            "Artwork":        [pd.Timestamp("2024-01-25"), "Oui", "Non", "Oui", None],
+        })
+        result = transform_artwork(df)
+        statuts = dict(zip(result["code_article"], result["statut_artwork"]))
+        assert statuts == {"A1": "Validé", "A2": "Validé", "A3": "Aucun", "A5": "Aucun"}
+        assert "A4" not in statuts  # marquage '/' -> pas de suivi artwork
+        assert result.set_index("code_article").loc["A1", "date_demande"].isoformat() == "2024-01-25"
 
     def test_po_number_jamais_nul(self, df_import):
         # Prérequis : toute ligne chargée a un PO#. Le code_article peut être

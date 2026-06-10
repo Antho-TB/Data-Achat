@@ -417,7 +417,7 @@ def get_artwork(statut: Optional[str] = None, code_article: Optional[str] = None
                 SELECT * FROM {SCHEMA}.artwork
                 {where}
                 ORDER BY updated_at DESC
-                LIMIT 500
+                LIMIT 1000
             """), params)
             return {"data": rows_to_dicts(r)}
         except Exception as e:

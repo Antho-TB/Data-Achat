@@ -161,12 +161,28 @@ FROM achat.commande c
 GROUP BY c.code_article, c.fournisseur;
 """
 
+# Suivi artwork (plan P5) -- table EDITEE PAR LE METIER via l'ERP (statut,
+# responsable, commentaire). L'ETL ne fait que l'alimenter en insert-only.
+DDL_ARTWORK = """
+CREATE TABLE IF NOT EXISTS achat.artwork (
+    id              SERIAL PRIMARY KEY,
+    code_article    TEXT NOT NULL UNIQUE,
+    designation     TEXT,
+    statut_artwork  TEXT DEFAULT 'Aucun',  -- Aucun / Demandé / En cours / Validé / Archivé
+    responsable     TEXT,
+    commentaire     TEXT,
+    date_demande    DATE,
+    updated_at      TIMESTAMPTZ DEFAULT now()
+);
+"""
+
 # Droits pour le compte applicatif du poste Marlène (platform_team) -- les
 # tables appartiennent au compte Antho, sans GRANT explicite l'ERP affiche 0.
 GRANTS_PLATFORM_TEAM = """
 GRANT USAGE ON SCHEMA achat TO platform_team;
 GRANT SELECT ON ALL TABLES IN SCHEMA achat TO platform_team;
 GRANT SELECT, INSERT, UPDATE ON achat.commande_annotation TO platform_team;
+GRANT SELECT, INSERT, UPDATE ON achat.artwork TO platform_team;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA achat TO platform_team;
 ALTER DEFAULT PRIVILEGES IN SCHEMA achat GRANT SELECT ON TABLES TO platform_team;
 """
@@ -196,6 +212,7 @@ def create_tables_if_not_exist(engine: Engine) -> None:
         conn.execute(text(DDL_PRODUIT))
         conn.execute(text(DDL_COMMANDE))
         conn.execute(text(DDL_COMMANDE_ANNOTATION))
+        conn.execute(text(DDL_ARTWORK))
         conn.execute(text(DDL_V_RETARD_ARTICLE))
     # Grants séparés : ne doivent pas faire échouer le pipeline si le rôle
     # platform_team n'existe pas encore sur l'environnement
@@ -251,6 +268,45 @@ def load_produit(df: pd.DataFrame, engine: Engine) -> int:
     count = len(df)
     logger.info("[SUCCÈS] Produit chargé : %d articles.", count)
     return count
+
+
+def load_artwork(df: pd.DataFrame, engine: Engine) -> int:
+    """
+    Insert-only de achat.artwork (ON CONFLICT DO NOTHING sur code_article).
+
+    Cette table est la copie de TRAVAIL du metier (statuts edites via l'ERP) :
+    l'ETL ne met JAMAIS a jour une ligne existante, il ajoute seulement les
+    nouveaux articles a marquage detectes dans la Matrice.
+
+    Junior Tip : ON CONFLICT DO NOTHING est le pendant non-destructif de
+    DO UPDATE -- ideal quand la base fait foi sur les lignes existantes et
+    que la source ne sert qu'a decouvrir les nouveautes.
+
+    Args:
+        df: DataFrame issu de transform_artwork().
+        engine: SQLAlchemy engine PostgreSQL.
+    Returns:
+        Nombre de lignes nouvellement inserees.
+    """
+    if df.empty:
+        logger.warning("[ATTENTION] DataFrame artwork vide -- rien à charger.")
+        return 0
+
+    logger.info("[INFO] Chargement artwork (insert-only) : %d candidats...", len(df))
+    cols = list(df.columns)
+    tmp_table = "achat._tmp_artwork"
+    with engine.begin() as conn:
+        df.to_sql("_tmp_artwork", conn, schema="achat",
+                  if_exists="replace", index=False, method="multi")
+        result = conn.execute(text(f"""
+            INSERT INTO achat.artwork ({', '.join(cols)})
+            SELECT {', '.join(cols)} FROM {tmp_table}
+            ON CONFLICT (code_article) DO NOTHING;
+        """))
+        conn.execute(text(f"DROP TABLE IF EXISTS {tmp_table};"))
+
+    logger.info("[SUCCÈS] Artwork : %d nouvelle(s) ligne(s) inseree(s).", result.rowcount)
+    return result.rowcount
 
 
 def load_commande(df: pd.DataFrame, engine: Engine) -> int:

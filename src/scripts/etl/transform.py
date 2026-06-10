@@ -254,6 +254,57 @@ def transform_produit(
     return result
 
 
+def transform_artwork(df_matrice: pd.DataFrame) -> pd.DataFrame:
+    """
+    Bootstrap du suivi artwork depuis la Matrice TB Import (colonne 'Artwork').
+
+    Semantique observee dans le fichier (2026-06-10) :
+    - date            -> artwork valide a cette date -> statut 'Validé'
+    - 'Oui'           -> artwork existant            -> statut 'Validé'
+    - 'Non'/'Aucun'/'/'/vide -> pas d'artwork        -> statut 'Aucun'
+
+    Seuls les articles avec un Marquage renseigne sont suivis (les autres n'ont
+    pas de besoin artwork). La table cible est editee par le metier via l'ERP :
+    le chargement est insert-only (voir load_artwork), jamais d'ecrasement.
+
+    Args:
+        df_matrice: Resultat de extract_matrice().
+    Returns:
+        DataFrame (code_article, designation, statut_artwork, commentaire, date_demande).
+    """
+    logger.info("[INFO] Transformation artwork...")
+    df = df_matrice.drop_duplicates(subset=["Référence"], keep="first").copy()
+
+    # Ne garder que les articles avec un marquage exploitable
+    marquage = df.get("Marquage")
+    df = df[marquage.notna() & (~marquage.astype(str).str.strip().isin(["/", ""]))]
+
+    def map_statut(val: object) -> tuple[str, Optional[str]]:
+        if isinstance(val, (pd.Timestamp,)) or hasattr(val, "date"):
+            d = _to_date_or_none(val)
+            return ("Validé", d)
+        s = str(val).strip().lower() if val is not None and not pd.isna(val) else ""
+        if s == "oui":
+            return ("Validé", None)
+        return ("Aucun", None)
+
+    statuts = df.get("Artwork").apply(map_statut)
+
+    result = pd.DataFrame({
+        "code_article":   df["Référence"].apply(_clean_ref),
+        "designation":    df.get("Description FR"),
+        "statut_artwork": statuts.apply(lambda x: x[0]),
+        "date_demande":   pd.to_datetime(
+            statuts.apply(lambda x: x[1]), errors="coerce"
+        ).dt.date,
+        "commentaire":    "Marquage : " + df["Marquage"].astype(str).str.strip(),
+    })
+    result = result.dropna(subset=["code_article"])
+
+    logger.info("[SUCCÈS] Artwork transformés : %d articles à marquage", len(result))
+    return result
+
+
 def transform_commande(df_import: pd.DataFrame) -> pd.DataFrame:
     """
     Nettoie et normalise le DataFrame IMPORT 2026 vers la table commande.
