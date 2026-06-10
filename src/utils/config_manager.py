@@ -65,6 +65,23 @@ class Config:
     # Répertoire des fichiers sources Excel
     DATA_DIR: str = os.getenv("DATA_DIR", "Service_Achat")
 
+    # API FastAPI (ERP Achat)
+    API_HOST: str = os.getenv("API_HOST", "127.0.0.1")
+    API_PORT: int = int(os.getenv("API_PORT", "5050"))
+    # Clé exigée sur les endpoints d'écriture (header X-API-Key).
+    # Vide = écriture refusée (fail-closed) : la définir dans config/.env.
+    API_KEY: str = os.getenv("API_KEY", "")
+    # Origines CORS autorisées (liste séparée par virgules). Le frontend est
+    # servi par FastAPI (même origine) : seuls les accès cross-origin explicites
+    # sont listés ici.
+    CORS_ORIGINS: list[str] = [
+        o.strip()
+        for o in os.getenv(
+            "CORS_ORIGINS", "http://127.0.0.1:5050,http://localhost:5050"
+        ).split(",")
+        if o.strip()
+    ]
+
     @classmethod
     def get_pg_url(cls) -> "URL":
         """

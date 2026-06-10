@@ -38,19 +38,23 @@ def fetch_sylob_by_code(codes: list[str], schema: str, conn) -> dict[str, dict]:
     Returns:
         Dictionnaire {code_article: data_sylob}.
     """
-    from sqlalchemy import text
+    from sqlalchemy import bindparam, text
     if not codes:
         return {}
-    ph = "','".join(codes)
-    rows = conn.execute(text(f"""
+    # Paramètre bindé "expanding" : SQLAlchemy génère IN (:v1, :v2, ...) côté
+    # driver -- jamais de valeurs concaténées dans le SQL (anti-injection,
+    # standard etl-tb). Le nom de schéma reste interpolé car il provient de la
+    # constante interne SCHEMAS, pas d'une donnée externe.
+    stmt = text(f"""
         SELECT code_article, code_gtin_13, designation,
                CASE WHEN poids_unitaire > 0 THEN poids_unitaire * 1000 ELSE NULL END,
                volume_unitaire,
                CASE WHEN dernier_prix_d_achat > 0 THEN dernier_prix_d_achat ELSE NULL END,
                delai_de_reapprovisionnement
         FROM "{schema}".af_article
-        WHERE code_article IN ('{ph}')
-    """)).fetchall()
+        WHERE code_article IN :codes
+    """).bindparams(bindparam("codes", expanding=True))
+    rows = conn.execute(stmt, {"codes": codes}).fetchall()
     return {r[0]: _to_dict(r, schema) for r in rows}
 
 
@@ -69,19 +73,20 @@ def fetch_sylob_by_ean(eans: list[str], schema: str, conn) -> dict[str, dict]:
     Returns:
         Dictionnaire {ean13: data_sylob}.
     """
-    from sqlalchemy import text
+    from sqlalchemy import bindparam, text
     if not eans:
         return {}
-    ph = "','".join(eans)
-    rows = conn.execute(text(f"""
+    # Même pattern anti-injection que fetch_sylob_by_code (bindparam expanding)
+    stmt = text(f"""
         SELECT code_article, code_gtin_13, designation,
                CASE WHEN poids_unitaire > 0 THEN poids_unitaire * 1000 ELSE NULL END,
                volume_unitaire,
                CASE WHEN dernier_prix_d_achat > 0 THEN dernier_prix_d_achat ELSE NULL END,
                delai_de_reapprovisionnement
         FROM "{schema}".af_article
-        WHERE code_gtin_13 IN ('{ph}')
-    """)).fetchall()
+        WHERE code_gtin_13 IN :eans
+    """).bindparams(bindparam("eans", expanding=True))
+    rows = conn.execute(stmt, {"eans": eans}).fetchall()
     return {r[1]: _to_dict(r, schema) for r in rows}  # keyed by EAN
 
 

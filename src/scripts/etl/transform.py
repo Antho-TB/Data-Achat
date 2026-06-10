@@ -106,6 +106,38 @@ def _to_date_or_none(val: object) -> Optional[str]:
         return None
 
 
+def _clean_ref(val: object) -> Optional[str]:
+    """
+    Nettoie une référence (PO#, MEN#, code article) lue depuis Excel.
+
+    Excel stocke les identifiants numériques en float : "150073" devient 150073.0.
+    Sans nettoyage, astype(str) produit "150073.0" en base, ce qui casse les
+    jointures et crée de faux doublons (bug constaté en base le 2026-06-10).
+
+    Junior Tip : on teste float(val).is_integer() plutôt qu'un replace(".0")
+    naïf, car "150073.05" contient aussi ".0" et serait corrompu par replace.
+
+    Args:
+        val: Valeur brute Excel (float, int, str ou NaN).
+    Returns:
+        Référence nettoyée en str, ou None si vide/invalide.
+    """
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return None
+    s = str(val).strip()
+    if not s or s in ("/", "-", "nan", "None", "NaT"):
+        return None
+    try:
+        f = float(s)
+        if pd.isna(f):
+            return None
+        if f.is_integer():
+            return str(int(f))
+    except ValueError:
+        pass
+    return s
+
+
 def _to_numeric_or_none(val: object) -> Optional[float]:
     """
     Convertit en float, retourne None si non numérique ou NaN.
@@ -264,8 +296,8 @@ def transform_commande(df_import: pd.DataFrame) -> pd.DataFrame:
         return df[col].apply(_to_date_or_none) if col in df.columns else pd.Series(None, index=df.index)
 
     result = pd.DataFrame({
-        "po_number":       df["PO#"].astype(str),
-        "men_number":      df["MEN#"].astype(str),
+        "po_number":       df["PO#"].apply(_clean_ref),
+        "men_number":      df["MEN#"].apply(_clean_ref),
         "n_lot":           df.get("N° Lot"),
         "intermediaire":   df.get("Intermédiaire"),
         "fournisseur":     df.get("Fournisseur"),
@@ -294,12 +326,24 @@ def transform_commande(df_import: pd.DataFrame) -> pd.DataFrame:
         "colis_manquants": df.get("Colis/pièces manquantes"),
     })
 
-    # Convertir code_article en str propre -- Excel stocke les codes numériques
-    # (ex: 12345) en float (12345.0) ; on retire le ".0" pour la cohérence
-    # avec les références texte de la Matrice (ex: "GDD-001")
-    result["code_article"] = result["code_article"].apply(
-        lambda x: str(int(x)) if pd.notna(x) and str(x).replace(".0", "").isdigit() else str(x) if pd.notna(x) else None
-    )
+    # Convertir code_article en str propre -- même nettoyage que PO#/MEN#
+    # (float Excel 12345.0 -> "12345", valeurs poubelle "/" -> None)
+    result["code_article"] = result["code_article"].apply(_clean_ref)
+
+    # Écarter les lignes sans clé métier exploitable (PO# ou article manquant) --
+    # typiquement des lignes de sous-totaux ou de séparation dans le fichier Excel
+    avant = len(result)
+    result = result.dropna(subset=["po_number", "code_article"])
+    if avant - len(result):
+        logger.warning("[ATTENTION] %d lignes écartées (PO# ou code article manquant)", avant - len(result))
+
+    # Dédoublonner sur la clé métier (po_number, code_article) -- décision plan
+    # d'action 2026-06 : on garde la dernière occurrence (la plus récente dans
+    # le fichier). Prérequis de la contrainte UNIQUE uq_commande_po_article.
+    avant = len(result)
+    result = result.drop_duplicates(subset=["po_number", "code_article"], keep="last")
+    if avant - len(result):
+        logger.warning("[ATTENTION] %d doublons (po_number, code_article) dédoublonnés", avant - len(result))
 
     # Forcer les colonnes DATE en datetime.date (pas en str ISO) pour que
     # psycopg2 les insère comme type DATE PostgreSQL sans conversion manuelle

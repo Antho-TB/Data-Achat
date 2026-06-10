@@ -1,7 +1,24 @@
+# ERP Achat TB Groupe -- dependances unifiees (ETL + API)
+# Install : pip install -r requirements.txt
+# Poste Marlene : memes versions epinglees que le poste Antho (parite garantie)
+
+# ETL
 pandas>=2.0.0
 openpyxl>=3.1.0
-sqlalchemy>=2.0.0
-psycopg2-binary>=2.9.0
-azure-identity>=1.15.0
-azure-keyvault-secrets>=4.7.0
-python-dotenv>=1.0.0
+
+# DB
+sqlalchemy==2.0.30
+psycopg2-binary>=2.9.10
+
+# API
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+pydantic>=2.9.0
+
+# Config & secrets
+python-dotenv==1.0.1
+azure-identity==1.17.1
+azure-keyvault-secrets==4.8.0
+
+# Tests
+pytest>=8.0.0
