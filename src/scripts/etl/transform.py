@@ -485,3 +485,102 @@ def transform_ot_transport(
 
     logger.info("[SUCCÈS] ot_transport transforme : %d conteneur(s)", len(result))
     return result
+
+
+def _clean_checkpoint(value) -> str | None:
+    """
+    Normalise un statut de checkpoint qualite Excel (MAT/SP/BAT/Reception...).
+
+    Junior Tip : dans l'IMPORT, une cellule vide, ' / ' ou 'Aucune' signifie "pas
+    de checkpoint applicable" -- on les ramene a None pour ne pas polluer les
+    agregats (un 'Aucune' ne doit pas compter comme un controle realise).
+
+    Args:
+        value: Valeur brute de la cellule Excel.
+    Returns:
+        Le statut nettoye, ou None si non applicable.
+    """
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    s = str(value).strip()
+    if s in ("", "/", "Aucune", "Aucun"):
+        return None
+    return s
+
+
+def _parse_rapport_inspection(value) -> tuple[str | None, str | None]:
+    """
+    Eclate le champ 'Rapport d'inspection' en (resultat, reference).
+
+    Format observe : 'OK 4945056.00-28' ou 'FAIL 4935210.00-20'. Le premier token
+    porte le verdict (OK/FAIL), le reste est la reference du rapport DEKRA.
+
+    Junior Tip : on isole le verdict pour pouvoir calculer un taux d'echec
+    d'inspection par fournisseur, mesure cle de l'evaluation qualite.
+
+    Args:
+        value: Valeur brute de la cellule Excel.
+    Returns:
+        Tuple (resultat OK/FAIL/None, reference rapport ou None).
+    """
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None, None
+    s = str(value).strip()
+    if s in ("", "/", "Aucune", "Aucun"):
+        return None, None
+    upper = s.upper()
+    if upper.startswith("OK"):
+        return "OK", s[2:].strip() or None
+    if upper.startswith("FAIL"):
+        return "FAIL", s[4:].strip() or None
+    return None, s
+
+
+def transform_qualite(df_import: pd.DataFrame) -> pd.DataFrame:
+    """
+    Construit la table achat.qualite a partir des colonnes qualite de l'IMPORT.
+
+    Agrege les donnees DEJA presentes dans le fichier (checkpoints MAT/SP/echantillon/
+    BAT, date et rapport d'inspection, reception, NCR), au grain (po_number,
+    code_article). C'est le socle de l'onglet Qualite : evaluation fournisseurs et
+    suivi des analyses, sans ressaisie. Le futur Excel "Suivi des analyses" (alimente
+    par mail) viendra l'enrichir, comme ot_transport avec SUIVI MARITIME.
+
+    Args:
+        df_import: Resultat de extract_import().
+    Returns:
+        DataFrame pret pour load_qualite().
+    """
+    logger.info("[INFO] Transformation qualite...")
+    df = df_import.copy()
+    df.columns = [str(c).strip().replace("\n", " ") for c in df.columns]
+
+    rapport = df.get("Rapport d'inspection")
+    if rapport is None:
+        rapport = pd.Series([None] * len(df), index=df.index)
+    parsed = rapport.apply(_parse_rapport_inspection)
+
+    result = pd.DataFrame({
+        "po_number":            df["PO#"].apply(_clean_ref),
+        "code_article":         df.get("REF").apply(_clean_ref) if "REF" in df else None,
+        "fournisseur":          df.get("Fournisseur"),
+        "designation":          df.get("Désignation"),
+        "matiere":              df.get("Matière (MAT)").apply(_clean_checkpoint) if "Matière (MAT)" in df else None,
+        "semi_production":      df.get("Semi-production (SP)").apply(_clean_checkpoint) if "Semi-production (SP)" in df else None,
+        "echantillon_conformite": df.get("Echantillon de conformité").apply(_clean_checkpoint) if "Echantillon de conformité" in df else None,
+        "production_bat":       df.get("Production (BAT)").apply(_clean_checkpoint) if "Production (BAT)" in df else None,
+        "date_inspection":      df.get("Date inspection").apply(_to_date_or_none) if "Date inspection" in df else None,
+        "resultat_inspection":  parsed.apply(lambda x: x[0]),
+        "ref_rapport":          parsed.apply(lambda x: x[1]),
+        "reception":            df.get("Réception (RECEP)").apply(_clean_checkpoint) if "Réception (RECEP)" in df else None,
+        "ncr":                  df.get("Non-conformité (NCR)").apply(_clean_checkpoint) if "Non-conformité (NCR)" in df else None,
+    })
+
+    # La qualite est un fait PRODUIT : on ne garde que les lignes avec un code article
+    # (les lignes de frais, code_article NULL, n'ont pas de checkpoint qualite).
+    result = result[result["code_article"].notna()]
+    result = result.drop_duplicates(subset=["po_number", "code_article"], keep="last")
+
+    result["date_inspection"] = pd.to_datetime(result["date_inspection"], errors="coerce").dt.date
+    logger.info("[SUCCÈS] Qualite transforme : %d lignes produit", len(result))
+    return result

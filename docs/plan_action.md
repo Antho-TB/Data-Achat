@@ -59,6 +59,38 @@ Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'run_api|sp
 
 ---
 
+## Retours démo métier + reste à faire (prise de notes Antho)
+
+> Confronté à l'état réel du code (API + frontend) le 2026-06-22. Onglets existants :
+> dashboard, commandes, fournisseurs, artwork, previsionnel.
+
+### Cible : ERP multi-onglets par métier
+
+| # | Onglet | Demande | État |
+|---|--------|---------|------|
+| 1 | **Prévisionnel** | Mesures par commande/fournisseur/produit : acheté, à payer, en inspection, parti, retard livraison frs | 🟡 Onglet OK mais ne ventile que mois/nb PO/articles/quantité/valeur + liste retard |
+| 2 | **Acheteuse / suivi frs** | Historique prix (article ou frs, bornage) + suivi retards par fournisseur (sous-vue dédiée) | 🟡 Historique OK ; retards/frs faisable mais pas isolé |
+| 3 | **Suivi commandes** | Éclater arrivés/retard, granularité, drill-down produit, clic commande -> détail retard par produit | 🟡 Onglet + statut retard/article + handlers ; valider le drill-down produit |
+| 4 | **Artwork** | Suivi design (Clarisse) : statuts Envoyé/Aucun/Demandé/etc. | ✅ Fait |
+| 5 | **Service Qualité** | Évaluation fournisseurs + suivi des analyses (Excel "Suivi des analyses", alimenté par les parties prenantes via mail formulé par Andréa) | 🔴 Absent -- à concevoir |
+
+### Détails transverses
+- ✅ **Retards sur ARTICLES, pas PO** : `v_retard_article` conforme (groupe par code_article).
+- 🟡 **Graphs interactifs pilotés par le ruban** : graphs présents, pilotage par ruban à valider en visuel.
+- 🟡 **Filtres = catégories en ligne 3**, sur les colonnes du fichier import : existant, layout à valider.
+- 🔴 **Bornage de dates au choix (jjmmaa ET anmois)** : non implémenté (prévisionnel agrège par mois en dur).
+
+### Chantiers priorisés (post-démo)
+1. **Prévisionnel enrichi** : ventiler par statut (à payer / en inspection / parti / retard frs) et par fournisseur+produit. ⚠️ **Touche au modèle** : `achat.commande` n'a PAS les colonnes inspection (Date inspection / Rapport inspection, cols AE/AF de l'IMPORT non chargées) -> extension DDL + transform requise.
+2. **Onglet Service Qualité** : nouvelle table (évaluation frs + analyses), onglet, process d'alimentation par mail (Andréa -> parties prenantes). Cadrer le modèle d'abord (cf. Excel "Suivi des analyses").
+3. **Bornage de dates** double granularité (jour / mois) sur tous les onglets.
+4. **Sous-vue retards par fournisseur** (onglet acheteuse).
+5. **Drill-down commande -> produit** : confirmer/compléter le détail retard par produit au clic.
+
+> Préalable aux chantiers 1 et 2 : décisions de modèle de données (ADR) avant tout code -- inspection dans `achat.commande`, table qualité/analyses.
+
+---
+
 ## Acteurs identifiés
 
 | Personne | Service | Rôle dans le process |

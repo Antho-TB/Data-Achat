@@ -218,7 +218,9 @@ def create_tables_if_not_exist(engine: Engine) -> None:
         conn.execute(text(DDL_COMMANDE_ANNOTATION))
         conn.execute(text(DDL_ARTWORK))
         conn.execute(text(DDL_OT_TRANSPORT))
+        conn.execute(text(DDL_QUALITE))
         conn.execute(text(DDL_V_RETARD_ARTICLE))
+        conn.execute(text(DDL_V_QUALITE_FOURNISSEUR))
     try:
         with engine.begin() as conn:
             conn.execute(text(GRANTS_PLATFORM_TEAM))
@@ -373,4 +375,79 @@ def load_commande(df: pd.DataFrame, engine: Engine) -> int:
 
     count = len(df)
     logger.info("[SUCCES] Commande chargee : %d lignes.", count)
+    return count
+
+
+# Suivi qualite -- table ALIMENTEE PAR ETL depuis les colonnes qualite de l'IMPORT
+# (checkpoints MAT/SP/echantillon/BAT, inspection DEKRA, reception, NCR). Grain
+# produit (po_number, code_article). Full-refresh : aucune saisie utilisateur ici.
+DDL_QUALITE = """
+CREATE TABLE IF NOT EXISTS achat.qualite (
+    id                     SERIAL PRIMARY KEY,
+    po_number              TEXT NOT NULL,
+    code_article           TEXT NOT NULL,
+    fournisseur            TEXT,
+    designation            TEXT,
+    matiere                TEXT,
+    semi_production        TEXT,
+    echantillon_conformite TEXT,
+    production_bat         TEXT,
+    date_inspection        DATE,
+    resultat_inspection    TEXT,   -- OK / FAIL / NULL (parse du rapport DEKRA)
+    ref_rapport            TEXT,
+    reception              TEXT,
+    ncr                    TEXT,
+    charge_le              TIMESTAMPTZ DEFAULT now(),
+    CONSTRAINT uq_qualite_po_article UNIQUE (po_number, code_article)
+);
+"""
+
+# Evaluation qualite PAR FOURNISSEUR (agregat). Taux d'echec d'inspection,
+# nombre de NCR et de receptions non conformes : mesures cles du suivi frs.
+DDL_V_QUALITE_FOURNISSEUR = """
+CREATE OR REPLACE VIEW achat.v_qualite_fournisseur AS
+SELECT
+    fournisseur,
+    COUNT(*)                                                          AS nb_articles,
+    COUNT(resultat_inspection)                                        AS nb_inspectes,
+    COUNT(*) FILTER (WHERE resultat_inspection = 'OK')                AS nb_ok,
+    COUNT(*) FILTER (WHERE resultat_inspection = 'FAIL')              AS nb_fail,
+    ROUND(100.0 * COUNT(*) FILTER (WHERE resultat_inspection = 'FAIL')
+          / NULLIF(COUNT(resultat_inspection), 0), 1)                 AS taux_fail_pct,
+    COUNT(*) FILTER (WHERE ncr IS NOT NULL)                           AS nb_ncr,
+    COUNT(*) FILTER (WHERE reception = 'Non conforme')                AS nb_reception_non_conforme
+FROM achat.qualite
+WHERE fournisseur IS NOT NULL
+GROUP BY fournisseur
+ORDER BY nb_fail DESC, nb_ncr DESC;
+"""
+
+
+def load_qualite(df: pd.DataFrame, engine: Engine) -> int:
+    """
+    Full-refresh de achat.qualite (TRUNCATE + INSERT).
+
+    Table 100% derivee de l'ETL (pas de saisie utilisateur) -> full-refresh sur, comme
+    achat.commande. La vue achat.v_qualite_fournisseur en derive l'evaluation frs.
+
+    Junior Tip : le full-refresh garantit que les statuts qualite suivent toujours le
+    dernier etat de l'IMPORT, sans risque de lignes orphelines d'un import precedent.
+
+    Args:
+        df: DataFrame issu de transform_qualite().
+        engine: SQLAlchemy engine PostgreSQL.
+    Returns:
+        Nombre de lignes inserees.
+    """
+    if df.empty:
+        logger.warning("[ATTENTION] DataFrame qualite vide -- rien a charger.")
+        return 0
+
+    logger.info("[INFO] Chargement qualite (full-refresh) : %d lignes...", len(df))
+    with engine.begin() as conn:
+        conn.execute(text("TRUNCATE TABLE achat.qualite RESTART IDENTITY;"))
+        df.to_sql("qualite", conn, schema="achat",
+                  if_exists="append", index=False, method="multi")
+    count = len(df)
+    logger.info("[SUCCÈS] Qualite chargee : %d lignes.", count)
     return count

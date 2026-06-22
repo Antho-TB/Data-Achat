@@ -308,6 +308,7 @@ button { cursor: pointer; }
   <button class="tab-btn" onclick="switchTab('fournisseurs')">Fournisseurs</button>
   <button class="tab-btn" onclick="switchTab('artwork')">Artwork</button>
   <button class="tab-btn" onclick="switchTab('previsionnel')">Prévisionnel</button>
+  <button class="tab-btn" onclick="switchTab('qualite')">Qualité</button>
 </div>
 
 <!-- ── Main ─────────────────────────────────────────────────────────────────── -->
@@ -410,6 +411,26 @@ button { cursor: pointer; }
     </div>
   </div>
 
+  <!-- QUALITE -->
+  <div id="tab-qualite" class="tab-panel">
+    <div class="section-header">
+      <span class="section-title">Évaluation fournisseurs (inspection / NCR)</span>
+      <button class="btn btn-ghost btn-sm" onclick="loadQualite()">&#8635; Actualiser</button>
+    </div>
+    <div id="table-qualite-frs"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
+
+    <div class="section-header"><span class="section-title">Suivi qualité par produit</span></div>
+    <div class="toolbar">
+      <input id="f-qual-frs" type="text" placeholder="Fournisseur..." oninput="filterQualite()">
+      <select id="f-qual-res" onchange="filterQualite()">
+        <option value="">Toutes inspections</option>
+        <option>OK</option>
+        <option>FAIL</option>
+      </select>
+    </div>
+    <div id="table-qualite"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
+  </div>
+
 </div><!-- .main -->
 
 <div id="toast"></div>
@@ -506,6 +527,7 @@ const loaders = {
   fournisseurs: loadFournisseurs,
   artwork:      loadArtwork,
   previsionnel: loadPrevisionnel,
+  qualite:      loadQualite,
 };
 const loaded = new Set();
 
@@ -892,6 +914,81 @@ function closeFrsDetail() {
 // ARTWORK
 // ════════════════════════════════════════════════════════════════════════════
 let _artwork = [];
+
+let _qualite = [];
+
+async function loadQualite() {
+  document.getElementById('table-qualite').innerHTML =
+    '<div class="loader"><span class="spinner"></span>Chargement...</div>';
+  try {
+    const [q, f] = await Promise.all([
+      apiFetch('/api/qualite'),
+      apiFetch('/api/qualite/fournisseurs'),
+    ]);
+    _qualite = q.data;
+    renderQualiteFournisseurs(f.data, f.warning);
+    renderQualite(_qualite, q.warning);
+  } catch (e) {
+    document.getElementById('table-qualite').innerHTML =
+      `<div class="empty"><div class="empty-icon">!</div>${esc(e.message)}</div>`;
+    toast(e.message, true);
+  }
+}
+
+function filterQualite() {
+  const frs = document.getElementById('f-qual-frs').value.toLowerCase();
+  const res = document.getElementById('f-qual-res').value;
+  renderQualite(_qualite.filter(r =>
+    (!frs || (r.fournisseur||'').toLowerCase().includes(frs)) &&
+    (!res || r.resultat_inspection === res)
+  ));
+}
+
+function inspBadge(v) {
+  if (v === 'OK')   return '<span class="badge" style="background:var(--green);color:#fff">OK</span>';
+  if (v === 'FAIL') return '<span class="badge" style="background:var(--red,#c0392b);color:#fff">FAIL</span>';
+  return '<span class="badge">-</span>';
+}
+
+function renderQualiteFournisseurs(rows, warning) {
+  const el = document.getElementById('table-qualite-frs');
+  if (warning) { el.innerHTML = `<div style="color:var(--yellow);font-size:13px;padding:8px;">${esc(warning)}</div>`; return; }
+  if (!rows || !rows.length) { el.innerHTML = '<div class="empty">Aucune donnée fournisseur</div>'; return; }
+  el.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>Fournisseur</th><th>Articles</th><th>Inspectés</th><th>OK</th>
+    <th>FAIL</th><th>Taux FAIL</th><th>NCR</th><th>Récep. NC</th></tr></thead>
+    <tbody>${rows.map(r => `<tr>
+      <td>${esc(r.fournisseur)||'-'}</td>
+      <td class="mono">${r.nb_articles??0}</td>
+      <td class="mono">${r.nb_inspectes??0}</td>
+      <td class="mono" style="color:var(--green)">${r.nb_ok??0}</td>
+      <td class="mono" style="color:var(--red,#c0392b)">${r.nb_fail??0}</td>
+      <td class="mono">${r.taux_fail_pct!=null?r.taux_fail_pct+'%':'-'}</td>
+      <td class="mono">${r.nb_ncr??0}</td>
+      <td class="mono">${r.nb_reception_non_conforme??0}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+function renderQualite(rows, warning) {
+  const el = document.getElementById('table-qualite');
+  if (warning) { el.innerHTML = `<div style="color:var(--yellow);font-size:13px;padding:8px;">${esc(warning)}</div>`; return; }
+  if (!rows || !rows.length) { el.innerHTML = '<div class="empty">Aucun suivi qualité</div>'; return; }
+  el.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>PO#</th><th>Article</th><th>Fournisseur</th><th>MAT</th><th>SP</th>
+    <th>Échant.</th><th>BAT</th><th>Inspection</th><th>Récep.</th><th>NCR</th></tr></thead>
+    <tbody>${rows.map(r => `<tr>
+      <td class="mono">${esc(r.po_number)||'-'}</td>
+      <td class="mono">${esc(r.code_article)||'-'}</td>
+      <td>${esc(r.fournisseur)||'-'}</td>
+      <td>${esc(r.matiere)||'-'}</td>
+      <td>${esc(r.semi_production)||'-'}</td>
+      <td>${esc(r.echantillon_conformite)||'-'}</td>
+      <td>${esc(r.production_bat)||'-'}</td>
+      <td>${inspBadge(r.resultat_inspection)} <small>${esc(r.date_inspection)||''}</small></td>
+      <td>${esc(r.reception)||'-'}</td>
+      <td class="mono">${esc(r.ncr)||'-'}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
 
 async function loadArtwork() {
   document.getElementById('table-artwork').innerHTML =

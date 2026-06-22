@@ -77,11 +77,12 @@ def run(dry_run: bool = False) -> dict[str, int]:
         transform_commande,
         transform_ot_transport,
         transform_produit,
+        transform_qualite,
     )
     from src.utils.config_manager import Config
 
     stats: dict[str, int] = {
-        "produits": 0, "commandes": 0, "artwork": 0, "ot_transport": 0, "erreurs": 0
+        "produits": 0, "commandes": 0, "artwork": 0, "ot_transport": 0, "qualite": 0, "erreurs": 0
     }
     data_dir = _get_data_dir()
 
@@ -105,6 +106,7 @@ def run(dry_run: bool = False) -> dict[str, int]:
         df_commande = transform_commande(df_import)
         df_artwork = transform_artwork(df_import)
         df_ot_transport = transform_ot_transport(df_commande, df_maritime)
+        df_qualite = transform_qualite(df_import)
     except Exception as exc:
         logger.error("[ÉCHEC] Pipeline interrompu -- transformation impossible : %s", exc, exc_info=True)
         stats["erreurs"] += 1
@@ -125,7 +127,7 @@ def run(dry_run: bool = False) -> dict[str, int]:
         from src.utils.config_manager import Config
         from src.scripts.etl.load import create_tables_if_not_exist, load_commande, load_produit
 
-        from src.scripts.etl.load import load_artwork, load_ot_transport
+        from src.scripts.etl.load import load_artwork, load_ot_transport, load_qualite
 
         engine = create_engine(Config.get_pg_url())
         create_tables_if_not_exist(engine)
@@ -133,6 +135,7 @@ def run(dry_run: bool = False) -> dict[str, int]:
         stats["commandes"] = load_commande(df_commande, engine)
         stats["artwork"] = load_artwork(df_artwork, engine)
         stats["ot_transport"] = load_ot_transport(df_ot_transport, engine)
+        stats["qualite"] = load_qualite(df_qualite, engine)
     except Exception as exc:
         logger.error("[ERREUR] Chargement PostgreSQL échoué : %s", exc, exc_info=True)
         stats["erreurs"] += 1
@@ -171,19 +174,4 @@ def _print_report(
 
     if not df_commande.empty and "statut" in df_commande.columns:
         logger.info("  Répartition statuts commandes :")
-        for statut, count in df_commande["statut"].value_counts().items():
-            logger.info("    %-30s %4d", statut, count)
-    logger.info(sep)
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="ETL Data-Achat")
-    parser.add_argument(
-        "--dry-run", action="store_true",
-        help="Extract + Transform uniquement, sans écriture PostgreSQL"
-    )
-    args = parser.parse_args()
-
-    stats = run(dry_run=args.dry_run)
-    if stats["erreurs"] > 0:
-        sys.exit(1)
+ 

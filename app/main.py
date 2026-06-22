@@ -539,6 +539,58 @@ def health():
     }
 
 
+@app.get("/api/qualite")
+def get_qualite(
+    fournisseur: Optional[str] = None,
+    resultat: Optional[str] = None,
+    code_article: Optional[str] = None,
+):
+    """Liste le suivi qualite par produit (checkpoints, inspection DEKRA, NCR)."""
+    engine = get_engine()
+    filters: list[str] = []
+    params: dict[str, Any] = {}
+    if fournisseur:
+        filters.append("LOWER(fournisseur) LIKE :f")
+        params["f"] = f"%{fournisseur.lower()}%"
+    if resultat:
+        filters.append("resultat_inspection = :r")
+        params["r"] = resultat
+    if code_article:
+        filters.append("LOWER(code_article) LIKE :c")
+        params["c"] = f"%{code_article.lower()}%"
+    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+    with engine.connect() as conn:
+        try:
+            r = conn.execute(text(f"""
+                SELECT * FROM {SCHEMA}.qualite
+                {where}
+                ORDER BY date_inspection DESC NULLS LAST
+                LIMIT 1000
+            """), params)
+            return {"data": rows_to_dicts(r)}
+        except Exception as e:
+            if "does not exist" in str(e):
+                return {"data": [], "warning": "Table achat.qualite non encore creee -- lancer l'ETL"}
+            raise internal_error(e)
+
+
+@app.get("/api/qualite/fournisseurs")
+def get_qualite_fournisseurs():
+    """Evaluation qualite agregee par fournisseur (taux FAIL, NCR, receptions NC)."""
+    engine = get_engine()
+    with engine.connect() as conn:
+        try:
+            r = conn.execute(text(f"""
+                SELECT * FROM {SCHEMA}.v_qualite_fournisseur
+                LIMIT 500
+            """))
+            return {"data": rows_to_dicts(r)}
+        except Exception as e:
+            if "does not exist" in str(e):
+                return {"data": [], "warning": "Vue v_qualite_fournisseur absente -- lancer l'ETL"}
+            raise internal_error(e)
+
+
 # -- Servir le frontend statique ------------------------------------------------
 _frontend = Path(__file__).parent.parent / "frontend"
 if _frontend.exists():
