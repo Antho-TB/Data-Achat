@@ -109,3 +109,34 @@ def extract_dimensions(file_path: str | Path) -> pd.DataFrame:
 
     logger.info("[SUCCÈS] Dimensions extraites : %d articles", len(df))
     return df
+
+
+def extract_suivi_maritime(file_path: str | Path | None) -> pd.DataFrame | None:
+    """
+    Lit le fichier transitaire 2026 SUIVI MARITIME.xlsx, feuille 'CONTENEUR PLEIN'.
+
+    Source de verite des ETD reel / ETA / Date livraison (manque n°7 carto BI).
+    MODE DEGRADE : si le chemin est vide ou le fichier introuvable (dossier
+    TRANSITAIRE pas encore accessible), retourne None sans lever d'exception --
+    le pipeline bascule alors sur le bootstrap depuis achat.commande.
+
+    Junior Tip : retourner None plutot que de planter permet de livrer le branchement
+    AUJOURD'HUI et de l'activer le jour ou l'acces reseau est ouvert, sans toucher
+    au code. Le contrat "None = source absente" est interprete par transform_ot_transport.
+
+    Args:
+        file_path: Chemin vers 2026 SUIVI MARITIME.xlsx (ou None pour forcer le degrade).
+    Returns:
+        DataFrame de la feuille CONTENEUR PLEIN, ou None si la source est absente.
+    """
+    if not file_path:
+        logger.warning("[ATTENTION] SUIVI_MARITIME_PATH non defini -- mode degrade")
+        return None
+    path = Path(file_path)
+    if not path.exists():
+        logger.warning("[ATTENTION] Fichier transitaire introuvable (%s) -- mode degrade", path)
+        return None
+    logger.info("[INFO] Extraction SUIVI MARITIME : %s", path.name)
+    df = pd.read_excel(path, sheet_name="CONTENEUR PLEIN")
+    logger.info("[SUCCÈS] SUIVI MARITIME extrait : %d lignes", len(df))
+    return df

@@ -65,6 +65,11 @@ class Config:
     # Répertoire des fichiers sources Excel
     DATA_DIR: str = os.getenv("DATA_DIR", "Service_Achat")
 
+    # Fichier transitaire (suivi maritime) -- source des ETD réel/ETA/livraison.
+    # Vide = mode dégradé (ot_transport bootstrappé depuis achat.commande).
+    # Prod : \\Srv-files-pom\partage\ADA\METIER\SUIVI CDES IMPORT\2026\TRANSITAIRE\2026 SUIVI MARITIME.xlsx
+    SUIVI_MARITIME_PATH: str = os.getenv("SUIVI_MARITIME_PATH", "")
+
     # API FastAPI (ERP Achat)
     API_HOST: str = os.getenv("API_HOST", "127.0.0.1")
     API_PORT: int = int(os.getenv("API_PORT", "5050"))
@@ -184,14 +189,4 @@ class Config:
         client = SecretClient(vault_url=vault_url, credential=DefaultAzureCredential())
 
         user = client.get_secret("psql-prod-sylob-anthony-bezille-login").value
-        password = client.get_secret("psql-prod-sylob-anthony-bezille-password").value
-
-        return URL.create(
-            drivername="postgresql+psycopg2",
-            username=user,
-            password=password,
-            host=cls.PG_HOST,
-            port=cls.PG_PORT,
-            database=cls.PG_DB,
-            query={"sslmode": "require"},
-        )
+        password = client

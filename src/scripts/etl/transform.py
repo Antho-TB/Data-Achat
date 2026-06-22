@@ -410,3 +410,78 @@ def transform_commande(df_import: pd.DataFrame) -> pd.DataFrame:
 
     logger.info("[SUCCÈS] Commandes transformées : %d lignes", len(result))
     return result
+
+
+def transform_ot_transport(
+    df_commande: pd.DataFrame,
+    df_maritime: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """
+    Construit la table achat.ot_transport (suivi maritime, grain par conteneur).
+
+    Deux sources possibles (priorite au fichier transitaire) :
+      - df_maritime fourni  -> source de verite (2026 SUIVI MARITIME, CONTENEUR PLEIN) ;
+      - sinon (mode degrade) -> bootstrap depuis df_commande : on deduplique sur
+        n_conteneur et on prend la derniere occurrence (valeurs ETD/ETA en cache).
+
+    Junior Tip : tant que le dossier TRANSITAIRE n'est pas accessible, df_maritime
+    est None et la table se peuple avec ce que l'IMPORT a deja mis en cache via ses
+    VLOOKUP. Le jour ou l'extracteur transitaire fournit df_maritime, ce meme load
+    (UPSERT par conteneur) rafraichit les lignes sans rien perdre.
+
+    Args:
+        df_commande: DataFrame issu de transform_commande() (colonnes maritimes incluses).
+        df_maritime: DataFrame optionnel issu de extract_suivi_maritime().
+    Returns:
+        DataFrame pret pour load_ot_transport() (colonnes = DDL_OT_TRANSPORT).
+    """
+    logger.info("[INFO] Transformation ot_transport...")
+
+    if df_maritime is not None and not df_maritime.empty:
+        # Mode nominal : le fichier transitaire fait foi. Mapping a finaliser une
+        # fois les en-tetes reels de CONTENEUR PLEIN connus (acces dossier requis).
+        logger.info("[INFO] Source = fichier transitaire (%d lignes)", len(df_maritime))
+        df = df_maritime.copy()
+        df.columns = [str(c).strip().replace("\n", " ") for c in df.columns]
+        result = pd.DataFrame({
+            "n_conteneur":    df.get("N° Conteneur"),
+            "etd_reel":       df.get("ETD réel"),
+            "eta":            df.get("ETA"),
+            "date_livraison": df.get("Date de livraison"),
+            "transport":      df.get("Transport"),
+            "transitaire":    df.get("Transitaire"),
+            "n_bl":           df.get("N° BL"),
+            "n_facture":      df.get("N° Facture"),
+            "lieu_livraison": df.get("Lieu de livraison"),
+        })
+        result["source_fichier"] = "2026 SUIVI MARITIME.xlsx"
+    else:
+        # Mode degrade : bootstrap depuis les commandes (valeurs en cache).
+        logger.warning("[ATTENTION] Fichier transitaire absent -- bootstrap depuis achat.commande")
+        result = pd.DataFrame({
+            "n_conteneur":    df_commande.get("n_conteneur"),
+            "etd_reel":       df_commande.get("etd_reel"),
+            "eta":            df_commande.get("eta"),
+            "date_livraison": df_commande.get("date_livraison"),
+            "transport":      df_commande.get("transitaire"),  # col AR "Transport" dans commande
+            "transitaire":    pd.Series([None] * len(df_commande)),
+            "n_bl":           df_commande.get("n_bl"),
+            "n_facture":      df_commande.get("n_facture"),
+            "lieu_livraison": df_commande.get("lieu_livraison"),
+        })
+        result["source_fichier"] = "bootstrap:achat.commande"
+
+    # Ne garder que les lignes avec un N° Conteneur exploitable (PK obligatoire).
+    result["n_conteneur"] = result["n_conteneur"].apply(_clean_ref)
+    avant = len(result)
+    result = result.dropna(subset=["n_conteneur"])
+    result = result.drop_duplicates(subset=["n_conteneur"], keep="last")
+    logger.info("[INFO] ot_transport : %d conteneur(s) retenus (sur %d lignes)", len(result), avant)
+
+    # Forcer les colonnes date au bon type pour psycopg2.
+    for col in ("etd_reel", "eta"):
+        result[col] = pd.to_datetime(result[col], errors="coerce").dt.date
+    result["date_livraison"] = pd.to_datetime(result["date_livraison"], errors="coerce")
+
+    logger.info("[SUCCÈS] ot_transport transforme : %d conteneur(s)", len(result))
+    return result

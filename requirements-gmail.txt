@@ -1,0 +1,5 @@
+# Composant fetch PJ Gmail (Plan A) -- dependances isolees de l'ETL/API.
+# Install (poste Marlene, demain) : pip install -r requirements-gmail.txt
+google-api-python-client>=2.130.0
+google-auth-oauthlib>=1.2.0
+google-auth>=2.30.0

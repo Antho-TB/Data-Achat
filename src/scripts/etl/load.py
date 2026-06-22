@@ -7,7 +7,8 @@ Stratégie : les opérations sont idempotentes et re-exécutables sans risque.
 achat.produit utilise un UPSERT (INSERT ... ON CONFLICT DO UPDATE) pour préserver
 les enrichissements Sylob ajoutés hors-pipeline. achat.commande utilise un
 full-refresh (TRUNCATE + INSERT) car la granularité ligne-article rend l'UPSERT
-complexe et le volume reste faible (< 10 000 lignes).
+complexe et le volume reste faible (< 10 000 lignes). achat.ot_transport
+(suivi maritime, grain conteneur) utilise un UPSERT sur n_conteneur.
 """
 import logging
 
@@ -21,54 +22,44 @@ DDL_SCHEMA = "CREATE SCHEMA IF NOT EXISTS achat;"
 DDL_PRODUIT = """
 CREATE TABLE IF NOT EXISTS achat.produit (
     code_article         TEXT PRIMARY KEY,
-    -- Identifiants & traçabilité
-    code_provisoire      TEXT,              -- JJMMAAHHMM avant code article définitif
-    type_circuit         TEXT,              -- 'A1' (usine GDD) | 'A2' (import Chine) | 'B' (réappro)
-    -- Bloc Produit (Jonatan)
+    code_provisoire      TEXT,
+    type_circuit         TEXT,
     ean13                TEXT,
     ean14_pcb            TEXT,
     ean14_spcb           TEXT,
     designation_fr       TEXT,
     designation_en       TEXT,
-    marque               TEXT,              -- ex: Laguiole, Suricate
+    marque               TEXT,
     gamme                TEXT,
     grande_famille       TEXT,
-    -- Bloc Sourcing (Julia)
     fournisseur          TEXT,
-    pays_fournisseur     TEXT,              -- ex: CHINE, FRANCE
-    -- Bloc Commerce (Eric)
-    client_unique        TEXT,              -- client spécifique si exclusivité
+    pays_fournisseur     TEXT,
+    client_unique        TEXT,
     code_client          TEXT,
-    prix_vente           NUMERIC,           -- prix de vente cible
-    -- Catalogue
-    type_lot             TEXT,              -- 'Lot' | 'Vrac' | 'Unitaire'
-    nomenclature         TEXT,             -- code douanier HS Code
-    -- Bloc Design  -- matières
+    prix_vente           NUMERIC,
+    type_lot             TEXT,
+    nomenclature         TEXT,
     matiere_lame         TEXT,
-    chrome_pct           NUMERIC,          -- % chrome acier
+    chrome_pct           NUMERIC,
     traitement_thermique TEXT,
     matiere_manche       TEXT,
     finition             TEXT,
-    -- Bloc Design  -- marquage
     marquage_libelle     TEXT,
-    artwork              TEXT,             -- référence artwork/visuel
-    -- Dimensions produit
+    artwork              TEXT,
     poids_uvc_g          NUMERIC,
     longueur_mm          NUMERIC,
     epaisseur_mm         NUMERIC,
-    -- Bloc Logistique (Emmanuelle)
-    pcb                  INTEGER,          -- pièces par carton maître
-    spcb                 INTEGER,          -- pièces par carton intérieur
-    inner_qty            INTEGER,          -- INNER (cartons intérieurs par master)
-    master_qty           INTEGER,          -- MASTER (cartons par palette)
+    pcb                  INTEGER,
+    spcb                 INTEGER,
+    inner_qty            INTEGER,
+    master_qty           INTEGER,
     longueur_pcb_cm      NUMERIC,
     largeur_pcb_cm       NUMERIC,
     hauteur_pcb_cm       NUMERIC,
     poids_pcb_kg         NUMERIC,
     volume_m3            NUMERIC,
-    -- Méta
     date_creation        DATE,
-    date_maj             DATE,             -- dernière mise à jour fiche
+    date_maj             DATE,
     updated_at           TIMESTAMPTZ DEFAULT now()
 );
 """
@@ -108,9 +99,8 @@ CREATE TABLE IF NOT EXISTS achat.commande (
 );
 """
 
-# Contrainte UNIQUE sur la clé métier -- prérequis des upserts du pipeline Gmail
-# et de la jointure annotation. Idempotent via le bloc DO (ADD CONSTRAINT n'a
-# pas de IF NOT EXISTS en PostgreSQL).
+# Contrainte UNIQUE sur la cle metier -- prerequis des upserts et de la jointure
+# annotation. Idempotent via le bloc DO (ADD CONSTRAINT n'a pas de IF NOT EXISTS).
 DDL_UQ_COMMANDE = """
 DO $$
 BEGIN
@@ -123,17 +113,16 @@ BEGIN
 END $$;
 """
 
-# Annotations métier saisies via l'ERP (statut forcé, commentaire) -- table
-# séparée jointe par clé métier pour SURVIVRE au full-refresh de achat.commande.
-# Décision 2026-06-10 : ne jamais stocker de saisie utilisateur dans une table
-# rechargée par ETL.
+# Annotations metier (statut force, commentaire) -- table separee jointe par cle
+# metier pour SURVIVRE au full-refresh de achat.commande. Decision 2026-06-10 :
+# ne jamais stocker de saisie utilisateur dans une table rechargee par ETL.
 DDL_COMMANDE_ANNOTATION = """
 CREATE TABLE IF NOT EXISTS achat.commande_annotation (
     id             SERIAL PRIMARY KEY,
     po_number      TEXT NOT NULL,
     code_article   TEXT NOT NULL,
-    statut_retard  TEXT,            -- forçage manuel : 'EN RETARD' | 'DANS LES DELAIS' | 'INCONNU'
-    date_etd       DATE,            -- forçage manuel de l'ETD si info hors fichier
+    statut_retard  TEXT,
+    date_etd       DATE,
     commentaire    TEXT,
     updated_by     TEXT,
     updated_at     TIMESTAMPTZ DEFAULT now(),
@@ -141,9 +130,8 @@ CREATE TABLE IF NOT EXISTS achat.commande_annotation (
 );
 """
 
-# Vue retard PAR ARTICLE (correction critique plan d'action : les retards se
-# mesurent sur les articles, pas les PO). ETD effectif = reel sinon confirme.
-# Les commandes livrées ou annulées ne sont jamais "en retard".
+# Vue retard PAR ARTICLE. ETD effectif = reel sinon confirme. Les commandes
+# livrees ou annulees ne sont jamais "en retard".
 DDL_V_RETARD_ARTICLE = """
 CREATE OR REPLACE VIEW achat.v_retard_article AS
 SELECT
@@ -161,16 +149,14 @@ FROM achat.commande c
 GROUP BY c.code_article, c.fournisseur;
 """
 
-# Suivi artwork (plan P5) -- table EDITEE PAR LE METIER via l'ERP (statut,
-# responsable, commentaire). L'ETL ne fait que l'alimenter en insert-only.
+# Suivi artwork (plan P5) -- table EDITEE PAR LE METIER via l'ERP. L'ETL ne fait
+# que l'alimenter en insert-only.
 DDL_ARTWORK = """
 CREATE TABLE IF NOT EXISTS achat.artwork (
     id              SERIAL PRIMARY KEY,
     po_number       TEXT NOT NULL,
     code_article    TEXT NOT NULL,
     designation     TEXT,
-    -- Statuts natifs IMPORT col N : Aucun / A envoyer / Envoyé /
-    -- Attente Clarisse / Attente Carrefour (+ Validé / Archivé via ERP)
     statut_artwork  TEXT DEFAULT 'Aucun',
     responsable     TEXT,
     commentaire     TEXT,
@@ -180,8 +166,28 @@ CREATE TABLE IF NOT EXISTS achat.artwork (
 );
 """
 
-# Droits pour le compte applicatif du poste Marlène (platform_team) -- les
-# tables appartiennent au compte Antho, sans GRANT explicite l'ERP affiche 0.
+# Suivi maritime / transitaire (manque n7 carto BI) -- table ALIMENTEE PAR ETL.
+# Grain = 1 ligne PAR CONTENEUR. Source cible = 2026 SUIVI MARITIME.xlsx (feuille
+# CONTENEUR PLEIN) ; en attendant l'acces, bootstrap depuis les valeurs en cache
+# de achat.commande (dedup par n_conteneur). Cle de jointure = N Conteneur.
+DDL_OT_TRANSPORT = """
+CREATE TABLE IF NOT EXISTS achat.ot_transport (
+    n_conteneur      TEXT PRIMARY KEY,
+    etd_reel         DATE,
+    eta              DATE,
+    date_livraison   TIMESTAMP,
+    transport        TEXT,
+    transitaire      TEXT,
+    n_bl             TEXT,
+    n_facture        TEXT,
+    lieu_livraison   TEXT,
+    source_fichier   TEXT,
+    charge_le        TIMESTAMP NOT NULL DEFAULT now()
+);
+"""
+
+# Droits pour le compte applicatif du poste Marlene (platform_team) -- les tables
+# appartiennent au compte Antho, sans GRANT explicite l'ERP affiche 0.
 GRANTS_PLATFORM_TEAM = """
 GRANT USAGE ON SCHEMA achat TO platform_team;
 GRANT SELECT ON ALL TABLES IN SCHEMA achat TO platform_team;
@@ -194,62 +200,49 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA achat GRANT SELECT ON TABLES TO platform_team
 
 def create_tables_if_not_exist(engine: Engine) -> None:
     """
-    Crée les tables achat.produit et achat.commande si elles n'existent pas.
+    Cree les tables du schema achat si elles n'existent pas (idempotent).
 
-    Le DDL utilise CREATE TABLE IF NOT EXISTS pour être idempotent -- aucune
-    erreur si les tables existent déjà. Le schéma achat doit être pré-créé
-    manuellement par un admin car CREATE SCHEMA requiert des droits DATABASE-level
-    que l'utilisateur ETL ne possède pas (principe du moindre privilège).
-
-    Junior Tip : engine.begin() ouvre une transaction DDL. PostgreSQL autorise
-    les DDL en transaction (contrairement à MySQL), ce qui garantit l'atomicité :
-    soit les deux tables sont créées, soit aucune.
+    Junior Tip : engine.begin() ouvre une transaction DDL. PostgreSQL autorise les
+    DDL en transaction (contrairement a MySQL), ce qui garantit l'atomicite : soit
+    toutes les tables sont creees, soit aucune.
 
     Args:
-        engine: SQLAlchemy engine connecté à PostgreSQL (schéma achat accessible).
+        engine: SQLAlchemy engine connecte a PostgreSQL (schema achat accessible).
     Returns:
         None
     """
-    logger.info("[INFO] Création des tables PostgreSQL (si nécessaire)...")
+    logger.info("[INFO] Creation des tables PostgreSQL (si necessaire)...")
     with engine.begin() as conn:
-        # DDL_SCHEMA retiré -- schéma créé manuellement par platform_team
         conn.execute(text(DDL_PRODUIT))
         conn.execute(text(DDL_COMMANDE))
         conn.execute(text(DDL_COMMANDE_ANNOTATION))
         conn.execute(text(DDL_ARTWORK))
+        conn.execute(text(DDL_OT_TRANSPORT))
         conn.execute(text(DDL_V_RETARD_ARTICLE))
-    # Grants séparés : ne doivent pas faire échouer le pipeline si le rôle
-    # platform_team n'existe pas encore sur l'environnement
     try:
         with engine.begin() as conn:
             conn.execute(text(GRANTS_PLATFORM_TEAM))
-        logger.info("[SUCCÈS] Grants platform_team appliqués.")
+        logger.info("[SUCCES] Grants platform_team appliques.")
     except Exception as exc:  # noqa: BLE001
-        logger.warning("[ATTENTION] Grants platform_team non appliqués : %s", exc)
-    logger.info("[SUCCÈS] Tables prêtes.")
+        logger.warning("[ATTENTION] Grants platform_team non appliques : %s", exc)
+    logger.info("[SUCCES] Tables pretes.")
 
 
 def load_produit(df: pd.DataFrame, engine: Engine) -> int:
     """
-    UPSERT de la table achat.produit via table temporaire intermédiaire.
+    UPSERT de la table achat.produit via table temporaire intermediaire.
 
-    Stratégie en deux temps : on écrit d'abord dans une table temporaire
-    achat._tmp_produit, puis on exécute l'INSERT ... ON CONFLICT depuis cette
-    table vers achat.produit. Cette approche évite de construire une requête
-    paramétrée avec N*M paramètres (trop lourd pour psycopg2 au-delà de ~500 lignes).
-
-    Junior Tip : ON CONFLICT DO UPDATE (UPSERT PostgreSQL) garantit l'idempotence :
-    re-exécuter le pipeline deux fois ne créera pas de doublons. EXCLUDED est un
-    pseudo-alias PostgreSQL qui désigne la ligne "candidate" qui a provoqué le conflit.
+    Junior Tip : ON CONFLICT DO UPDATE garantit l'idempotence. EXCLUDED est un
+    pseudo-alias PostgreSQL qui designe la ligne candidate ayant provoque le conflit.
 
     Args:
-        df: DataFrame produit transformé (issu de transform_produit).
+        df: DataFrame produit transforme (issu de transform_produit).
         engine: SQLAlchemy engine PostgreSQL.
     Returns:
-        Nombre de lignes insérées ou mises à jour.
+        Nombre de lignes inserees ou mises a jour.
     """
     if df.empty:
-        logger.warning("[ATTENTION] DataFrame produit vide -- rien à charger.")
+        logger.warning("[ATTENTION] DataFrame produit vide -- rien a charger.")
         return 0
 
     logger.info("[INFO] Chargement produit : %d articles...", len(df))
@@ -262,7 +255,7 @@ def load_produit(df: pd.DataFrame, engine: Engine) -> int:
     with engine.begin() as conn:
         df.to_sql("_tmp_produit", conn, schema="achat",
                   if_exists="replace", index=False, method="multi")
-        result = conn.execute(text(f"""
+        conn.execute(text(f"""
             INSERT INTO achat.produit ({', '.join(['code_article'] + cols)})
             SELECT {', '.join(['code_article'] + cols)} FROM {tmp_table}
             ON CONFLICT (code_article) DO UPDATE SET {set_clause};
@@ -270,21 +263,17 @@ def load_produit(df: pd.DataFrame, engine: Engine) -> int:
         conn.execute(text(f"DROP TABLE IF EXISTS {tmp_table};"))
 
     count = len(df)
-    logger.info("[SUCCÈS] Produit chargé : %d articles.", count)
+    logger.info("[SUCCES] Produit charge : %d articles.", count)
     return count
 
 
 def load_artwork(df: pd.DataFrame, engine: Engine) -> int:
     """
-    Insert-only de achat.artwork (ON CONFLICT DO NOTHING sur code_article).
+    Insert-only de achat.artwork (ON CONFLICT DO NOTHING sur la cle metier).
 
-    Cette table est la copie de TRAVAIL du metier (statuts edites via l'ERP) :
-    l'ETL ne met JAMAIS a jour une ligne existante, il ajoute seulement les
-    nouveaux articles a marquage detectes dans la Matrice.
-
-    Junior Tip : ON CONFLICT DO NOTHING est le pendant non-destructif de
-    DO UPDATE -- ideal quand la base fait foi sur les lignes existantes et
-    que la source ne sert qu'a decouvrir les nouveautes.
+    Junior Tip : ON CONFLICT DO NOTHING est le pendant non-destructif de DO UPDATE,
+    ideal quand la base fait foi sur les lignes existantes et que la source ne sert
+    qu'a decouvrir les nouveautes.
 
     Args:
         df: DataFrame issu de transform_artwork().
@@ -293,7 +282,7 @@ def load_artwork(df: pd.DataFrame, engine: Engine) -> int:
         Nombre de lignes nouvellement inserees.
     """
     if df.empty:
-        logger.warning("[ATTENTION] DataFrame artwork vide -- rien à charger.")
+        logger.warning("[ATTENTION] DataFrame artwork vide -- rien a charger.")
         return 0
 
     logger.info("[INFO] Chargement artwork (insert-only) : %d candidats...", len(df))
@@ -309,31 +298,69 @@ def load_artwork(df: pd.DataFrame, engine: Engine) -> int:
         """))
         conn.execute(text(f"DROP TABLE IF EXISTS {tmp_table};"))
 
-    logger.info("[SUCCÈS] Artwork : %d nouvelle(s) ligne(s) inseree(s).", result.rowcount)
+    logger.info("[SUCCES] Artwork : %d nouvelle(s) ligne(s) inseree(s).", result.rowcount)
     return result.rowcount
+
+
+def load_ot_transport(df: pd.DataFrame, engine: Engine) -> int:
+    """
+    UPSERT de achat.ot_transport par n_conteneur (table temporaire + ON CONFLICT).
+
+    Junior Tip : on UPSERT plutot qu'on TRUNCATE car deux sources alimentent cette
+    table (bootstrap commande aujourd'hui, SUIVI MARITIME demain). Le full-refresh
+    ferait perdre les conteneurs absents de la source courante.
+
+    Args:
+        df: DataFrame issu de transform_ot_transport().
+        engine: SQLAlchemy engine PostgreSQL.
+    Returns:
+        Nombre de lignes upsertees.
+    """
+    if df.empty:
+        logger.warning("[ATTENTION] DataFrame ot_transport vide -- rien a charger.")
+        return 0
+
+    logger.info("[INFO] Chargement ot_transport (upsert) : %d conteneur(s)...", len(df))
+    cols = [c for c in df.columns if c != "n_conteneur"]
+    set_clause = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols)
+    set_clause += ", charge_le = now()"
+
+    tmp_table = "achat._tmp_ot_transport"
+    with engine.begin() as conn:
+        df.to_sql("_tmp_ot_transport", conn, schema="achat",
+                  if_exists="replace", index=False, method="multi")
+        conn.execute(text(f"""
+            INSERT INTO achat.ot_transport ({', '.join(['n_conteneur'] + cols)})
+            SELECT {', '.join(['n_conteneur'] + cols)} FROM {tmp_table}
+            ON CONFLICT (n_conteneur) DO UPDATE SET {set_clause};
+        """))
+        conn.execute(text(f"DROP TABLE IF EXISTS {tmp_table};"))
+
+    count = len(df)
+    logger.info("[SUCCES] ot_transport charge : %d conteneur(s).", count)
+    return count
 
 
 def load_commande(df: pd.DataFrame, engine: Engine) -> int:
     """
     Full-refresh de la table achat.commande (TRUNCATE + INSERT).
 
-    La table commande a une granularité ligne-article (plusieurs lignes par PO#),
-    donc pas d'UPSERT possible sur po_number seul car il n'est pas unique.
-    On préfère le full-refresh : TRUNCATE vide la table puis INSERT recharge tout.
-    RESTART IDENTITY remet le compteur SERIAL à 1 pour éviter une dérive infinie des ID.
+    La granularite ligne-article (plusieurs lignes par PO#) rend l'UPSERT sur
+    po_number impossible (non unique) : on recharge tout. RESTART IDENTITY remet
+    le compteur SERIAL a 1 pour eviter une derive des ID.
 
-    Junior Tip : engine.begin() garantit que TRUNCATE et INSERT sont dans la même
-    transaction -- si l'INSERT échoue, le TRUNCATE est annulé (rollback automatique)
-    et les données précédentes restent intactes.
+    Junior Tip : engine.begin() garantit que TRUNCATE et INSERT sont dans la meme
+    transaction -- si l'INSERT echoue, le TRUNCATE est annule (rollback) et les
+    donnees precedentes restent intactes.
 
     Args:
-        df: DataFrame commande transformé (issu de transform_commande).
+        df: DataFrame commande transforme (issu de transform_commande).
         engine: SQLAlchemy engine PostgreSQL.
     Returns:
-        Nombre de lignes insérées.
+        Nombre de lignes inserees.
     """
     if df.empty:
-        logger.warning("[ATTENTION] DataFrame commande vide -- rien à charger.")
+        logger.warning("[ATTENTION] DataFrame commande vide -- rien a charger.")
         return 0
 
     logger.info("[INFO] Chargement commande (full-refresh) : %d lignes...", len(df))
@@ -342,10 +369,8 @@ def load_commande(df: pd.DataFrame, engine: Engine) -> int:
         conn.execute(text("TRUNCATE TABLE achat.commande RESTART IDENTITY;"))
         df.to_sql("commande", conn, schema="achat",
                   if_exists="append", index=False, method="multi")
-        # Contrainte UNIQUE posée APRÈS l'insert : les données sont dédoublonnées
-        # par transform_commande, la pose échouerait sur d'anciennes données sales
         conn.execute(text(DDL_UQ_COMMANDE))
 
     count = len(df)
-    logger.info("[SUCCÈS] Commande chargée : %d lignes.", count)
+    logger.info("[SUCCES] Commande chargee : %d lignes.", count)
     return count
