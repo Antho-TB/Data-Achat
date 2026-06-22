@@ -189,4 +189,14 @@ class Config:
         client = SecretClient(vault_url=vault_url, credential=DefaultAzureCredential())
 
         user = client.get_secret("psql-prod-sylob-anthony-bezille-login").value
-        password = client
+        password = client.get_secret("psql-prod-sylob-anthony-bezille-password").value
+
+        return URL.create(
+            drivername="postgresql+psycopg2",
+            username=user,
+            password=password,
+            host=cls.PG_HOST,
+            port=cls.PG_PORT,
+            database=cls.PG_DB,
+            query={"sslmode": "require"},
+        )

@@ -171,4 +171,19 @@ def _print_report(
 
     if not df_commande.empty and "statut" in df_commande.columns:
         logger.info("  Répartition statuts commandes :")
- 
+        for statut, count in df_commande["statut"].value_counts().items():
+            logger.info("    %-30s %4d", statut, count)
+    logger.info(sep)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="ETL Data-Achat")
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Extract + Transform uniquement, sans écriture PostgreSQL"
+    )
+    args = parser.parse_args()
+
+    stats = run(dry_run=args.dry_run)
+    if stats["erreurs"] > 0:
+        sys.exit(1)

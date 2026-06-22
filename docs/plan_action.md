@@ -361,4 +361,3 @@ Emmanuelle crée le CODE ARTICLE dans Sylob  →  PK définitive
 | J4 -- Plugin Cowork v0 | S28 (10/07) | 3 skills opérationnels | ⏳ -- doit être fini avant S29 FORM |
 | J5 -- Intégration Gmail | S30 (24/07) | Cohérence mail ↔ BDD | ⏳ -- après S29 FORM |
 | **Deadline POC -- Andréa part le 31/07** | **31/07/2026 (S31)** | **Validation métier** | ⏳ -- deadline dure, Andréa absente après |
-                                                           
