@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-[DATA ENGINEERING]
+=============================================================================
+ENRICHISSEMENT SYLOB - DONNEES ARTICLE/FOURNISSEUR
+=============================================================================
+
 Enrichissement de achat.produit depuis le DWH Sylob On-Premise (tarrerias_production_dwh).
 
 Stratégie : la table achat.produit contient les articles issus des fichiers Excel
@@ -326,4 +329,3 @@ def run() -> None:
 
 if __name__ == "__main__":
     run()
-                                     

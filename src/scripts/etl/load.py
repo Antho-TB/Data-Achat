@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-[DATA ENGINEERING]
+=============================================================================
+ETL ACHATS - CHARGEMENT POSTGRESQL (schema achat)
+=============================================================================
+
 Chargement des données transformées dans PostgreSQL (schéma achat) du DWH TB Groupe.
 
 Stratégie : les opérations sont idempotentes et re-exécutables sans risque.

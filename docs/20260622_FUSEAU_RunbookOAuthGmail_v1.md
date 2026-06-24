@@ -2,9 +2,8 @@
 _2026-06-22 · à exécuter une fois, avant le branchement sur le poste de Marlène_
 
 > Objectif : obtenir `config/credentials.json` (OAuth client desktop) pour que
-> `src/scripts/gmail/fetch_attachments.py` puisse lire les PJ. Action liée au
-> compte Google -- à faire par Antho dans la console GCP (Claude ne crée pas
-> de ressource cloud ni ne manipule de credentials).
+> `src/scripts/gmail/fetch_attachments.py` puisse lire les PJ.
+> Action liee au compte Google, a realiser manuellement dans la console GCP.
 
 ## 1. Projet Google Cloud
 1. Console : https://console.cloud.google.com → sélectionner (ou créer) un projet

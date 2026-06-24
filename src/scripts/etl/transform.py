@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-[DATA ENGINEERING]
+=============================================================================
+ETL ACHATS - TRANSFORMATION (nettoyage & normalisation)
+=============================================================================
+
 Transformations métier du pipeline ETL Data-Achat TB Groupe.
 
 Stratégie : ce module est le coeur du pipeline -- il normalise les données

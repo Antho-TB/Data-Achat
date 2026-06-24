@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-[DATA ENGINEERING]
+=============================================================================
+ENRICHISSEMENT ACOMPTE - SOURCE IMPORT 2026
+=============================================================================
+
 Enrichissement de achat.acompte depuis le DWH Sylob (tarrerias_production_dwh).
 
 Recupere l'acompte verse par commande dans les 3 societes (GDD, SE, Cie) et

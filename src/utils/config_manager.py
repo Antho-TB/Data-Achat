@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-[ARCHITECTURE]
+=============================================================================
+CONFIGURATION CENTRALISEE - DATA-ACHAT
+=============================================================================
+
 Configuration centralisée du projet Data-Achat TB Groupe.
 
 Stratégie : deux niveaux de credentials selon l'environnement d'exécution.

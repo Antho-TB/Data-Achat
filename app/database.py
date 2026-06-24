@@ -1,4 +1,9 @@
+# -*- coding: utf-8 -*-
 """
+=============================================================================
+CONNEXION POSTGRESQL - MOTEUR & SANTE
+=============================================================================
+
 Connexion PostgreSQL Azure -- SQLAlchemy Core
 Pattern obligatoire TB Groupe : URL.create() (jamais f-string).
 Config unifiée : src/utils/config_manager.py (source unique API + ETL).

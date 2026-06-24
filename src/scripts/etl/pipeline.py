@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-[DATA ENGINEERING]
+=============================================================================
+ETL ACHATS - ORCHESTRATEUR (Extract -> Transform -> Load)
+=============================================================================
+
 Pipeline ETL principal du projet Data-Achat TB Groupe.
 
 Stratégie : ce module est le point d'entrée unique qui orchestre les trois

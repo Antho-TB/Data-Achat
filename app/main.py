@@ -1,4 +1,9 @@
+# -*- coding: utf-8 -*-
 """
+=============================================================================
+API ERP ACHAT - FUSEAU (FastAPI)
+=============================================================================
+
 ERP Achat TB Groupe -- API FastAPI
 POC : tous les endpoints dans ce fichier. Prod : decomposer en routers/ par domaine.
 

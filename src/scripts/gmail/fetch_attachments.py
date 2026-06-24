@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-[DATA ENGINEERING]
+=============================================================================
+FETCH PIECES JOINTES GMAIL - PLAN A (API Gmail)
+=============================================================================
+
 Récupération des pièces jointes Gmail du service Achats TB Groupe vers le disque.
 
 Contexte : le connecteur MCP Gmail expose les noms et identifiants des pièces

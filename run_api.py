@@ -1,4 +1,8 @@
 """
+=============================================================================
+LANCEMENT LOCAL - ERP ACHAT FUSEAU (uvicorn)
+=============================================================================
+
 Lancement local POC -- ERP Achat TB Groupe
 Usage : python run_api.py
 Host/port configures dans config/.env (API_HOST, API_PORT) -- defaut 127.0.0.1:5050.

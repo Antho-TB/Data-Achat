@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-[DATA ENGINEERING]
+=============================================================================
+ENRICHISSEMENT CA FOURNISSEUR - 3 ANS (Sylob 3 societes)
+=============================================================================
+
 Enrichissement de achat.fournisseur_ca : CA achats cumule sur 3 ans par fournisseur.
 
 Mappe nos noms de fournisseurs (achat.commande, texte libre) vers les codes Sylob

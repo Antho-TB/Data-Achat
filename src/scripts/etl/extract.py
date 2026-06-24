@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-[DATA ENGINEERING]
+=============================================================================
+ETL ACHATS - EXTRACTION (Excel Service Achats)
+=============================================================================
+
 Extraction des fichiers Excel du service Achats TB Groupe vers des DataFrames pandas.
 
 Stratégie : chaque fonction est responsable d'un seul fichier source et retourne
