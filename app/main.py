@@ -417,14 +417,21 @@ def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
                         str(e).splitlines()[0])
 
         try:
+            # 3 dernieres commandes PAR ARTICLE (besoin metier : evolution recente du prix).
+            # ROW_NUMBER fenetre par code_article, on garde les 3 plus recentes.
             r = conn.execute(text(f"""
-                SELECT po_number, code_article, fournisseur,
-                       prix_unitaire AS prix, date_commande AS date_mail
-                FROM {SCHEMA}.commande
-                WHERE fournisseur = :fournisseur {article_filter}
-                  AND prix_unitaire IS NOT NULL
-                ORDER BY date_commande DESC NULLS LAST
-                LIMIT 100
+                SELECT po_number, code_article, fournisseur, prix, date_mail
+                FROM (
+                    SELECT po_number, code_article, fournisseur,
+                           prix_unitaire AS prix, date_commande AS date_mail,
+                           ROW_NUMBER() OVER (PARTITION BY code_article
+                                              ORDER BY date_commande DESC NULLS LAST) AS rn
+                    FROM {SCHEMA}.commande
+                    WHERE fournisseur = :fournisseur {article_filter}
+                      AND prix_unitaire IS NOT NULL
+                ) t
+                WHERE rn <= 3
+                ORDER BY code_article, date_mail DESC NULLS LAST
             """), params)
             return {"source": "commande_fallback", "data": rows_to_dicts(r)}
         except Exception as e:
