@@ -78,11 +78,12 @@ def run(dry_run: bool = False) -> dict[str, int]:
         transform_ot_transport,
         transform_produit,
         transform_qualite,
+        transform_acompte,
     )
     from src.utils.config_manager import Config
 
     stats: dict[str, int] = {
-        "produits": 0, "commandes": 0, "artwork": 0, "ot_transport": 0, "qualite": 0, "erreurs": 0
+        "produits": 0, "commandes": 0, "artwork": 0, "ot_transport": 0, "qualite": 0, "acompte": 0, "erreurs": 0
     }
     data_dir = _get_data_dir()
 
@@ -107,6 +108,7 @@ def run(dry_run: bool = False) -> dict[str, int]:
         df_artwork = transform_artwork(df_import)
         df_ot_transport = transform_ot_transport(df_commande, df_maritime)
         df_qualite = transform_qualite(df_import)
+        df_acompte = transform_acompte(df_import)
     except Exception as exc:
         logger.error("[ÉCHEC] Pipeline interrompu -- transformation impossible : %s", exc, exc_info=True)
         stats["erreurs"] += 1
@@ -127,7 +129,7 @@ def run(dry_run: bool = False) -> dict[str, int]:
         from src.utils.config_manager import Config
         from src.scripts.etl.load import create_tables_if_not_exist, load_commande, load_produit
 
-        from src.scripts.etl.load import load_artwork, load_ot_transport, load_qualite
+        from src.scripts.etl.load import load_artwork, load_ot_transport, load_qualite, load_acompte
 
         engine = create_engine(Config.get_pg_url())
         create_tables_if_not_exist(engine)
@@ -136,6 +138,7 @@ def run(dry_run: bool = False) -> dict[str, int]:
         stats["artwork"] = load_artwork(df_artwork, engine)
         stats["ot_transport"] = load_ot_transport(df_ot_transport, engine)
         stats["qualite"] = load_qualite(df_qualite, engine)
+        stats["acompte"] = load_acompte(df_acompte, engine)
     except Exception as exc:
         logger.error("[ERREUR] Chargement PostgreSQL échoué : %s", exc, exc_info=True)
         stats["erreurs"] += 1

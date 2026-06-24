@@ -397,6 +397,11 @@ button { cursor: pointer; }
 
   <!-- ═══ PRÉVISIONNEL ═══════════════════════════════════════════════════════ -->
   <div id="tab-previsionnel" class="tab-panel">
+    <div class="section-header"><span class="section-title">Mesures prévisionnelles</span></div>
+    <div id="prev-mesures" class="artwork-stats"></div>
+    <div class="section-header"><span class="section-title">Par fournisseur (à payer / inspection / parti / retard)</span></div>
+    <div id="prev-frs"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
+
     <div class="section-header">
       <span class="section-title">Planning par mois</span>
     </div>
@@ -426,6 +431,11 @@ button { cursor: pointer; }
         <option value="">Toutes inspections</option>
         <option>OK</option>
         <option>FAIL</option>
+      </select>
+      <select id="f-qual-bat" onchange="filterQualite()">
+        <option value="">Tous BAT</option>
+        <option>Conforme</option>
+        <option>Non reçu</option>
       </select>
     </div>
     <div id="table-qualite"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
@@ -515,7 +525,7 @@ function badge(statut) {
 function fmt(v, type) {
   if (v == null || v === '') return '—';
   if (type === 'date') return esc(String(v).slice(0, 10));
-  if (type === 'money') return Number(v).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+  if (type === 'money') return Number(v).toLocaleString('fr-FR', { style: 'currency', currency: 'USD' });
   if (type === 'num') return Number(v).toLocaleString('fr-FR');
   return esc(v);
 }
@@ -687,9 +697,11 @@ function renderCommandes(rows) {
       <thead><tr>
         <th>PO#</th>
         <th>Article</th>
+        <th>Désignation</th>
         <th>Fournisseur</th>
         <th>Qté</th>
         <th>Prix unit.</th>
+        <th>Acompte ($)</th>
         <th>ETD</th>
         <th>Statut retard</th>
         <th>Statut cde</th>
@@ -700,9 +712,11 @@ function renderCommandes(rows) {
         ${rows.map(r => `<tr>
           <td class="mono">${esc(r.po_number) || '—'}</td>
           <td class="mono">${esc(r.code_article) || '—'}</td>
+          <td>${esc(r.designation) || '-'}</td>
           <td>${esc(r.fournisseur) || '—'}</td>
           <td style="text-align:right">${fmt(r.quantite, 'num')}</td>
-          <td style="text-align:right">${r.prix_unitaire != null ? Number(r.prix_unitaire).toFixed(2) + ' €' : '—'}</td>
+          <td style="text-align:right">${r.prix_unitaire != null ? Number(r.prix_unitaire).toFixed(2) + ' $' : '—'}</td>
+          <td style="text-align:right">${r.acompte != null ? Number(r.acompte).toLocaleString('fr-FR') + ' $' : '-'}</td>
           <td class="editable-cell">
             <span class="view-mode" onclick="editCell(this, 'date')">${fmt(r.date_etd, 'date')}</span>
             <span class="edit-mode">
@@ -712,7 +726,7 @@ function renderCommandes(rows) {
             </span>
           </td>
           <td class="editable-cell">
-            <span class="view-mode" onclick="editCell(this, 'select')">${badge(r.statut_retard)}</span>
+            <span class="view-mode" onclick="editCell(this, 'select')">${badge(r.statut_retard)}${r.statut_retard==='EN RETARD' ? (r.statut==='En cours de livraison' ? ' <small>(parti)</small>' : ' <small style="color:var(--red,#c0392b)">(pas parti)</small>') : ''}</span>
             <span class="edit-mode">
               <select>
                 <option ${r.statut_retard==='EN RETARD' ?'selected':''}>EN RETARD</option>
@@ -833,6 +847,7 @@ function renderFournisseurs(rows) {
         <th>Fournisseur</th>
         <th>PO actifs</th>
         <th>Articles</th>
+        <th>CA 3 ans ($)</th>
         <th>Retards</th>
         <th>Retard moy. (j)</th>
         <th>Dernière activité</th>
@@ -843,6 +858,7 @@ function renderFournisseurs(rows) {
           <td><strong>${esc(r.fournisseur)}</strong></td>
           <td style="text-align:center">${r.nb_po}</td>
           <td style="text-align:center">${r.nb_articles}</td>
+          <td style="text-align:right">${r.ca_3ans != null ? Number(r.ca_3ans).toLocaleString('fr-FR') + ' $' : '-'}</td>
           <td style="text-align:center">
             ${r.nb_retards > 0
               ? `<span class="badge badge-red">${r.nb_retards}</span>`
@@ -893,7 +909,7 @@ async function loadFrsDetail(frs) {
           ${rows.map(r => `<tr>
             <td class="mono">${esc(r.po_number) || '—'}</td>
             <td class="mono">${esc(r.code_article) || '—'}</td>
-            <td style="text-align:right">${r.prix != null ? Number(r.prix).toFixed(2) + ' €' : '—'}</td>
+            <td style="text-align:right">${r.prix != null ? Number(r.prix).toFixed(2) + ' $' : '—'}</td>
             <td>${fmt(r.date_mail, 'date')}</td>
           </tr>`).join('')}
         </tbody>
@@ -938,9 +954,11 @@ async function loadQualite() {
 function filterQualite() {
   const frs = document.getElementById('f-qual-frs').value.toLowerCase();
   const res = document.getElementById('f-qual-res').value;
+  const bat = document.getElementById('f-qual-bat').value.toLowerCase();
   renderQualite(_qualite.filter(r =>
     (!frs || (r.fournisseur||'').toLowerCase().includes(frs)) &&
-    (!res || r.resultat_inspection === res)
+    (!res || r.resultat_inspection === res) &&
+    (!bat || (r.production_bat||'').toLowerCase().includes(bat))
   ));
 }
 
@@ -975,7 +993,7 @@ function renderQualite(rows, warning) {
   if (!rows || !rows.length) { el.innerHTML = '<div class="empty">Aucun suivi qualité</div>'; return; }
   el.innerHTML = `<div class="table-wrap"><table>
     <thead><tr><th>PO#</th><th>Article</th><th>Fournisseur</th><th>MAT</th><th>SP</th>
-    <th>Échant.</th><th>BAT</th><th>Inspection</th><th>Récep.</th><th>NCR</th></tr></thead>
+    <th>Échant.</th><th>BAT</th><th>Inspection</th><th>N° insp.</th><th>Récep.</th><th>NCR</th></tr></thead>
     <tbody>${rows.map(r => `<tr>
       <td class="mono">${esc(r.po_number)||'-'}</td>
       <td class="mono">${esc(r.code_article)||'-'}</td>
@@ -985,9 +1003,56 @@ function renderQualite(rows, warning) {
       <td>${esc(r.echantillon_conformite)||'-'}</td>
       <td>${esc(r.production_bat)||'-'}</td>
       <td>${inspBadge(r.resultat_inspection)} <small>${esc(r.date_inspection)||''}</small></td>
+      <td class="mono">${esc(r.ref_rapport)||'-'}</td>
       <td>${esc(r.reception)||'-'}</td>
       <td class="mono">${esc(r.ncr)||'-'}</td>
     </tr>`).join('')}</tbody></table></div>`;
+}
+
+const PREV_PHASES = {
+  achete:        { lbl: 'Acheté',        color: 'var(--blue-light)' },
+  a_payer:       { lbl: 'À payer',       color: 'var(--orange)' },
+  a_payer_en_retard: { lbl: 'À payer EN RETARD', color: 'var(--red,#c0392b)' },
+  en_inspection: { lbl: 'En inspection', color: 'var(--blue-light)' },
+  parti:         { lbl: 'Parti',         color: 'var(--blue-light)' },
+  en_retard:     { lbl: 'En retard',     color: 'var(--red,#c0392b)' },
+  livre:         { lbl: 'Livré',         color: 'var(--green)' },
+};
+
+function fmtEur(n){ n=Number(n)||0; if(n>=1e6) return (n/1e6).toFixed(2)+' M'; if(n>=1e3) return Math.round(n/1e3)+' k'; return Math.round(n).toString(); }
+
+async function loadPrevisionnelMesures() {
+  try {
+    const r = await apiFetch('/api/previsionnel/mesures');
+    if (r.warning) {
+      document.getElementById('prev-mesures').innerHTML =
+        `<div style="color:var(--yellow);font-size:13px;padding:8px;">${esc(r.warning)}</div>`;
+      document.getElementById('prev-frs').innerHTML = '';
+      return;
+    }
+    document.getElementById('prev-mesures').innerHTML = (r.mesures||[]).map(m => {
+      const meta = PREV_PHASES[m.phase] || { lbl: m.phase, color: 'var(--muted)' };
+      return `<div class="artwork-stat">
+        <div class="num" style="color:${meta.color}">${m.count}</div>
+        <div class="lbl">${meta.lbl}<br><small style="color:var(--muted)">${fmtEur(m.montant)} USD</small></div>
+      </div>`;
+    }).join('');
+    const frs = r.par_fournisseur || [];
+    document.getElementById('prev-frs').innerHTML = frs.length ? `<div class="table-wrap"><table>
+      <thead><tr><th>Fournisseur</th><th>À payer</th><th>Inspection</th><th>Parti</th>
+      <th>En retard</th><th>Montant retard</th></tr></thead>
+      <tbody>${frs.map(f => `<tr>
+        <td>${esc(f.fournisseur)||'-'}</td>
+        <td class="mono">${f.a_payer??0}</td>
+        <td class="mono">${f.en_inspection??0}</td>
+        <td class="mono">${f.parti??0}</td>
+        <td class="mono" style="color:var(--red,#c0392b)">${f.en_retard??0}</td>
+        <td class="mono">${fmtEur(f.montant_retard)} USD</td>
+      </tr>`).join('')}</tbody></table></div>` : '<div class="empty">Aucune donnée</div>';
+  } catch (e) {
+    document.getElementById('prev-mesures').innerHTML =
+      `<div style="color:var(--yellow);font-size:13px;padding:8px;">${esc(e.message)}</div>`;
+  }
 }
 
 async function loadArtwork() {
@@ -1118,6 +1183,7 @@ async function loadPrevisionnel() {
     const r = await apiFetch('/api/previsionnel');
     renderPlanningGrid(r.planning_mensuel);
     renderPrevisionnel(r.prochaines_arrivees);
+    loadPrevisionnelMesures();
   } catch (e) {
     document.getElementById('table-previsionnel').innerHTML =
       `<div class="empty"><div class="empty-icon">⚠️</div>${esc(e.message)}</div>`;

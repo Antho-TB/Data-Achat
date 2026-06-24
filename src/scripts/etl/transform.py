@@ -584,3 +584,42 @@ def transform_qualite(df_import: pd.DataFrame) -> pd.DataFrame:
     result["date_inspection"] = pd.to_datetime(result["date_inspection"], errors="coerce").dt.date
     logger.info("[SUCCÈS] Qualite transforme : %d lignes produit", len(result))
     return result
+
+
+def transform_acompte(df_import: pd.DataFrame) -> pd.DataFrame:
+    """
+    Extrait l'acompte verse par commande depuis IMPORT 2026 (colonne 'Acompte', col I).
+
+    Source officielle (confirmee metier 25/06) : Marlene saisit les virements d'acompte
+    dans l'IMPORT ; Sylob ne porte pas le montant. La colonne est majoritairement un
+    MONTANT (USD) ; quelques cellules contiennent un TAUX (valeur <= 1, ex. 0.3 = 30%).
+
+    Junior Tip : on distingue montant vs taux par la magnitude (<= 1 => taux). On
+    deduplique par PO (l'acompte est un fait commande, pas ligne-article) en gardant
+    le montant le plus eleve rencontre.
+
+    Args:
+        df_import: Resultat de extract_import().
+    Returns:
+        DataFrame [po_number, montant_acompte, pourcentage_acompte] pret pour load_acompte().
+    """
+    logger.info("[INFO] Transformation acompte (IMPORT col Acompte)...")
+    df = df_import.copy()
+    df.columns = [str(c).strip().replace("\n", " ") for c in df.columns]
+    if "Acompte" not in df.columns:
+        logger.warning("[ATTENTION] Colonne 'Acompte' absente -- acompte vide.")
+        return pd.DataFrame(columns=["po_number", "montant_acompte", "pourcentage_acompte"])
+
+    val = pd.to_numeric(df["Acompte"], errors="coerce")
+    out = pd.DataFrame({
+        "po_number": df["PO#"].apply(_clean_ref),
+        "montant_acompte": val.where(val > 1),                 # > 1 => montant
+        "pourcentage_acompte": (val.where((val > 0) & (val <= 1)) * 100),  # <= 1 => taux %
+    })
+    out = out[out["po_number"].notna()]
+    # Un acompte par PO : on garde la ligne au montant le plus parlant.
+    out = (out.sort_values("montant_acompte", ascending=False, na_position="last")
+              .drop_duplicates(subset=["po_number"], keep="first"))
+    logger.info("[SUCCÈS] Acompte transforme : %d PO (dont %d avec montant)",
+                len(out), int(out["montant_acompte"].notna().sum()))
+    return out

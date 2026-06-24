@@ -52,6 +52,8 @@ class Config:
     PG_USER: str = os.getenv("PG_USER", "")
     PG_PASSWORD: str = os.getenv("PG_PASSWORD", "")
     PG_SCHEMA: str = "achat"
+    # sslmode : "require" pour Azure (defaut), "disable" pour un PostgreSQL local de secours.
+    PG_SSLMODE: str = os.getenv("PG_SSLMODE", "require")
 
     # DWH Sylob On-Premise (tarrerias_production_dwh)
     SYLOB_HOST: str = os.getenv("SYLOB_HOST", "192.168.102.21")
@@ -129,7 +131,7 @@ class Config:
             host=cls.PG_HOST,
             port=cls.PG_PORT,
             database=cls.PG_DB,
-            query={"sslmode": "require"},
+            query={"sslmode": cls.PG_SSLMODE},
         )
 
     @classmethod
@@ -198,5 +200,5 @@ class Config:
             host=cls.PG_HOST,
             port=cls.PG_PORT,
             database=cls.PG_DB,
-            query={"sslmode": "require"},
+            query={"sslmode": cls.PG_SSLMODE},
         )

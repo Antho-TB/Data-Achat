@@ -1,7 +1,7 @@
 # Plan d'action -- Système Data-Achat TB Groupe
 
 > Issu de la réunion de cadrage · 2026-06-01  
-> Mis à jour : **2026-06-22** (session FUSEAU : fetch PJ, n8n, ot_transport)  
+> Mis à jour : **2026-06-23** (session FUSEAU : onglets Qualité + Prévisionnel enrichi, base peuplée)  
 > Périmètre : Achats Import · Utilisateurs finaux : Andréa, Marlène, Olivier, Eric, Charles, David, Jonatan, Julia, Emmanuelle
 
 ---
@@ -59,35 +59,115 @@ Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'run_api|sp
 
 ---
 
-## Retours démo métier + reste à faire (prise de notes Antho)
+## État FUSEAU au 23/06 (présenté en démo)
 
-> Confronté à l'état réel du code (API + frontend) le 2026-06-22. Onglets existants :
-> dashboard, commandes, fournisseurs, artwork, previsionnel.
+> Base peuplée (DWH Azure, schéma achat) : produit 1198, commande 636, artwork 633,
+> qualite 633, ot_transport 57, v_previsionnel 636, v_qualite_fournisseur 25.
 
-### Cible : ERP multi-onglets par métier
+### ERP multi-onglets -- 6 onglets opérationnels
 
-| # | Onglet | Demande | État |
-|---|--------|---------|------|
-| 1 | **Prévisionnel** | Mesures par commande/fournisseur/produit : acheté, à payer, en inspection, parti, retard livraison frs | 🟡 Onglet OK mais ne ventile que mois/nb PO/articles/quantité/valeur + liste retard |
-| 2 | **Acheteuse / suivi frs** | Historique prix (article ou frs, bornage) + suivi retards par fournisseur (sous-vue dédiée) | 🟡 Historique OK ; retards/frs faisable mais pas isolé |
-| 3 | **Suivi commandes** | Éclater arrivés/retard, granularité, drill-down produit, clic commande -> détail retard par produit | 🟡 Onglet + statut retard/article + handlers ; valider le drill-down produit |
-| 4 | **Artwork** | Suivi design (Clarisse) : statuts Envoyé/Aucun/Demandé/etc. | ✅ Fait |
-| 5 | **Service Qualité** | Évaluation fournisseurs + suivi des analyses (Excel "Suivi des analyses", alimenté par les parties prenantes via mail formulé par Andréa) | 🔴 Absent -- à concevoir |
+| # | Onglet | État |
+|---|--------|------|
+| 1 | Dashboard (KPIs + graphs) | ✅ |
+| 2 | Suivi commandes (statut retard par article, filtres, drill-down) | ✅ |
+| 3 | Fournisseurs (historique prix par article ou fournisseur) | ✅ |
+| 4 | Artwork (statuts design Clarisse) | ✅ |
+| 5 | **Qualité** (éval fournisseurs : inspection/NCR/réception + checkpoints MAT/SP/BAT) | ✅ nouveau |
+| 6 | **Prévisionnel enrichi** (acheté / à payer / en inspection / parti / en retard / livré + ventilation par fournisseur) | ✅ nouveau |
 
-### Détails transverses
-- ✅ **Retards sur ARTICLES, pas PO** : `v_retard_article` conforme (groupe par code_article).
-- 🟡 **Graphs interactifs pilotés par le ruban** : graphs présents, pilotage par ruban à valider en visuel.
-- 🟡 **Filtres = catégories en ligne 3**, sur les colonnes du fichier import : existant, layout à valider.
-- 🔴 **Bornage de dates au choix (jjmmaa ET anmois)** : non implémenté (prévisionnel agrège par mois en dur).
+- ✅ Retards sur ARTICLES, pas PO : vue `v_retard_article`.
+- ✅ "En inspection" résolu en joignant `achat.qualite` -- pas d'extension de `achat.commande` nécessaire.
+- ✅ Montants : PU x qté (jamais `total_prix`, qui est un SUMIF par PO). Total acheté ~4,0 M€.
 
-### Chantiers priorisés (post-démo)
-1. **Prévisionnel enrichi** : ventiler par statut (à payer / en inspection / parti / retard frs) et par fournisseur+produit. ⚠️ **Touche au modèle** : `achat.commande` n'a PAS les colonnes inspection (Date inspection / Rapport inspection, cols AE/AF de l'IMPORT non chargées) -> extension DDL + transform requise.
-2. **Onglet Service Qualité** : nouvelle table (évaluation frs + analyses), onglet, process d'alimentation par mail (Andréa -> parties prenantes). Cadrer le modèle d'abord (cf. Excel "Suivi des analyses").
-3. **Bornage de dates** double granularité (jour / mois) sur tous les onglets.
-4. **Sous-vue retards par fournisseur** (onglet acheteuse).
-5. **Drill-down commande -> produit** : confirmer/compléter le détail retard par produit au clic.
+### Reste à faire (post-démo)
 
-> Préalable aux chantiers 1 et 2 : décisions de modèle de données (ADR) avant tout code -- inspection dans `achat.commande`, table qualité/analyses.
+| Chantier | Détail |
+|---|---|
+| Bornage de dates (jjmmaa ET anmois) | non implémenté ; le prévisionnel agrège par mois en dur |
+| Sous-vue retards par fournisseur dédiée | partiellement couvert par la table fournisseur du prévisionnel |
+| Drill-down commande -> produit | handlers présents, valider/compléter le détail retard au clic |
+| Qualité -- volet "Suivi des analyses" par mail | la table couvre inspections/NCR ; le flux mail (Andréa -> parties prenantes) reste à câbler |
+| Graphs pilotés par le ruban + filtres "ligne 3" | à valider/affiner en visuel |
+| Gmail réel (PJ) + n8n | code prêt (Plan A/B), attend OAuth + credential + label |
+| Ingestion SUIVI MARITIME (ETD/ETA réels) | attend l'accès dossier transitaire ; `ot_transport` en mode dégradé (cache IMPORT) |
+| Archi DNS conditionnel (IP Azure) | différée ; l'IP fixe recassera à la prochaine maintenance Azure |
+
+---
+
+## Lot 3 -- enrichissements Sylob (avancement 25/06)
+
+### Acompte verse -- FAIT (source IMPORT, confirmee metier)
+- Table `achat.acompte` creee + `src/scripts/etl/enrich_acompte.py` (lecture Sylob 3 societes,
+  jointure `commande_numero_de_la_commande` = `po_number` zero-padde 8, dedoublonnage inter-societes).
+- **100 PO apparies** (14 GDD + 86 SE ; 1 collision Cie fusionnee).
+- ⚠️ **Au niveau COMMANDE, l'acompte = 0 pour tous nos PO import** (`commande_montant_de_l_acompte`
+  non renseigne). Des acomptes existent au niveau **FACTURE** (`vue_facture_achat.facture_montant_de_l_acompte`).
+- VERIFIE (25/06) : acompte VIDE pour nos PO aux niveaux commande, facture (via facture_id_commandeachat),
+  et avance fournisseur. Seul `frn_pourcentage_d_acompte` est rempli (POLITIQUE %, ex. 30%), pas un montant.
+  => Le montant REELLEMENT VERSE n'est pas dans le module Achat Sylob. A localiser cote compta/reglement
+  ou Excel Andrea. Option dispo : "acompte ATTENDU" = pct x total_ht (calculable, mais % rempli pour peu de frs).
+- RESOLU (25/06) : Marlene saisit les virements (acompte + solde) dans IMPORT 2026 (colonne 'Acompte').
+  -> transform_acompte + load_acompte (full-refresh achat.acompte depuis l'Excel ; enrich Sylob abandonne
+  pour le montant). 101 PO, 9 avec montant. Expose en colonne "Acompte ($)" dans Suivi commande.
+  Compta ne controle qu'au lettrage (fin de process).
+
+### CA fournisseur cumule -- FAIT
+- Table `achat.fournisseur_ca` + `src/scripts/etl/enrich_ca.py` (UNION 3 societes, SUM(commande_total_ht)
+  sur 3 ans glissants, mapping nom<->frn via le join PO). 24 fournisseurs enrichis.
+- Expose dans l'onglet Fournisseurs (colonne "CA 3 ans ($)"). Ex : HONGXING 4,35 M$, SURPASS 1,47 M$.
+- ⚠️ Limite : 2 noms Excel partageant 1 meme code Sylob (GUANGWEI / DIAMOND TRACK = frn 00001220)
+  recoivent le MEME CA (double-attribution). A arbitrer avec le metier (alias fournisseur ?).
+
+### Historique 3 dernieres commandes par article/fournisseur -- a faire
+- Calculable depuis achat.commande (date_commande, prix_unitaire) + extension Sylob si historique > IMPORT 2026.
+
+## Retours démo 2 -- équipe métier (25/06)
+
+Légende : [QW] quick win · [M] touche modèle/intégration · [DEC] décision requise.
+
+### Corrections de justesse (prioritaire)
+- [QW] **Retard cumulé** : `CURRENT_DATE - ETD` croît indéfiniment pour les commandes livrées (biais hérité de l'Excel =AUJOURDHUI). FUSEAU doit figer le retard à la livraison (date_livraison - ETD) et exclure les clôturées du "retard moyen fournisseur".
+- [DEC] **Montants en USD** : confirmer la devise source (PU import = USD ?) et tout afficher en dollars (montant exact).
+
+### Suivi commande
+- [QW] Afficher la **désignation article** (langage métier) ; tri par commande.
+- [QW] Différencier **EN RETARD en cours de livraison** vs **EN RETARD pas encore parti** (action possible : appeler TB China).
+- [M] Raisons des retards (champ commentaire via `commande_annotation`).
+- [chantier] Alertes imprévu majeur (grève, incident) ; notion de **chemin critique** + alerte.
+- Statut "réception de commande" = actif tant que le contrôle qualité n'est pas fini (quarantaine pendant inspection).
+
+### Qualité par produit
+- [QW] Colonne **N° inspection** (déjà en base : `ref_rapport`).
+- [QW] Colonne **N° de commande** (`po_number`, déjà en base).
+- [QW] Filtre **BAT** en plus de OK/FAIL.
+- [M] Clic sur **FAIL** -> ouvrir le rapport DEKRA dans le Drive (nom du fichier = N° inspection).
+- [M] Colonne **décision post-FAIL** (après branchement boîte mail).
+- [M] Statut **analyse labo** (taux chrome / dureté) conforme/non conforme -- rapport labo GDD par mail -> Drive, trié par commande, colonne à côté de MAT.
+
+### Prévisionnel / paiement
+- [DEC] Règle de **retard de paiement** : à clarifier (payer à l'ETD réel ?).
+- [DEC] Montant exact en **USD**.
+- [M] Vue **paiement par CONTENEUR** (paiement selon BL ; le paiement déclenche la libération douane). Afficher le(s) BL par conteneur + flag **promo** (urgence).
+- [M] Colonne **acompte versé** (source Sylob -- les fournisseurs réclament parfois le total en oubliant l'acompte).
+
+### Fournisseurs
+- [M] Bornage temporel + **CA réalisé** avec le fournisseur sur 3 ans (source à définir).
+- [QW/M] Historique prix : **3 dernières commandes**, filtre article ET fournisseur.
+
+### Nouveaux onglets
+- [chantier] **Article** : suivi achat par article (gère le changement de fournisseur).
+- [chantier] **Promo** : opé fidélité, promo, commande initiale nouveau client (ex. COSTCO).
+
+### Process / Gmail
+- Marlène est en copie mais **ne reçoit pas tout** ce qu'Andréa reçoit -> pour l'ingestion, cibler la boîte d'Andréa (ou délégation), sinon trous. Confirme la reco précédente.
+
+### Décisions (tranchees 25/06)
+1. **Devise** : les montants sont **deja en USD** -> afficher en $ (pas de conversion, juste relabel).
+2. **Accès Drive** : liste demandee a Andrea par mail (DEKRA, labo GDD, Suivi artworks, SUIVI MARITIME, Suivi analyses). En attente des liens.
+3. **Acompte** : source Sylob = `vue_commande_achat.commande_montant_de_l_acompte` (+ `_devise_societe`, `commande_pourcentage_d_acompte`), present dans les 3 societes :
+   `TARRERIAS_GENERALE_DE_DECOUPAGE_Achat` (GDD), `TARRERIAS_SE_TARRERIAS_BONJEAN_Achat` (SE), `TARRERIAS_TARRERIAS_BONJEAN_ET_CIE_Achat` (Cie).
+   -> UNION sur les 3 schemas + jointure par n° commande (meme cascade que enrich_from_sylob).
+4. **CA fournisseur** : = **achats cumules** par fournisseur/an, UNION des 3 societes Achat (vue_commande_achat), 3 ans glissants.
 
 ---
 
@@ -393,3 +473,4 @@ Emmanuelle crée le CODE ARTICLE dans Sylob  →  PK définitive
 | J4 -- Plugin Cowork v0 | S28 (10/07) | 3 skills opérationnels | ⏳ -- doit être fini avant S29 FORM |
 | J5 -- Intégration Gmail | S30 (24/07) | Cohérence mail ↔ BDD | ⏳ -- après S29 FORM |
 | **Deadline POC -- Andréa part le 31/07** | **31/07/2026 (S31)** | **Validation métier** | ⏳ -- deadline dure, Andréa absente après |
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           

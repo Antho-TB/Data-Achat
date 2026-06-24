@@ -133,7 +133,19 @@ def get_kpis():
     engine = get_engine()
     kpis: dict[str, Any] = {}
 
-    with engine.connect() as conn:
+    # DWH injoignable (VPN nomade non monte) : degrade proprement plutot que 500.
+    try:
+        conn_cm = engine.connect()
+    except Exception as e:
+        logger.warning("[ATTENTION] DWH injoignable au calcul des KPI (VPN ?) : %s", e)
+        return {
+            "db_offline": True,
+            "total_lignes": 0, "total_po": 0, "nb_fournisseurs": 0,
+            "lignes_en_retard": 0, "lignes_dans_delais": 0, "valeur_totale": 0,
+            "top_retards_fournisseurs": [],
+        }
+
+    with conn_cm as conn:
         try:
             r = conn.execute(text(f"""
                 WITH lignes AS (
@@ -142,6 +154,7 @@ def get_kpis():
                     FROM {SCHEMA}.commande c
                     LEFT JOIN {SCHEMA}.commande_annotation a
                         ON a.po_number = c.po_number AND a.code_article = c.code_article
+                    LEFT JOIN {SCHEMA}.acompte ac ON ac.po_number = c.po_number
                 )
                 SELECT
                     COUNT(*)                                          AS total_lignes,
@@ -270,19 +283,21 @@ def get_commandes(
                         c.eta, c.date_livraison,
                         {SQL_STATUT_RETARD}        AS statut_retard,
                         a.commentaire,
+                        ac.montant_acompte AS acompte,
                         -- Dernier evenement METIER : annotation ERP sinon date du statut
                         -- (c.updated_at = date du run ETL full-refresh, sans valeur metier)
                         COALESCE(a.updated_at::date, c.date_statut) AS derniere_maj
                     FROM {SCHEMA}.commande c
                     LEFT JOIN {SCHEMA}.commande_annotation a
                         ON a.po_number = c.po_number AND a.code_article = c.code_article
+                    LEFT JOIN {SCHEMA}.acompte ac ON ac.po_number = c.po_number
                 ) q
                 {where}
             """
             total = conn.execute(text(f"SELECT COUNT(*) {base}"), params).scalar()
             r = conn.execute(text(f"""
                 SELECT * {base}
-                ORDER BY date_etd ASC NULLS LAST
+                ORDER BY po_number ASC, code_article ASC
                 LIMIT :limit OFFSET :offset
             """), params)
             return {"data": rows_to_dicts(r), "total": int(total or 0),
@@ -354,10 +369,12 @@ def get_fournisseurs():
                         WHERE v.statut_retard = 'EN RETARD')          AS nb_retards,
                     ROUND(AVG(v.jours_retard) FILTER (
                         WHERE v.statut_retard = 'EN RETARD'), 0)      AS retard_moyen_jours,
-                    MAX(COALESCE(c.date_statut, c.date_commande))     AS derniere_activite
+                    MAX(COALESCE(c.date_statut, c.date_commande))     AS derniere_activite,
+                    MAX(ca.ca_3ans)                                   AS ca_3ans
                 FROM {SCHEMA}.commande c
                 LEFT JOIN {SCHEMA}.v_retard_article v
                     ON v.code_article = c.code_article AND v.fournisseur = c.fournisseur
+                LEFT JOIN {SCHEMA}.fournisseur_ca ca ON ca.fournisseur = c.fournisseur
                 WHERE c.fournisseur IS NOT NULL
                 GROUP BY c.fournisseur
                 ORDER BY nb_retards DESC, nb_po DESC
@@ -588,6 +605,50 @@ def get_qualite_fournisseurs():
         except Exception as e:
             if "does not exist" in str(e):
                 return {"data": [], "warning": "Vue v_qualite_fournisseur absente -- lancer l'ETL"}
+            raise internal_error(e)
+
+
+@app.get("/api/previsionnel/mesures")
+def get_previsionnel_mesures():
+    """Mesures previsionnelles par phase (achete/a payer/en inspection/parti/en retard/livre)
+    + ventilation par fournisseur. S'appuie sur la vue achat.v_previsionnel."""
+    engine = get_engine()
+    phases = [
+        ("achete", "est_achete"), ("a_payer", "est_a_payer"),
+        ("a_payer_en_retard", "est_a_payer_en_retard"),
+        ("en_inspection", "est_en_inspection"), ("parti", "est_parti"),
+        ("en_retard", "est_en_retard"), ("livre", "est_livre"),
+    ]
+    select_phase = ", ".join(
+        f"COUNT(*) FILTER (WHERE {col}) AS n_{key}, "
+        f"COALESCE(ROUND(SUM(montant) FILTER (WHERE {col}), 2), 0) AS m_{key}"
+        for key, col in phases
+    )
+    with engine.connect() as conn:
+        try:
+            row = conn.execute(text(f"SELECT {select_phase} FROM {SCHEMA}.v_previsionnel")).mappings().first()
+            mesures = [
+                {"phase": key, "count": int(row[f"n_{key}"] or 0), "montant": float(row[f"m_{key}"] or 0)}
+                for key, _ in phases
+            ]
+            frs = conn.execute(text(f"""
+                SELECT fournisseur,
+                       COUNT(*) FILTER (WHERE est_a_payer)       AS a_payer,
+                       COUNT(*) FILTER (WHERE est_en_inspection) AS en_inspection,
+                       COUNT(*) FILTER (WHERE est_parti)         AS parti,
+                       COUNT(*) FILTER (WHERE est_en_retard)     AS en_retard,
+                       COALESCE(ROUND(SUM(montant) FILTER (WHERE est_en_retard), 2), 0) AS montant_retard
+                FROM {SCHEMA}.v_previsionnel
+                WHERE fournisseur IS NOT NULL
+                GROUP BY fournisseur
+                ORDER BY en_retard DESC, montant_retard DESC
+                LIMIT 100
+            """))
+            return {"mesures": mesures, "par_fournisseur": rows_to_dicts(frs)}
+        except Exception as e:
+            if "does not exist" in str(e):
+                return {"mesures": [], "par_fournisseur": [],
+                        "warning": "Vue achat.v_previsionnel absente -- lancer l'ETL"}
             raise internal_error(e)
 
 

@@ -138,7 +138,13 @@ SELECT
     c.code_article,
     c.fournisseur,
     MAX(COALESCE(c.etd_reel, c.etd_confirme))                    AS date_etd,
-    CURRENT_DATE - MAX(COALESCE(c.etd_reel, c.etd_confirme))     AS jours_retard,
+    CASE
+        WHEN BOOL_AND(c.statut IN ('Livrée','Annulée'))
+            THEN MAX(c.date_livraison) - MAX(COALESCE(c.etd_reel, c.etd_confirme))
+        WHEN MAX(COALESCE(c.etd_reel, c.etd_confirme)) < CURRENT_DATE
+            THEN CURRENT_DATE - MAX(COALESCE(c.etd_reel, c.etd_confirme))
+        ELSE NULL
+    END                                                          AS jours_retard,
     CASE
         WHEN BOOL_AND(c.statut IN ('Livrée', 'Annulée'))                THEN 'CLOTUREE'
         WHEN MAX(COALESCE(c.etd_reel, c.etd_confirme)) < CURRENT_DATE   THEN 'EN RETARD'
@@ -170,6 +176,34 @@ CREATE TABLE IF NOT EXISTS achat.artwork (
 # Grain = 1 ligne PAR CONTENEUR. Source cible = 2026 SUIVI MARITIME.xlsx (feuille
 # CONTENEUR PLEIN) ; en attendant l'acces, bootstrap depuis les valeurs en cache
 # de achat.commande (dedup par n_conteneur). Cle de jointure = N Conteneur.
+# Acompte verse (source Sylob, 3 societes) -- joint par po_number. Les fournisseurs
+# reclament parfois le total en oubliant l'acompte deja verse (besoin metier).
+# Cle : commande_numero_de_la_commande (Sylob, 8 zero-padde) = po_number.
+DDL_ACOMPTE = """
+CREATE TABLE IF NOT EXISTS achat.acompte (
+    po_number            TEXT PRIMARY KEY,
+    societe              TEXT,
+    montant_acompte      NUMERIC,
+    pourcentage_acompte  NUMERIC,
+    net_a_payer          NUMERIC,
+    total_ht             NUMERIC,
+    charge_le            TIMESTAMPTZ DEFAULT now()
+);
+"""
+
+# CA fournisseur cumule (3 ans glissants) -- somme des achats Sylob par fournisseur,
+# UNION 3 societes. Mapping nom (achat.commande, texte) <-> frn_code via le join PO.
+# Montant en devise commande (USD pour imports). Besoin metier : poids du fournisseur.
+DDL_FOURNISSEUR_CA = """
+CREATE TABLE IF NOT EXISTS achat.fournisseur_ca (
+    fournisseur   TEXT PRIMARY KEY,
+    frn_codes     TEXT,
+    ca_3ans       NUMERIC,
+    nb_commandes  INTEGER,
+    charge_le     TIMESTAMPTZ DEFAULT now()
+);
+"""
+
 DDL_OT_TRANSPORT = """
 CREATE TABLE IF NOT EXISTS achat.ot_transport (
     n_conteneur      TEXT PRIMARY KEY,
@@ -218,9 +252,12 @@ def create_tables_if_not_exist(engine: Engine) -> None:
         conn.execute(text(DDL_COMMANDE_ANNOTATION))
         conn.execute(text(DDL_ARTWORK))
         conn.execute(text(DDL_OT_TRANSPORT))
+        conn.execute(text(DDL_ACOMPTE))
+        conn.execute(text(DDL_FOURNISSEUR_CA))
         conn.execute(text(DDL_QUALITE))
         conn.execute(text(DDL_V_RETARD_ARTICLE))
         conn.execute(text(DDL_V_QUALITE_FOURNISSEUR))
+        conn.execute(text(DDL_V_PREVISIONNEL))
     try:
         with engine.begin() as conn:
             conn.execute(text(GRANTS_PLATFORM_TEAM))
@@ -451,3 +488,62 @@ def load_qualite(df: pd.DataFrame, engine: Engine) -> int:
     count = len(df)
     logger.info("[SUCCÈS] Qualite chargee : %d lignes.", count)
     return count
+
+
+# Vue PREVISIONNEL par ligne -- phases d'avancement d'une commande import.
+# Joint commande + qualite (pour "en inspection") sans alterer le modele. Montant
+# ligne = PU*qte (jamais total_prix, qui est un SUMIF par PO). ETD effectif =
+# reel sinon confirme. Repond au besoin demo : acheté / a payer / en inspection /
+# parti / en retard / livré, declinable par fournisseur/produit.
+DDL_V_PREVISIONNEL = """
+CREATE OR REPLACE VIEW achat.v_previsionnel AS
+SELECT
+    c.id, c.po_number, c.code_article, c.fournisseur, c.designation, c.statut,
+    COALESCE(c.etd_reel, c.etd_confirme)                         AS etd_eff,
+    c.eta, c.date_livraison, c.date_paiement,
+    CASE WHEN c.code_article IS NULL THEN COALESCE(c.total_prix, 0)
+         ELSE COALESCE(c.prix_unitaire * c.quantite, 0) END      AS montant,
+    (c.statut <> 'Annulée')                                      AS est_achete,
+    (c.date_paiement IS NULL AND c.statut <> 'Annulée')          AS est_a_payer,
+    (q.date_inspection IS NOT NULL
+        AND c.statut NOT IN ('Livrée','Annulée'))                AS est_en_inspection,
+    (c.statut = 'En cours de livraison'
+        OR (COALESCE(c.etd_reel, c.etd_confirme) <= CURRENT_DATE
+            AND c.date_livraison IS NULL
+            AND c.statut NOT IN ('Livrée','Annulée')))           AS est_parti,
+    (COALESCE(c.etd_reel, c.etd_confirme) < CURRENT_DATE
+        AND c.date_livraison IS NULL
+        AND c.statut NOT IN ('Livrée','Annulée'))                AS est_en_retard,
+    (c.statut = 'Livrée')                                        AS est_livre,
+    TO_CHAR(COALESCE(c.etd_reel, c.etd_confirme), 'YYYY-MM')      AS mois_etd,
+    (c.date_paiement IS NULL
+        AND COALESCE(c.etd_reel, c.etd_confirme) < CURRENT_DATE
+        AND c.statut <> 'Annulée')                               AS est_a_payer_en_retard
+FROM achat.commande c
+LEFT JOIN achat.qualite q
+    ON q.po_number = c.po_number AND q.code_article = c.code_article;
+"""
+
+
+def load_acompte(df: "pd.DataFrame", engine: Engine) -> int:
+    """
+    Full-refresh de achat.acompte depuis l'IMPORT (source officielle metier).
+
+    Remplace l'enrichissement Sylob (montant absent cote ERP) : la verite est dans
+    la colonne Acompte de l'IMPORT 2026, saisie par Marlene.
+
+    Args:
+        df: DataFrame issu de transform_acompte().
+        engine: SQLAlchemy engine PostgreSQL.
+    Returns:
+        Nombre de lignes inserees.
+    """
+    if df.empty:
+        logger.warning("[ATTENTION] DataFrame acompte vide -- rien a charger.")
+        return 0
+    logger.info("[INFO] Chargement acompte (full-refresh) : %d PO...", len(df))
+    with engine.begin() as conn:
+        conn.execute(text("TRUNCATE TABLE achat.acompte;"))
+        df.to_sql("acompte", conn, schema="achat", if_exists="append", index=False, method="multi")
+    logger.info("[SUCCÈS] Acompte charge : %d PO.", len(df))
+    return len(df)
