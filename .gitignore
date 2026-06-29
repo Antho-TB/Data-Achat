@@ -4,6 +4,7 @@ config/*.env
 config/credentials.json
 *.pem
 *.key
+deploy/*deploy_key
 
 # Python
 __pycache__/
