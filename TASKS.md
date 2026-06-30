@@ -90,7 +90,7 @@
 > **Une seule source de vérité par fichier — ne pas brancher Drive + serveur sur la même table.**
 
 - [ ] **Onglet Artwork** ← `LIS-CON-28-0 Suivi des artworks-import` (gsheet `1FTr2nl…J4Jrc`, Drive *Design et Achat*). Clé = Référence. Filtrer les lignes #N/A.
-- [ ] **Onglet Prévisionnel/Retards** ← `SUIVI MARITIME TARRERIAS 2026` (gsheet `1hP73oiv…ccfW` / serveur `TRANSITAIRE`) → table `achat.ot_transport`. Clé = CONTENEUR. ⚠ exploser COMMANDE multi-PO ("/"), parser dates mois anglais sans année, 2 colonnes ETA, ignorer le calendrier hebdo en bas. **Débloque le calcul retard sur ETA réel.**
+- [~] **Onglet Prévisionnel/Retards** ← `SUIVI MARITIME TARRERIAS 2026` (gsheet `1hP73oiv…ccfW` / serveur `TRANSITAIRE`) → table `achat.ot_transport`. **PROFILÉ 30/06** (lu via connecteur Drive) → `docs/profil_suivi_maritime.md` (structure, mapping, 7 gotchas). RESTE : trancher source de vérité (gsheet vs serveur) puis coder `transform_suivi_maritime` + brancher sur le loader. Clé = CONTENEUR. **Débloque le calcul retard sur ETA réel** (vues déjà câblées sur ot_transport).
 - [ ] **Onglet Qualité** ← 3 sources : `SUIVI DES ANALYSES` (gsheet `1lE9te1…Jzi-c`, Drive *Qualité et achat*, clé Ref+PO FRS) → `achat.qualite` ; Inspections DEKRA + Analyses labo GDD (Drive *Purchasing department* / serveur `ANALYSES ET INSPECTIONS`) → lien rapport depuis statut FAIL.
 - [ ] Choisir Drive vs serveur par fichier et figer la source de vérité dans le code ETL.
 
