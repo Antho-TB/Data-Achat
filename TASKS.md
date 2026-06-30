@@ -25,8 +25,8 @@
 - [x] Téléchargement réel validé : 23 PDF QUALITAIR (BL, embarquement, packing, factures, DAU) dans data/PJ
 - [x] ✅ **BOUT EN BOUT PROUVÉ** : lecture `BL-SZSE2606480` → PO 00017281/00017639, conteneur TGBU2004021,
       ETD (on board) 05/06/2026, Bonly → GDD, Shekou → Fos-sur-Mer. Le PO (absent des corps de mail) EST dans la PJ.
-- [ ] Parseur PDF dédié (BL / confirmation d'embarquement → JSON : n_bl, n_conteneur, po_number, etd_reel, eta)
-- [ ] Mapper vers achat.commande (UPDATE par PO) — d'abord en base TEST dtpf_sylob_test
+- [~] Parseur PDF dédié — **scaffold livré** `src/scripts/gmail/parse_bl.py` (texte pdfplumber + fallback OCR, regex conteneur/BL/ETD/ETA/PO, 11 tests OK sur fixture). RESTE : valider/affiner les regex sur un **vrai BL QUALITAIR** (data/PJ poste Marlène) + installer binaires OCR (tesseract+poppler) + exploiter la docx organisation PJ d'Andréa.
+- [ ] Mapper → **`achat.ot_transport`** (UPSERT par n_conteneur, pattern A) — PAS achat.commande. Brancher le JSON de `parse_bl` sur le loader ot_transport ; tester d'abord en base TEST `dtpf_sylob_test`.
 - [ ] Élargir périmètre expéditeurs (dekra.com, TB China) + gérer l'OCR pour les PDF scannés
 - [ ] Documenter la **liste expéditeurs/domaines fournisseurs** comme paramètre de config `--query` (risque : expéditeur absent = mail ignoré silencieusement) ; réparer le label auto plus tard
 
