@@ -1,13 +1,14 @@
 # ERP Achat TB Groupe -- dependances unifiees (ETL + API)
 # Install : pip install -r requirements.txt
-# Poste Marlene : memes versions epinglees que le poste Antho (parite garantie)
+# Poste Marlene : parite garantie via uv lock (cible). NB 30/06 : sqlalchemy 2.0.30
+# casse en Python 3.13 (poste Marlene) -> plage >=2.0.36,<2.1 + venv 3.11 visee.
 
 # ETL
 pandas>=2.0.0
 openpyxl>=3.1.0
 
 # DB
-sqlalchemy==2.0.30
+sqlalchemy>=2.0.36,<2.1
 psycopg2-binary>=2.9.10
 
 # API

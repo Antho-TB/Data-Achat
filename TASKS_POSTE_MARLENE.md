@@ -29,11 +29,16 @@
 
 ## 2. À faire PAR Antho quand il prend le poste
 
-- [ ] **Run pipeline Gmail (PJ)** — VPN actif :
+- [ ] **Run pipeline Gmail (PJ → ot_transport)** — VPN actif :
   ```
   python -m src.scripts.gmail.fetch_attachments --query "from:<expéditeur>"   # le filtre par label NE marche pas
+  python -m src.scripts.gmail.parse_bl --folder data/PJ --out data/PJ/_parsed.json
+  python -m src.scripts.gmail.load_ot_gmail --file data/PJ/_parsed.json --dry-run   # vérifier
+  python -m src.scripts.gmail.load_ot_gmail --file data/PJ/_parsed.json             # COMMIT
   ```
-  → dépôt des PDF dans `data/PJ`. Liste expéditeurs/domaines = paramètre de config (sinon mail ignoré silencieusement).
+  → dépôt PDF dans `data/PJ`, parsing BL, upsert `achat.ot_transport`. Liste expéditeurs/domaines = param de config (sinon mail ignoré silencieusement).
+- [ ] **Installer l'OCR** (BL scannés) : `tesseract-ocr` + langue `fra` + `poppler` (binaires système) ; libs Python déjà dans `requirements-gmail.txt`. Sans OCR, les BL images ressortent vides.
+- [ ] **Valider/affiner le parseur** `parse_bl` sur un vrai BL QUALITAIR de `data/PJ` (regex calées sur l'exemple documenté seulement).
 - [ ] **Vérifier le profil Cowork** : ton/email + connecteurs Drive/Agenda.
 - [ ] **Élargir périmètre expéditeurs** : ajouter `dekra.com`, TB China au `--query`.
 - [ ] Récupérer ce que Marlène a rempli (xlsx correspondance, sondage PJ) → reverser dans le repo / l'ETL.

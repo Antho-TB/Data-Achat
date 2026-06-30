@@ -125,6 +125,21 @@ python -m src.scripts.gmail.apply_etd_eta --data '<json [{"po_number":"...","etd
 > Annotations métier (raisons de retard, notes) → table `achat.commande_annotation`
 > (déjà ouverte à platform_team), pas dans `achat.commande`.
 
+### Chaîne outillée (scripts du repo — à privilégier au snippet ci-dessus)
+
+Le snippet est la référence pédagogique ; en pratique on utilise les scripts versionnés :
+
+```powershell
+# 1) Parser les BL PDF (data/PJ) -> JSON expédition (texte + OCR fallback)
+python -m src.scripts.gmail.parse_bl --folder data/PJ --out data/PJ/_parsed.json
+# 2) Upsert dans achat.ot_transport (--dry-run d'abord, puis sans pour COMMIT)
+python -m src.scripts.gmail.load_ot_gmail --file data/PJ/_parsed.json --dry-run
+python -m src.scripts.gmail.load_ot_gmail --file data/PJ/_parsed.json
+# 3) etd_confirme niveau PO (corps de mail) -> achat.commande
+python -m src.scripts.gmail.apply_etd_eta --data '<json [{"po_number":"...","etd_confirme":"..."}]>'
+```
+OCR (PDF scannés) : nécessite **tesseract-ocr (+ fra)** et **poppler** installés sur le poste.
+
 ## Étape 4 — Tâche planifiée
 
 Via le skill `schedule` : `0 8-18/2 * * 1-5` (toutes les 2h, heures ouvrées).
