@@ -1,7 +1,7 @@
 # Plan d'action -- Système Data-Achat TB Groupe
 
 > Issu de la réunion de cadrage · 2026-06-01  
-> Mis à jour : **2026-06-23** (session FUSEAU : onglets Qualité + Prévisionnel enrichi, base peuplée)  
+> Mis à jour : **2026-06-30** (session FUSEAU : contrainte UNIQUE vérifiée prod + fix lignes de frais ; voir État 30/06). Précédent : 23/06 (onglets Qualité + Prévisionnel enrichi).  
 > Périmètre : Achats Import · Utilisateurs finaux : Andréa, Marlène, Olivier, Eric, Charles, David, Jonatan, Julia, Emmanuelle
 
 ---
@@ -413,6 +413,35 @@ Emmanuelle crée le CODE ARTICLE dans Sylob  →  PK définitive
 | Kit déploiement poste Marlène (`platform_team`, X-API-Key, `marlene.env`) | ✅ |
 | Modèle de données v0.2 (ADR `achat.commande_annotation`, `v_retard_article`, artwork 734 articles) | ✅ |
 | **Plugin Cowork installé** (skills `achat-gmail-dwh`, `achatanalyser-mail`, `achatcircuit-a/b`, `achatsuivi-commande`, `achathistorique-prix`) | ✅ poste Marlène |
+
+---
+
+## État d'avancement -- 2026-06-30 (session FUSEAU)
+
+> Reverse des sessions 25/06 → 30/06, jusque-là suivies dans `TASKS.md`.
+> ⚙️ **Tâches opérationnelles courantes : voir `TASKS.md` (source vivante).** Ce plan = vue stratégique (phases, jalons, circuits).
+
+### ✅ Fait depuis le 23/06
+
+| Livrable | Détail |
+|---------|--------|
+| Déploiement poste Marlène | Terminé 29/06. `/api/health` → `write_enabled:true`, DWH connecté. |
+| Gmail Plan A prouvé **bout-en-bout** | `BL-SZSE2606480` → PO 00017281/00017639, conteneur TGBU2004021, ETD 05/06. 23 PDF QUALITAIR téléchargés. OAuth + filtrage `--query` expéditeur (le label Gmail ne s'applique pas). |
+| Contrainte `uq_commande_po_article UNIQUE (po_number, code_article)` | ✅ **déjà en prod** (vérifiée psql 30/06). Le « bloquant à créer » des notes précédentes était **périmé**. |
+| Fix lignes de frais sans REF | `code_article` NULL (molding fee MEN 25081) échappait à la contrainte (NULL distinct en Postgres). → code synthétique `FRAIS-<slug(designation)>`. UPDATE prod 3 lignes (id 634-636) + patch `transform_commande` (full-refresh idempotent). |
+| Git réconcilié | merge `origin/main` (commit Marlène) + push 30/06. |
+| Plugin Cowork `dwh-achat` | postgres-mcp read-only (lecture DWH depuis Cowork). |
+| Dette env | Décision : venv Python 3.11 sur les 2 postes + bump `SQLAlchemy>=2.0.36,<2.1` ; migration vers `uv`. |
+
+### 🔴 Décision ouverte -- write-path Gmail vs full-refresh Excel
+
+`achat.commande` est **full-refresh** (TRUNCATE+INSERT) par l'ETL Excel. Le snippet upsert du skill `achat-gmail-dwh` (`INSERT … ON CONFLICT (po_number, code_article)`) est en tension avec ça :
+
+- les lignes **INSÉRÉES** par Gmail sont **effacées au prochain run Excel** ;
+- les lignes de frais sans REF → `code_article` NULL → `ON CONFLICT` ne matche jamais → **doublons à chaque run Gmail** (le patch `transform_commande` ne couvre QUE l'ETL Excel ; le chemin Gmail est du code séparé) ;
+- le snippet insère une colonne **`source`** qui **n'existe pas** dans le DDL réel → il planterait `column "source" does not exist` (jamais exécuté contre la vraie table).
+
+→ **Modèle propre** : Gmail = **UPDATE par PO** (comme `apply_etd_eta.py`), pas INSERT. INSERT réservé au seul cas où Gmail devient source de lignes neuves (à trancher). Le snippet du skill est à retravailler avant d'activer la tâche planifiée Gmail.
 
 ---
 

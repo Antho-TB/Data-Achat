@@ -388,6 +388,26 @@ def transform_commande(df_import: pd.DataFrame) -> pd.DataFrame:
     if avant - len(result):
         logger.warning("[ATTENTION] %d lignes écartées (PO# manquant)", avant - len(result))
 
+    # Lignes de frais sans REF (molding fee, etc. -- "/" dans le fichier) : on leur
+    # attribue un code_article synthétique DÉTERMINISTE dérivé de la désignation.
+    # Sans ça, code_article NULL échappe à la contrainte UNIQUE (po_number,
+    # code_article) -- PostgreSQL traite NULL comme distinct -- et l'upsert futur
+    # (Gmail ON CONFLICT) réinsère des doublons. Règle miroir du fix SQL prod
+    # 2026-06-30 : 'FRAIS-' || upper(regexp_replace(trim(desig),'[^a-zA-Z0-9]+','-')).
+    frais = result["code_article"].isna() & result["designation"].notna()
+    if frais.any():
+        result.loc[frais, "code_article"] = (
+            "FRAIS-"
+            + result.loc[frais, "designation"].astype(str).str.strip()
+            .str.replace(r"[^a-zA-Z0-9]+", "-", regex=True)
+            .str.strip("-")
+            .str.upper()
+        )
+        logger.info(
+            "[INFO] %d ligne(s) de frais sans REF -> code_article synthétique FRAIS-*",
+            int(frais.sum()),
+        )
+
     # Dédoublonner sur la clé métier (po_number, code_article) -- décision plan
     # d'action 2026-06 : on garde la dernière occurrence (la plus récente dans
     # le fichier). Prérequis de la contrainte UNIQUE uq_commande_po_article.

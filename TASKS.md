@@ -37,11 +37,21 @@
 - [] Normalisation des PO (les PO mail ne matchent pas tels quels) + table fournisseurs
 - [ ] 1er write réel (en base de TEST d'abord — voir échelon 3)
 
-## ⚠️ BLOQUANT run Gmail (écriture) — depuis poste Antho admin + VPN
+## ✅ Contrainte UNIQUE + lignes de frais — RÉSOLU (30/06, vérifié prod)
 
-- [ ] Créer la contrainte `UNIQUE (po_number, code_article)` sur achat.commande (dédoublonnage `ctid` d'abord).
-      Le skill achat-gmail-dwh écrit en `ON CONFLICT (po_number, code_article)` → plante sans elle.
-      (apply_etd_eta.py fait des `UPDATE WHERE po_number` → indépendant de la contrainte.)
+- [x] Contrainte `uq_commande_po_article UNIQUE (po_number, code_article)` **déjà en prod** (vérifiée psql 30/06 ; l'ancien « à créer » était périmé). 636 lignes, 0 doublon (po, article) non-null.
+- [x] Lignes de frais sans REF (molding fee MEN 25081) : `code_article` NULL échappait à la contrainte (NULL distinct en Postgres). → code synthétique `FRAIS-<slug(designation)>`. UPDATE prod 3 lignes (id 634-636) + patch `transform_commande` (règle miroir) pour full-refresh idempotent.
+- [ ] **Porter la même règle dans le write-path Gmail** (voir décision ci-dessous) — le patch `transform.py` ne couvre QUE l'ETL Excel.
+
+### 🔴 Décision — write-path Gmail vs full-refresh Excel
+
+`achat.commande` = full-refresh (TRUNCATE+INSERT) par l'ETL Excel. Le snippet upsert du skill `achat-gmail-dwh` (`INSERT … ON CONFLICT`) est en tension :
+
+- lignes INSÉRÉES par Gmail = effacées au prochain run Excel ;
+- frais sans REF → `code_article` NULL → `ON CONFLICT` ne matche pas → doublons à chaque run Gmail ;
+- le snippet insère une colonne **`source` qui n'existe pas** dans le DDL réel → planterait `column "source" does not exist`.
+
+→ Modèle propre : Gmail **UPDATE par PO** (comme `apply_etd_eta.py`), pas INSERT. INSERT réservé au cas où Gmail crée des lignes neuves. À trancher + retravailler le snippet du skill avant d'activer la tâche planifiée Gmail.
 
 ## AiOps — environnements & GitHub
 
