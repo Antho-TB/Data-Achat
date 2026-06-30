@@ -433,15 +433,22 @@ Emmanuelle crée le CODE ARTICLE dans Sylob  →  PK définitive
 | Plugin Cowork `dwh-achat` | postgres-mcp read-only (lecture DWH depuis Cowork). |
 | Dette env | Décision : venv Python 3.11 sur les 2 postes + bump `SQLAlchemy>=2.0.36,<2.1` ; migration vers `uv`. |
 
-### 🔴 Décision ouverte -- write-path Gmail vs full-refresh Excel
+### ✅ Décision actée (30/06) -- write-path Gmail = pattern A (zone découplée)
 
-`achat.commande` est **full-refresh** (TRUNCATE+INSERT) par l'ETL Excel. Le snippet upsert du skill `achat-gmail-dwh` (`INSERT … ON CONFLICT (po_number, code_article)`) est en tension avec ça :
+Contexte : `achat.commande` est full-refresh (TRUNCATE+INSERT). Coupler l'enrichissement Gmail à cette table = fragile, surtout que la **source de base va migrer Excel → DWH Sylob V25** (voir infra ci-dessous). Décision :
 
-- les lignes **INSÉRÉES** par Gmail sont **effacées au prochain run Excel** ;
-- les lignes de frais sans REF → `code_article` NULL → `ON CONFLICT` ne matche jamais → **doublons à chaque run Gmail** (le patch `transform_commande` ne couvre QUE l'ETL Excel ; le chemin Gmail est du code séparé) ;
-- le snippet insère une colonne **`source`** qui **n'existe pas** dans le DDL réel → il planterait `column "source" does not exist` (jamais exécuté contre la vraie table).
+- Gmail (BL : `n_conteneur, n_bl, etd_reel, eta, transitaire`) → **UPSERT `achat.ot_transport`** (PK `n_conteneur`, déjà upsert, survit au full-refresh). `source_fichier='gmail'`. Jamais d'INSERT/UPDATE direct dans `achat.commande`.
+- Lecture : `v_previsionnel` + `v_retard_article` font un `LEFT JOIN ot_transport` et `COALESCE(ot.etd_reel, c.etd_reel)` / `COALESCE(ot.eta, c.eta)` → **BL/maritime prioritaire** (décision source de vérité 30/06).
+- Split : `etd_confirme` (niveau ordre) reste côté `commande` ; `etd_reel`/`eta` (expédition) = zone `ot_transport`.
+- `apply_etd_eta.py` repointé vers `ot_transport` ; snippet `SKILL.md` réécrit (suppr. INSERT commande + colonne `source` fantôme → `source_fichier`).
 
-→ **Modèle propre** : Gmail = **UPDATE par PO** (comme `apply_etd_eta.py`), pas INSERT. INSERT réservé au seul cas où Gmail devient source de lignes neuves (à trancher). Le snippet du skill est à retravailler avant d'activer la tâche planifiée Gmail.
+Statut : implémentation en cours (code repo + `CREATE OR REPLACE` des 2 vues). ADR à classer dans `decisions_log/`.
+
+### 🆕 Infra -- nouveau DWH Sylob V25 (dispo 30/06, cible source de vérité)
+
+- Serveur `SRV-ERP-DATA` **192.168.102.41:5432** (≠ ancien on-prem `192.168.102.21:**5433**`), PostgreSQL 16, DB `tarrerias_production_dwh`, user `dataviz-admin` (même mdp que l'actuel). VPN Stormshield requis.
+- ETL perso (Guillaume) : **Enseigne, Gamme, mappings client/centrale** livrés sur SE (`tarrerias_se_tarrerias_bonjean`) — 2 des 8 concepts manquants comblés ; GDD/CIE à suivre.
+- Impact Data-Achat : future source des lignes `achat.commande` (remplace l'IMPORT Excel transitoire). Le pattern A garantit que l'enrichissement Gmail survit à cette bascule.
 
 ---
 

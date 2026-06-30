@@ -64,6 +64,8 @@
 
 ## ⏳ À FAIRE — MARLÈNE (laissé par Antho, 29/06)
 
+> 📌 Centralisé et tenu à jour dans **`TASKS_POSTE_MARLENE.md`** (tout ce qui se fait depuis son poste).
+
 1. **Accepter l'invitation GitHub** (mail de noreply@github.com « Antho-TB invited you »)
    → créer un compte GitHub avec `achat.import@tb-groupe.fr`, puis accepter.
 2. **Remplir le tableau de correspondance fournisseurs** : `Correspondance_Fournisseurs_FUSEAU.xlsx`.

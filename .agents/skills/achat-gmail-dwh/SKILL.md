@@ -48,13 +48,26 @@ get_thread → corps de chaque fil
 Appliquer le skill `achatanalyser-mail` : type (commande/suivi/livraison/prix), champs
 structurés, incohérences vs base. Agréger en liste JSON.
 
-## Étape 3 — Écrire dans le DWH (DDL réel + auth .env)
+## Étape 3 — Écrire dans le DWH (pattern A : zone découplée)
 
-Script à exécuter via PowerShell local. **Colonnes alignées sur le DDL réel** :
-`etd_confirme` / `etd_reel` / `eta` (PAS `date_etd`), pas de colonne `type_mail`.
+> ⚠️ **Ne JAMAIS écrire les données d'expédition Gmail dans `achat.commande`.** Cette table
+> est full-refresh (TRUNCATE+INSERT) par l'ETL Excel — et sa source de base migre vers le
+> DWH Sylob V25. Tout INSERT/UPDATE direct y serait effacé au prochain run. Décision 30/06.
+
+Découpage des données extraites des mails :
+
+| Donnée | Niveau | Cible | Mécanisme |
+|--------|--------|-------|-----------|
+| `n_conteneur`, `n_bl`, `etd_reel`, `eta`, `transitaire`, `n_facture`, `lieu_livraison` | Expédition (BL) | **`achat.ot_transport`** (PK `n_conteneur`) | UPSERT `ON CONFLICT (n_conteneur)` |
+| `etd_confirme` | Ordre (corps de mail, niveau PO) | `achat.commande` | `apply_etd_eta.py` (UPDATE par PO) |
+
+Les vues `v_previsionnel` / `v_retard_article` fusionnent les deux (`COALESCE(ot.etd_reel, c.etd_reel, c.etd_confirme)` — BL prioritaire), donc la donnée Gmail pilote le prévisionnel sans toucher la table de base.
+
+Script à exécuter via PowerShell local. **Colonnes alignées sur le DDL réel d'`achat.ot_transport`**
+(provenance via `source_fichier`, PAS `source` qui n'existe pas) :
 
 ```python
-# achat_gmail_load.py — v2, lit les credentials depuis config/.env via Config
+# achat_gmail_ot.py — upsert ot_transport (zone expédition), credentials via Config
 import json, sys, logging
 import pandas as pd
 from sqlalchemy import create_engine, text
@@ -73,34 +86,40 @@ engine = create_engine(URL.create(
     query={"sslmode": cfg.pg_sslmode},
 ))
 
-data = json.loads(sys.argv[1])
+data = json.loads(sys.argv[1])           # [{"n_conteneur": "...", "n_bl": "...", "etd_reel": "...", "eta": "...", ...}]
 df = pd.DataFrame(data)
 
-# UPSERT sur (po_number, code_article) — colonnes réelles du DDL achat.commande
+# UPSERT par n_conteneur — COALESCE pour ne pas écraser un champ existant avec un NULL
 with engine.begin() as conn:
     for _, row in df.iterrows():
+        if not str(row.get("n_conteneur", "")).strip():
+            logger.warning("Ligne ignorée (n_conteneur manquant) : %s", row.to_dict())
+            continue
         conn.execute(text("""
-            INSERT INTO achat.commande
-                (po_number, code_article, fournisseur, prix_unitaire, quantite,
-                 etd_confirme, etd_reel, eta, source, updated_at)
+            INSERT INTO achat.ot_transport
+                (n_conteneur, n_bl, etd_reel, eta, transitaire, n_facture,
+                 lieu_livraison, source_fichier, charge_le)
             VALUES
-                (:po_number, :code_article, :fournisseur, :prix_unitaire, :quantite,
-                 :etd_confirme, :etd_reel, :eta, 'gmail', NOW())
-            ON CONFLICT (po_number, code_article) DO UPDATE SET
-                prix_unitaire = EXCLUDED.prix_unitaire,
-                etd_confirme  = COALESCE(EXCLUDED.etd_confirme, achat.commande.etd_confirme),
-                etd_reel      = COALESCE(EXCLUDED.etd_reel,      achat.commande.etd_reel),
-                eta           = COALESCE(EXCLUDED.eta,           achat.commande.eta),
-                source        = 'gmail',
-                updated_at    = NOW()
-        """), row.to_dict())
+                (:n_conteneur, :n_bl, :etd_reel, :eta, :transitaire, :n_facture,
+                 :lieu_livraison, 'gmail', NOW())
+            ON CONFLICT (n_conteneur) DO UPDATE SET
+                n_bl           = COALESCE(EXCLUDED.n_bl,           achat.ot_transport.n_bl),
+                etd_reel       = COALESCE(EXCLUDED.etd_reel,       achat.ot_transport.etd_reel),
+                eta            = COALESCE(EXCLUDED.eta,            achat.ot_transport.eta),
+                transitaire    = COALESCE(EXCLUDED.transitaire,    achat.ot_transport.transitaire),
+                n_facture      = COALESCE(EXCLUDED.n_facture,      achat.ot_transport.n_facture),
+                lieu_livraison = COALESCE(EXCLUDED.lieu_livraison, achat.ot_transport.lieu_livraison),
+                source_fichier = 'gmail',
+                charge_le      = NOW()
+        """), {k: row.get(k) for k in
+               ("n_conteneur","n_bl","etd_reel","eta","transitaire","n_facture","lieu_livraison")})
 
-logger.info("[SUCCES] %d lignes upsert dans achat.commande", len(df))
+logger.info("[SUCCES] %d conteneur(s) upsert dans achat.ot_transport", len(df))
 ```
 
-Appel PowerShell :
+Pour l'`etd_confirme` niveau PO (corps de mail, sans conteneur) :
 ```powershell
-python C:\Users\<marlene>\dev\Data-Achat\achat_gmail_load.py '<json_data>'
+python -m src.scripts.gmail.apply_etd_eta --data '<json [{"po_number":"...","etd_confirme":"..."}]>'
 ```
 
 > Annotations métier (raisons de retard, notes) → table `achat.commande_annotation`

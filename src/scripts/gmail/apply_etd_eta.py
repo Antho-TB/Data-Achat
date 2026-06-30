@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
 """
 =============================================================================
-PREMIER WRITE GMAIL -> achat.commande : ENRICHISSEMENT ETD / ETA (niveau PO)
+WRITE GMAIL -> achat.commande : ENRICHISSEMENT ETD CONFIRMÉ (niveau PO / ordre)
 =============================================================================
 
-Écrit UNIQUEMENT des données fiables extraites du CORPS des mails fournisseurs :
-ETD confirmé / ETD réel / ETA, au niveau PO (UPDATE de tous les articles du PO).
+Pattern A (décision 30/06) — séparation des zones :
+- `etd_confirme` (niveau ORDRE, corps de mail) -> achat.commande, UPDATE par PO. <- CE SCRIPT.
+- `etd_reel` / `eta` / `n_bl` / `n_conteneur` (niveau EXPÉDITION, BL) -> achat.ot_transport
+  (UPSERT par n_conteneur, survit au full-refresh). Voir le skill achat-gmail-dwh.
+Les vues v_previsionnel / v_retard_article fusionnent les deux (BL prioritaire).
 
 Périmètre volontairement restreint (POC) :
 - pas de création de ligne (UPDATE seulement) ;
 - pas de prix/quantité par article (granularité article = PDF/jointure DB, hors périmètre) ;
-- traçabilité : source='gmail' + updated_at=NOW().
+- traçabilité : updated_at=NOW() (achat.commande n'a pas de colonne 'source').
 
 Auth : config/.env via Config (PG_USER=platform_team, KEY_VAULT_NAME vide).
 Connexion : réutilise app.database.get_engine() (pattern URL.create du projet).
@@ -22,10 +25,10 @@ Usage (depuis la racine du projet, VPN actif) :
     python -m src.scripts.gmail.apply_etd_eta --data "<json>"        # COMMIT réel
 
 Format JSON attendu (liste) :
-    [{"po_number": "00176529", "etd_confirme": "2026-07-29", "eta": "2026-09-07"},
-     {"po_number": "00179321", "etd_reel": "2026-08-02"}]
-Champs date acceptés : etd_confirme, etd_reel, eta (ISO YYYY-MM-DD). Seuls les
-champs présents sont mis à jour ; les autres ne sont pas touchés.
+    [{"po_number": "00176529", "etd_confirme": "2026-07-29"},
+     {"po_number": "00179321", "etd_confirme": "2026-08-02"}]
+Champ date accepté : etd_confirme (ISO YYYY-MM-DD). etd_reel / eta relèvent désormais
+de la zone expédition (achat.ot_transport) — voir le skill achat-gmail-dwh.
 """
 import argparse
 import json
@@ -43,7 +46,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("apply_etd_eta")
 
-ALLOWED_DATE_FIELDS = ("etd_confirme", "etd_reel", "eta")
+# Pattern A : ce script ne touche QUE l'ordre (etd_confirme) sur achat.commande.
+# etd_reel / eta -> achat.ot_transport (zone expédition, skill achat-gmail-dwh).
+ALLOWED_DATE_FIELDS = ("etd_confirme",)
 
 
 def check() -> int:
