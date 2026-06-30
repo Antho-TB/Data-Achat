@@ -26,7 +26,18 @@
 - [ ] Vérifier profil ton/email : `C:\Users\mmontbrizon\Desktop\Claude\Utility\profil_ton_email_marlene.md`
 - [ ] Vérifier connecteurs Drive/Agenda pointent sur ses comptes
 
+## Branchement sources réelles Andréa (mail 25/06 — cibles par onglet)
+
+> Accès Drive ET serveur `\\Srv-files-pom\partage\ADA\METIER\SUIVI CDES IMPORT\2026\`.
+> Serveur = source faisant foi (MAJ manuelle Andréa, AD+VPN) ; Drive = copie pour itérer vite (POC).
+> **Une seule source de vérité par fichier — ne pas brancher Drive + serveur sur la même table.**
+
+- [ ] **Onglet Artwork** ← `LIS-CON-28-0 Suivi des artworks-import` (gsheet `1FTr2nl…J4Jrc`, Drive *Design et Achat*). Clé = Référence. Filtrer les lignes #N/A.
+- [ ] **Onglet Prévisionnel/Retards** ← `SUIVI MARITIME TARRERIAS 2026` (gsheet `1hP73oiv…ccfW` / serveur `TRANSITAIRE`) → table `achat.ot_transport`. Clé = CONTENEUR. ⚠ exploser COMMANDE multi-PO ("/"), parser dates mois anglais sans année, 2 colonnes ETA, ignorer le calendrier hebdo en bas. **Débloque le calcul retard sur ETA réel.**
+- [ ] **Onglet Qualité** ← 3 sources : `SUIVI DES ANALYSES` (gsheet `1lE9te1…Jzi-c`, Drive *Qualité et achat*, clé Ref+PO FRS) → `achat.qualite` ; Inspections DEKRA + Analyses labo GDD (Drive *Purchasing department* / serveur `ANALYSES ET INSPECTIONS`) → lien rapport depuis statut FAIL.
+- [ ] Choisir Drive vs serveur par fichier et figer la source de vérité dans le code ETL.
+
 ## Hors périmètre immédiat (rappel)
 
 - PJ Gmail (PDF proforma/BL) : Plan A `fetch_attachments` (OAuth) / Plan B n8n — non couvert par le connecteur Cowork
-- Ingestion SUIVI MARITIME (ETD/ETA réels) : attend accès dossier transitaire
+- ~~Ingestion SUIVI MARITIME (ETD/ETA réels) : attend accès dossier transitaire~~ → **levé le 25/06** (Andréa a partagé l'accès, voir section branchement ci-dessus)
