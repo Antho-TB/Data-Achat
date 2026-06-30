@@ -18,16 +18,12 @@
 
 ---
 
-## 1. À faire PAR Marlène (laissé en autonomie)
+## 1. ✅ Initialisation poste Marlène — RÉGLÉ (obsolète, conservé pour archive)
 
-- [ ] **Accepter l'invitation GitHub** (mail noreply@github.com « Antho-TB invited you ») → créer un compte avec `achat.import@tb-groupe.fr`, puis accepter. Débloque le push collaboratif.
-- [ ] Remplir **`Correspondance_Fournisseurs_FUSEAU.xlsx`** (mapping noms fournisseurs Excel ↔ code Sylob — résout les double-attributions CA type GUANGWEI/DIAMOND TRACK).
-- [ ] Remplir **`Sondage_Organisation_PJ_FUSEAU.docx`** (organisation des pièces jointes Gmail).
-- [ ] **Consentement Gmail** (1 fois, ouvre le navigateur) :
-  ```
-  python -m src.scripts.gmail.fetch_attachments --dry-run
-  ```
-  → se connecter `achat.import@tb-groupe.fr`, autoriser (lecture seule). Liste les PJ, ne télécharge rien.
+- [x] Invitation GitHub acceptée (compte `achat.import@tb-groupe.fr`).
+- [x] `Correspondance_Fournisseurs_FUSEAU.xlsx` traitée.
+- [x] **Organisation des PJ** : sondage complété **par Andréa JAMET** (`a.jamet@tb-groupe.fr`, Assistante Achats), reçu le 30/06 — doc `Sondage_Organisation_PJ_FUSEAU.docx` en PJ du mail « Re: » à `achat.import`. ⏩ **À exploiter** : règles de nommage/rangement des PJ pour le parseur BL (lire la docx sur le poste Marlène).
+- [x] Consentement Gmail effectué (token en cache).
 
 ---
 
