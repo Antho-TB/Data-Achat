@@ -229,6 +229,7 @@ def fetch_attachments(
     cfg: GmailConfig,
     since: str | None = None,
     dry_run: bool = False,
+    query_override: str | None = None,
 ) -> FetchStats:
     """
     Parcourt les messages du label cible et télécharge les PJ pertinentes.
@@ -245,9 +246,10 @@ def fetch_attachments(
     stats = FetchStats()
 
     effective_since = since or cfg.default_since
-    # Filtre Gmail : label + a une PJ + après la date. Le label isole le périmètre
-    # Achats ; has:attachment évite de pomper toute la boîte.
-    query = f"label:{cfg.label} has:attachment after:{effective_since.replace('-', '/')}"
+    # Base du filtre : soit une requête libre (--query, ex. ciblage par expéditeur),
+    # soit le label configuré. Dans les deux cas on ajoute has:attachment + after.
+    base = query_override.strip() if query_override else f"label:{cfg.label}"
+    query = f"{base} has:attachment after:{effective_since.replace('-', '/')}"
     logger.info("[INFO] Requête Gmail : %s", query)
     if dry_run:
         logger.info("[INFO] Mode DRY-RUN -- aucun fichier ne sera écrit")
@@ -377,6 +379,10 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fetch des PJ Gmail Achats TB Groupe")
     parser.add_argument("--since", help="Date basse YYYY-MM-DD (défaut : manifeste/config)")
     parser.add_argument(
+        "--query",
+        help="Requête Gmail libre (remplace le label), ex. 'from:qualitairsea.com'",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Liste les PJ candidates sans télécharger ni écrire le manifeste",
@@ -388,7 +394,7 @@ def main() -> None:
     args = _parse_args()
     cfg = GmailConfig.from_env()
     logger.info("[INFO] Label=%s | Destination=%s", cfg.label, cfg.pj_dir)
-    fetch_attachments(cfg, since=args.since, dry_run=args.dry_run)
+    fetch_attachments(cfg, since=args.since, dry_run=args.dry_run, query_override=args.query)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,8 @@
 config/*.env
 !config/.env.example
 config/credentials.json
+config/client_secret*.json
+config/token.json
 *.pem
 *.key
 deploy/*deploy_key
@@ -48,3 +50,7 @@ Service_Achat/
 
 # Données brutes (volumineuses / sensibles)
 data/
+
+# Artefacts temporaires de synchronisation (OneDrive / éditions)
+*.tmp
+*.tmp.*

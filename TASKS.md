@@ -1,30 +1,75 @@
 # TASKS — FUSEAU / Data-Achat
 
-> Suivi déploiement poste Marlène + branchement Gmail. Maj 2026-06-29.
+> Suivi déploiement poste Marlène + branchement Gmail + sources Andréa. Maj 2026-06-30.
 > Runbook : `docs/20260629_FUSEAU_DeploiementPosteMarlene_Cowork_v1.md`
 
-## Déploiement poste Marlène (en cours)
+## Déploiement poste Marlène ✅ TERMINÉ (29/06)
 
-- [ ] git clone/pull + `pip install -r requirements.txt`
-- [ ] `config\.env` renseigné (platform_team, KEY_VAULT_NAME vide)
-- [ ] VPN Stormshield + `python run_api.py` → `/api/health` (db connected, write_enabled)
-- [ ] GRANT INSERT/UPDATE platform_team sur achat.commande (depuis poste Antho, admin) — `sql/20260629_grant_platform_team_commande.sql`
+- [x] Dossier sur C:\Users\mmontbrizon\Documents\Claude\Data-Achat
+- [x] `config\.env` aligné (platform_team, KEY_VAULT_NAME vide ; creds perso Antho retirés)
+- [x] `pip install -r requirements.txt` (+ SQLAlchemy remonté en 2.0.51 pour Python 3.13)
+- [x] `/api/health` = db connected, **write_enabled:true**
+- [x] GRANT INSERT/UPDATE platform_team sur achat.commande (via Antigravity)
 
-## Branchement Gmail (connecteur Cowork — boîte Marlène)
+> ⚠️ Dette technique : poste en Python 3.13, requirements épingle sqlalchemy==2.0.30 (cassé en 3.13).
+> Décision 30/06 : venv Python 3.11 sur les 2 postes + bump `SQLAlchemy>=2.0.36,<2.1` ; migrer vers `uv` (gère version Python + lock). Docker = au passage serveur.
 
-- [ ] Label Gmail `Achats/Fournisseurs` + filtre auto expéditeurs
-- [ ] Réinstaller skill `achat-gmail-dwh` corrigé — `docs/20260629_FUSEAU_SkillCorrige_achat-gmail-dwh.md`
-- [ ] 1er run MANUEL du pipeline (contrôle lignes écrites + incohérences)
-- [ ] Tâche planifiée 2h (`0 8-18/2 * * 1-5`) après validation
-- [ ] Mesurer PO IMPORT sans fil retrouvé chez Marlène → arbitrer accès Andréa avant 31/07
+## Plan A — PJ Gmail (récupération des PDF) ✅ PRÊT côté technique (29/06)
+
+- [x] Gmail API activée (projet GCP DataAchat / org tb-groupe)
+- [x] OAuth ID client « Application de bureau » → `config\credentials.json` (validé type installed)
+- [x] Librairies Gmail installées (`requirements-gmail.txt`)
+- [x] Secrets protégés (.gitignore : credentials.json, client_secret*, token.json)
+- [x] Consentement Google fait (token.json en cache)
+- [x] Requête par EXPÉDITEUR (option `--query` ajoutée ; le filtre par label ne marchait pas — labels non appliqués)
+- [x] Téléchargement réel validé : 23 PDF QUALITAIR (BL, embarquement, packing, factures, DAU) dans data/PJ
+- [x] ✅ **BOUT EN BOUT PROUVÉ** : lecture `BL-SZSE2606480` → PO 00017281/00017639, conteneur TGBU2004021,
+      ETD (on board) 05/06/2026, Bonly → GDD, Shekou → Fos-sur-Mer. Le PO (absent des corps de mail) EST dans la PJ.
+- [ ] Parseur PDF dédié (BL / confirmation d'embarquement → JSON : n_bl, n_conteneur, po_number, etd_reel, eta)
+- [ ] Mapper vers achat.commande (UPDATE par PO) — d'abord en base TEST dtpf_sylob_test
+- [ ] Élargir périmètre expéditeurs (dekra.com, TB China) + gérer l'OCR pour les PDF scannés
+- [ ] Documenter la **liste expéditeurs/domaines fournisseurs** comme paramètre de config `--query` (risque : expéditeur absent = mail ignoré silencieusement) ; réparer le label auto plus tard
+
+## Write ETD/ETA → achat.commande (échelon 4, après test env)
+
+- [x] Script `src/scripts/gmail/apply_etd_eta.py` (modes --check / --dry-run / --file)
+- [x] Voie d'écriture validée (Windows PowerShell + platform_team) ; dry-run OK
+- [] Normalisation des PO (les PO mail ne matchent pas tels quels) + table fournisseurs
+- [ ] 1er write réel (en base de TEST d'abord — voir échelon 3)
+
+## ⚠️ BLOQUANT run Gmail (écriture) — depuis poste Antho admin + VPN
+
+- [ ] Créer la contrainte `UNIQUE (po_number, code_article)` sur achat.commande (dédoublonnage `ctid` d'abord).
+      Le skill achat-gmail-dwh écrit en `ON CONFLICT (po_number, code_article)` → plante sans elle.
+      (apply_etd_eta.py fait des `UPDATE WHERE po_number` → indépendant de la contrainte.)
+
+## AiOps — environnements & GitHub
+
+- [ ] **GitHub (échelon 2)** : pousser le travail validé. Identité Git réglée (Marlène),
+      .tmp nettoyés. Bloqué tant que Marlène n'a pas accepté l'invitation collaborateur.
+      → on garde l'invitation, on abandonne la clé de déploiement.
+- [ ] **Env de test (échelon 3)** : base `dtpf_sylob_test` existe → créer `config/.env.test`
+      + garde-fou anti-prod. Tester les writes là avant la prod.
+- [ ] Réconcilier avec ce qu'Antigravity a poussé (`.agents/AGENTS.md`) avant tout push.
+
+## ⏳ À FAIRE — MARLÈNE (laissé par Antho, 29/06)
+
+1. **Accepter l'invitation GitHub** (mail de noreply@github.com « Antho-TB invited you »)
+   → créer un compte GitHub avec `achat.import@tb-groupe.fr`, puis accepter.
+2. **Remplir le tableau de correspondance fournisseurs** : `Correspondance_Fournisseurs_FUSEAU.xlsx`.
+3. **Remplir le sondage organisation des PJ** : `Sondage_Organisation_PJ_FUSEAU.docx`.
+4. **Lancer le consentement Gmail** (une fois, ouvre le navigateur) :
+   ```
+   cd C:\Users\mmontbrizon\Documents\Claude\Data-Achat
+   python -m src.scripts.gmail.fetch_attachments --dry-run
+   ```
+   → se connecter avec `achat.import@tb-groupe.fr`, autoriser (lecture seule). Liste les PJ, ne télécharge rien.
 
 ## Config Cowork Marlène
 
-- [x] Plugin achat-gmail-pipeline installé
-- [x] Connecteur Gmail connecté
-- [x] CLAUDE.md projet présent
-- [ ] Vérifier profil ton/email : `C:\Users\mmontbrizon\Desktop\Claude\Utility\profil_ton_email_marlene.md`
-- [ ] Vérifier connecteurs Drive/Agenda pointent sur ses comptes
+- [x] Plugin achat-gmail-pipeline installé (+ skill achat-gmail-dwh corrigé v0.2.0)
+- [x] Connecteur Gmail connecté · CLAUDE.md projet présent
+- [ ] Vérifier profil ton/email + connecteurs Drive/Agenda
 
 ## Branchement sources réelles Andréa (mail 25/06 — cibles par onglet)
 
@@ -36,6 +81,14 @@
 - [ ] **Onglet Prévisionnel/Retards** ← `SUIVI MARITIME TARRERIAS 2026` (gsheet `1hP73oiv…ccfW` / serveur `TRANSITAIRE`) → table `achat.ot_transport`. Clé = CONTENEUR. ⚠ exploser COMMANDE multi-PO ("/"), parser dates mois anglais sans année, 2 colonnes ETA, ignorer le calendrier hebdo en bas. **Débloque le calcul retard sur ETA réel.**
 - [ ] **Onglet Qualité** ← 3 sources : `SUIVI DES ANALYSES` (gsheet `1lE9te1…Jzi-c`, Drive *Qualité et achat*, clé Ref+PO FRS) → `achat.qualite` ; Inspections DEKRA + Analyses labo GDD (Drive *Purchasing department* / serveur `ANALYSES ET INSPECTIONS`) → lien rapport depuis statut FAIL.
 - [ ] Choisir Drive vs serveur par fichier et figer la source de vérité dans le code ETL.
+
+## Décisions actées
+
+- (29/06) Lecture seule sur Gmail (pas de label posé ; ingestion tracée côté DWH).
+- (29/06) Source Excel : copie FIGÉE pour le POC, bascule prod en dernière minute.
+- (29/06) Write-path Gmail : écriture directe dans achat.commande (droits platform_team étendus).
+- (29/06) Boîte cible : Marlène pour l'instant ; arbitrer accès Andréa avant 31/07.
+- (30/06) Runtime Python figé en 3.11 (venv → uv) ; filtrage Gmail par `--query` expéditeur (label KO).
 
 ## Hors périmètre immédiat (rappel)
 
