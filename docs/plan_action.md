@@ -43,6 +43,7 @@ Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'run_api|sp
 
 **Branchement poste Marlène + Gmail (Plan A)**
 - [ ] Exécuter le runbook OAuth : `docs/20260622_FUSEAU_RunbookOAuthGmail_v1.md` (projet GCP → Gmail API → consent Internal → client desktop → `credentials.json`).
+- [ ] Installer **Tesseract OCR** sur le poste (requis pour `load_qualite_analyse_ocr.py` en routine — cf. pilote SPECTRO 02/07, `docs/plan_action.md` item #7).
 - [ ] Créer le label Gmail **`Achats/Fournisseurs`** (+ filtre auto sur expéditeurs) -- ou ajuster `GMAIL_LABEL`.
 - [ ] `pip install -r requirements-gmail.txt` puis `python -m src.scripts.gmail.fetch_attachments --dry-run` (consentement Marlène).
 - [ ] Vérifier le dépôt des PJ, puis run sans `--dry-run`.
@@ -368,6 +369,17 @@ Emmanuelle crée le CODE ARTICLE dans Sylob  →  PK définitive
 | 7 | Drive TB/GDD (Inspection + Results of analysis) | `achat.qualite_doc` (index) + `achat.qualite_analyse` (mesures) | Lien FAIL→rapport (index) ; chrome (mesures) | Moyen (index) / Élevé (mesures, OCR) | ✅ **PILOTE 02/07** — index : 8 fichiers / 2 PO (`load_qualite_doc_drive.py`). Mesures chrome : 8/8 extraites via OCR (`load_qualite_analyse_ocr.py`) — **découverte** : les PDF SPECTRO n'ont aucune couche texte (0 caractère, 234 images/page), l'hypothèse "texte natif" du profil source était fausse. Pipeline : render 300dpi (pdfplumber) + tesseract, validé par recoupement (13.36% CA183435 = valeur de référence connue, 8 dates OCR strictement croissantes). `hardness_hrc`/`conformite` restent NULL (non fiables avec cet OCR généraliste, à ne pas deviner). Passage à l'échelle (~48 PO TB + GDD) : étendre `RECORDS` des deux scripts ou crawler le serveur `ANALYSES ET INSPECTIONS` directement en prod. |
 
 **Transverse** : chaque champ ci-dessus doit être audité contre Sylob (table `tarrerias_production_dwh`) — cf. `docs/modele_semantique.md` (colonne « existe dans Sylob ? »).
+
+---
+
+## Suites pilote Drive qualité — arbitrages 02/07
+
+> Décisions prises avec Antho suite au pilote OCR SPECTRO (item #7 ci-dessus).
+
+1. **[FAIT 02/07 — code] Accès Drive en prod → API Google Drive (GCP)**, pas le connecteur MCP (session interactive uniquement, ne scale pas). Pas besoin de service account/domain-wide delegation : le client OAuth "Internal" du Plan A Gmail (déjà en place) peut porter un scope supplémentaire `drive.readonly` — réutilisation actée après audit (`src/utils/google_auth.py`, scopes partagés Gmail+Drive, un seul `token.json`). Script `src/scripts/etl/crawl_drive_qualite.py` créé : parcourt un dossier racine Drive (`DRIVE_QUALITE_ROOT_ID`) → dossiers PO → sous-dossiers `Inspection`/`Results of analysis` → PDF, parse `po_number`/`stade`/`ref_rapport`/`echantillon` par regex (dérivées du pilote manuel 8 fichiers), upsert `achat.qualite_doc` (réutilise le `load()` de `load_qualite_doc_drive.py`). **Reste à faire (actions non-délégables) : (a)** activer "Google Drive API" dans la console GCP du projet existant, **(b)** supprimer `config/token.json` et relancer un script pour re-consentir sur les 2 scopes, **(c)** renseigner `DRIVE_QUALITE_ROOT_ID` dans `config/.env`. Limite connue : `composant` (manche/tartineur/couperet...) n'est pas extrait automatiquement (texte libre trop variable) — reste NULL, contrairement au pilote manuel.
+2. **[DEC] Priorité inversée sur l'extraction qualité** : ce qui compte réellement pour le service Achats, c'est la **décision finale conforme/non conforme**, pas la valeur brute du chrome (%). `cr_pct` reste utile en traçabilité mais n'est pas la donnée à exploiter en premier. → Si un budget OCR ciblé doit être investi, le prioriser sur le champ **`Conformity`** (case à cocher/image sur le rapport, cf. limite documentée dans `load_qualite_analyse_ocr.py`) plutôt que sur `hardness_hrc`.
+3. **[DEC] Timing création code article — à valider avec le service Achats** : retour d'Emmanuelle — la demande de création de code article (par Design ou Commerce) arrive **assez tôt** dans le process réel (pas aussi tardive que schématisé en Circuit A2 §306). Pas perçu comme critique par Emmanuelle. **Action** : valider avec Andréa/Marlène **quelles données circulent déjà** au moment de cette demande (avant même la création du code article), pour vérifier si le modèle `achat.*` doit capter un état "pré-code-article" plus riche. Non urgent, mais à traiter avant le départ d'Andréa (31/07) si on veut son input.
+4. **[FAIT — à planifier] Tesseract sur le poste de Marlène** : si le pipeline OCR SPECTRO doit tourner en routine (pas juste un pilote en session Claude), installer Tesseract OCR sur le poste qui exécutera `load_qualite_analyse_ocr.py` en prod. Ajouté à la checklist déploiement poste Marlène (cf. section dédiée ci-dessous).
 
 ---
 

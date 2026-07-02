@@ -25,8 +25,14 @@ Prérequis (à faire une fois, demain sur le poste cible) :
   1. Console Google Cloud > activer l'API Gmail sur un projet.
   2. Créer un identifiant OAuth "Application de bureau" > télécharger credentials.json.
   3. Déposer credentials.json dans config/ (chemin GMAIL_CREDENTIALS_PATH).
-  4. Premier lancement : un navigateur s'ouvre, Marlène consent (scope lecture seule),
-     un token.json est mis en cache pour les exécutions suivantes (tâche planifiée).
+  4. Premier lancement : un navigateur s'ouvre, Marlène consent (scopes lecture
+     seule Gmail + Drive, cf. src/utils/google_auth.py), un token.json est mis
+     en cache pour les exécutions suivantes (tâche planifiée).
+
+Note 02/07 : le scope a été étendu (+ drive.readonly, cf. crawl_drive_qualite.py)
+pour réutiliser le même client OAuth. Si un token.json Gmail-only existe déjà
+(généré avant cette date), le supprimer et relancer un script pour redéclencher
+un consentement complet sur les 2 scopes.
 
 Usage :
   python -m src.scripts.gmail.fetch_attachments --dry-run        # liste sans télécharger
@@ -50,9 +56,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Scope minimal : lecture seule. On ne demande JAMAIS plus que nécessaire
-# (principe du moindre privilège -- une PJ se lit, elle ne s'écrit pas côté Gmail).
-GMAIL_SCOPES: list[str] = ["https://www.googleapis.com/auth/gmail.readonly"]
+# Scopes partages Gmail + Drive (src/utils/google_auth.py) -- un seul client
+# OAuth "Internal" porte les deux, un seul token.json, un seul consentement
+# Marlene. Ajoute le 02/07 pour le crawl Drive qualite (crawl_drive_qualite.py) ;
+# ne change rien au comportement Gmail existant (le scope gmail.readonly y est
+# toujours, en lecture seule).
+from src.utils.google_auth import SCOPES as GMAIL_SCOPES  # noqa: E402
 
 # Extensions de PJ pertinentes pour les Achats (on ignore les signatures images,
 # logos inline, etc. qui polluent sans valeur métier).
@@ -135,33 +144,11 @@ def build_service(cfg: GmailConfig):
     Raises:
         FileNotFoundError: Si credentials.json est absent (prérequis non rempli).
     """
-    from google.auth.transport.requests import Request
-    from google.oauth2.credentials import Credentials
-    from google_auth_oauthlib.flow import InstalledAppFlow
     from googleapiclient.discovery import build
 
-    creds: Credentials | None = None
-    if cfg.token_path.exists():
-        creds = Credentials.from_authorized_user_file(str(cfg.token_path), GMAIL_SCOPES)
+    from src.utils.google_auth import get_credentials
 
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            logger.info("[INFO] Token expiré -- rafraîchissement silencieux")
-            creds.refresh(Request())
-        else:
-            if not cfg.credentials_path.exists():
-                raise FileNotFoundError(
-                    f"credentials.json introuvable : {cfg.credentials_path}. "
-                    "Voir les prérequis OAuth en tête de fichier."
-                )
-            logger.info("[INFO] Consentement OAuth requis -- ouverture du navigateur")
-            flow = InstalledAppFlow.from_client_secrets_file(
-                str(cfg.credentials_path), GMAIL_SCOPES
-            )
-            creds = flow.run_local_server(port=0)
-        cfg.token_path.write_text(creds.to_json(), encoding="utf-8")
-        logger.info("[SUCCÈS] Token mis en cache : %s", cfg.token_path)
-
+    creds = get_credentials(cfg.credentials_path, cfg.token_path)
     return build("gmail", "v1", credentials=creds, cache_discovery=False)
 
 
