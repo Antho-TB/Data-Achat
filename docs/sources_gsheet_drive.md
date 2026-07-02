@@ -20,9 +20,9 @@
 - **Organisation Drive :** `Purchasing department / Purchasing orders / {TB|GDD} / PO <po>-<desc>-<frn>-<date>/` puis `Inspection/` (DEKRA, #1) et `Results of analysis/<stade> samples/` (labo, #2). Racine TB profilée : `1R3NdXoVGNT7vnaJsLLEPrOZvUp1mjzV0`.
 - **Prod (source faisant foi) :** serveur `\\Srv-files-pom\...\ANALYSES ET INSPECTIONS`.
 - **Convention de nommage** : `PO181325 SP lg herit fromage 3 p éch1 couperet DK CA183435.pdf` → PO (sans zéros de tête) / stade (MAT/SP/BAT) / produit-lot / n° échantillon / composant / DEKRA / réf rapport (`CA...`, clé de jointure).
-- **#2 analyses labo :** texte natif extractible (sortie instrument SPECTRO/AMETEK, pas d'OCR) — `Hardness (HRC)`, `Cr` (chrome %) + éléments, conformité alimentarité (décret 1976), `Sample Name`.
+- **#2 analyses labo :** ⚠️ correction 02/07 — l'hypothèse initiale « texte natif extractible, pas d'OCR » était **fausse** : les PDF SPECTRO/AMETEK n'ont aucune couche texte (0 caractère, 234 images/page, vérifié pdfplumber). OCR obligatoire (render 300dpi + tesseract). `Cr` (chrome %) fiablement extractible (position fixe dans le tableau, validé par recoupement contre une valeur de référence connue) ; `Hardness (HRC)` et la conformité alimentarité (décret 1976) ne sont pas capturés de façon fiable par un OCR généraliste — laissés NULL plutôt que devinés.
 - **#1 DEKRA :** format non confirmé (dossier vide sur le PO échantillonné) — probable scan → OCR si besoin un jour.
-- **Décision retenue :** `achat.qualite_doc` (index rapports, lien FAIL→PDF via `drive_url`) + `achat.qualite_analyse` (mesures labo extraites : `hardness_hrc`, `cr_pct`, `conformite`). Lien vue Qualité : `achat.qualite` ↔ `qualite_doc` par `po_number` + `ref_rapport`.
+- **Décision retenue :** `achat.qualite_doc` (index rapports, lien FAIL→PDF via `drive_url`, pilote 8 fichiers/2 PO) + `achat.qualite_analyse` (chrome extrait par OCR, pilote 8/8). Pipeline : `load_qualite_doc_drive.py` + `load_qualite_analyse_ocr.py`. Lien vue Qualité : `achat.qualite` ↔ `qualite_doc` par `po_number` + `ref_rapport`.
 
 ## #5 — Suivi des analyses (facturation labo)
 
