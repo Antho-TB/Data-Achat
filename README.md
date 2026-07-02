@@ -7,6 +7,17 @@ DWH Azure PostgreSQL (`achat.*`), API FastAPI + frontend, alimentation email-fir
 > **Statut :** POC en cours (deadline métier 31/07/2026). Ne pas industrialiser
 > avant validation. Coordination : e.georgeon@tb-groupe.fr (Supply Chain).
 
+## Contexte métier
+
+Le service Achats (Andréa) tient un fichier Excel qui concentre une donnée à
+forte valeur (fournisseurs, prix, délais, qualité) mais reste un shadow IT
+difficile à exploiter en aval (ex. contrôle qualité magasiniers). Le principe
+retenu : capter cette donnée **sans imposer de conduite du changement à
+Andréa** (elle continue d'utiliser son Excel/gsheet tel quel) tout en la
+rendant fiable et interrogeable côté DWH. FUSEAU est le pont provisoire ;
+l'objectif final est de réintégrer cette donnée nativement dans Sylob (API en
+écriture / champs personnalisés), pas de maintenir un datastore parallèle.
+
 ## Démarrage rapide
 
 ```
@@ -27,6 +38,9 @@ Vérifier avant toute démo : http://127.0.0.1:5050/api/health → `write_enable
 | Workflow n8n PJ Gmail | http://192.168.102.36:5678/workflow/j2HdoDnRAFgG81w2 |
 | Plan d'action | `docs/plan_action.md` |
 | Runbook OAuth Gmail | `docs/20260622_FUSEAU_RunbookOAuthGmail_v1.md` |
+| Déploiement poste Marlène + Gmail | `docs/20260629_FUSEAU_DeploiementPosteMarlene_Cowork_v1.md` |
+| Schéma machine-readable `achat.*` | `docs/achat_schema.yaml` |
+| Sources gsheet/Drive (artworks, qualité, maritime) | `docs/sources_gsheet_drive.md` |
 
 ## Commandes
 
@@ -87,6 +101,9 @@ deploy/n8n/     workflow n8n (Plan B)
 docs/           plan d'action, runbook, analyses Excel
 config/         .env (non commité)
 ```
+
+Historique (analyses/déploiements superseded, décisions déjà tranchées et
+implémentées) : `05_ARCHIVES/Versions_Anterieures/`.
 
 ## Standards
 
