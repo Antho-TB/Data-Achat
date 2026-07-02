@@ -22,9 +22,14 @@ l'objectif final est de réintégrer cette donnée nativement dans Sylob (API en
 
 ```
 cd C:\Users\abezille\dev\Data-Achat
-pip install -r requirements.txt        # une fois
-python run_api.py                       # lance l'ERP -> http://127.0.0.1:5050
+uv venv --python 3.11 .venv311                                              # une fois
+uv pip install --python .venv311\Scripts\python.exe -r requirements.txt -r requirements-gmail.txt
+.venv311\Scripts\python.exe run_api.py                                     # lance l'ERP -> http://127.0.0.1:5050
 ```
+
+Python 3.11 (cible standard, cf. `CLAUDE.md`) via `.venv311` (uv) — migré le
+02/07 depuis l'interpréteur global 3.13. `uv` télécharge et gère l'interpréteur
+3.11 lui-même, pas besoin de l'installer séparément.
 
 Laisser la fenêtre ouverte. **VPN Stormshield requis** (accès DWH Azure).
 Vérifier avant toute démo : http://127.0.0.1:5050/api/health → `write_enabled: true`.
@@ -45,10 +50,10 @@ Vérifier avant toute démo : http://127.0.0.1:5050/api/health → `write_enable
 ## Commandes
 
 ```
-python -m src.scripts.etl.pipeline                 # ETL complet (Excel/Sylob -> DWH)
-python -m src.scripts.etl.pipeline --dry-run       # extract+transform sans écriture DB
-python -m src.scripts.gmail.fetch_attachments --dry-run   # fetch PJ Gmail (Plan A)
-pytest src/tests/                                  # tests unitaires Transform
+.venv311\Scripts\python.exe -m src.scripts.etl.pipeline                 # ETL complet (Excel/Sylob -> DWH)
+.venv311\Scripts\python.exe -m src.scripts.etl.pipeline --dry-run       # extract+transform sans écriture DB
+.venv311\Scripts\python.exe -m src.scripts.gmail.fetch_attachments --dry-run   # fetch PJ Gmail (Plan A)
+.venv311\Scripts\python.exe -m pytest src\tests -q                     # tests unitaires
 ```
 
 ## Architecture
