@@ -1,0 +1,1502 @@
+genere_le: '2026-07-02T10:43:32.872149+00:00'
+schema_postgres: achat
+base: dtpf_sylob_prod
+avertissement: 'Structure SQL auto-introspectee (toujours fiable) ; role/source/Sylob
+  issus de TABLE_META (maintenu a la main, cf. docs/modele_semantique.md). FUSEAU
+  est un POC : ces tables ont vocation a etre reintegrees dans Sylob.'
+tables:
+  acompte:
+    role: Acompte verse par PO
+    grain: PO
+    source_captation: IMPORT (col Acompte)
+    existe_dans_sylob: non -- aucune table acompte dans Finances/Achat (verifie V25)
+      ; conditions de reglement existent (a_conditionreglement) mais pas le montant
+      verse
+    cles:
+      PRIMARY KEY:
+      - po_number
+    colonnes:
+    - name: po_number
+      type: text
+      nullable: false
+      default: null
+    - name: societe
+      type: text
+      nullable: true
+      default: null
+    - name: montant_acompte
+      type: numeric
+      nullable: true
+      default: null
+    - name: pourcentage_acompte
+      type: numeric
+      nullable: true
+      default: null
+    - name: net_a_payer
+      type: numeric
+      nullable: true
+      default: null
+    - name: total_ht
+      type: numeric
+      nullable: true
+      default: null
+    - name: charge_le
+      type: timestamp with time zone
+      nullable: true
+      default: now()
+  article_cycle_vie:
+    role: Cycle de vie articles Carrefour (arret/en cours)
+    grain: article
+    source_captation: IMPORT 2026 / STOP REF CARREFOUR (copie figee mars 2026)
+    existe_dans_sylob: non
+    cles:
+      PRIMARY KEY:
+      - code_article
+    colonnes:
+    - name: code_article
+      type: text
+      nullable: false
+      default: null
+    - name: fournisseur
+      type: text
+      nullable: true
+      default: null
+    - name: designation
+      type: text
+      nullable: true
+      default: null
+    - name: quantite_en_commande
+      type: integer
+      nullable: true
+      default: null
+    - name: statut
+      type: text
+      nullable: true
+      default: null
+    - name: ean13
+      type: text
+      nullable: true
+      default: null
+    - name: source_fichier
+      type: text
+      nullable: true
+      default: null
+    - name: charge_le
+      type: timestamp without time zone
+      nullable: true
+      default: now()
+  article_nomenclature:
+    role: Nomenclature composant+packaging+gamme+HS
+    grain: article
+    source_captation: Matrice TB Import.xlsx
+    existe_dans_sylob: partiel, largement oui -- voir docs/20260702_audit_champs_sylob_v25.md
+    cles:
+      PRIMARY KEY:
+      - code_article
+    colonnes:
+    - name: code_article
+      type: text
+      nullable: false
+      default: null
+    - name: description_fr
+      type: text
+      nullable: true
+      default: null
+    - name: description_en
+      type: text
+      nullable: true
+      default: null
+    - name: fournisseur
+      type: text
+      nullable: true
+      default: null
+    - name: date_creation
+      type: date
+      nullable: true
+      default: null
+    - name: gamme
+      type: text
+      nullable: true
+      default: null
+    - name: lot_vrac
+      type: text
+      nullable: true
+      default: null
+    - name: nb_piece
+      type: integer
+      nullable: true
+      default: null
+    - name: ean13
+      type: text
+      nullable: true
+      default: null
+    - name: ean14_spcb
+      type: text
+      nullable: true
+      default: null
+    - name: ean14_pcb
+      type: text
+      nullable: true
+      default: null
+    - name: hs_code
+      type: text
+      nullable: true
+      default: null
+    - name: epaisseur_mm
+      type: numeric
+      nullable: true
+      default: null
+    - name: longueur_mm
+      type: numeric
+      nullable: true
+      default: null
+    - name: poids_g
+      type: numeric
+      nullable: true
+      default: null
+    - name: matiere_lame
+      type: text
+      nullable: true
+      default: null
+    - name: chrome_pct
+      type: numeric
+      nullable: true
+      default: null
+    - name: finition
+      type: text
+      nullable: true
+      default: null
+    - name: matiere_manche
+      type: text
+      nullable: true
+      default: null
+    - name: pantone_manche
+      type: text
+      nullable: true
+      default: null
+    - name: marquage
+      type: text
+      nullable: true
+      default: null
+    - name: dim_marquage
+      type: text
+      nullable: true
+      default: null
+    - name: emplacement_marquage
+      type: text
+      nullable: true
+      default: null
+    - name: source_fichier
+      type: text
+      nullable: true
+      default: null
+    - name: charge_le
+      type: timestamp without time zone
+      nullable: true
+      default: now()
+  article_nomenclature_composant:
+    role: Detail composant (1..8) pour articles multi-composant (coffrets)
+    grain: article x position
+    source_captation: Matrice TB Import / Lot Multiples produits (copie figee mars
+      2026)
+    existe_dans_sylob: non (custom TB)
+    cles:
+      PRIMARY KEY:
+      - code_article
+      - position
+    colonnes:
+    - name: code_article
+      type: text
+      nullable: false
+      default: null
+    - name: position
+      type: integer
+      nullable: false
+      default: null
+    - name: nom_composant
+      type: text
+      nullable: true
+      default: null
+    - name: epaisseur_mm
+      type: numeric
+      nullable: true
+      default: null
+    - name: longueur_mm
+      type: numeric
+      nullable: true
+      default: null
+    - name: poids_g
+      type: numeric
+      nullable: true
+      default: null
+    - name: matiere_lame
+      type: text
+      nullable: true
+      default: null
+    - name: chrome_pct
+      type: numeric
+      nullable: true
+      default: null
+    - name: finition
+      type: text
+      nullable: true
+      default: null
+    - name: matiere_manche
+      type: text
+      nullable: true
+      default: null
+    - name: pantone_manche
+      type: text
+      nullable: true
+      default: null
+    - name: marquage
+      type: text
+      nullable: true
+      default: null
+    - name: dim_marquage
+      type: text
+      nullable: true
+      default: null
+    - name: emplacement_marquage
+      type: text
+      nullable: true
+      default: null
+    - name: source_fichier
+      type: text
+      nullable: true
+      default: null
+    - name: charge_le
+      type: timestamp without time zone
+      nullable: true
+      default: now()
+  artwork:
+    role: Artwork par commande
+    grain: po x article
+    source_captation: IMPORT
+    existe_dans_sylob: non (pas de concept design/artwork ERP)
+    cles:
+      PRIMARY KEY:
+      - id
+      UNIQUE:
+      - po_number
+      - code_article
+    colonnes:
+    - name: id
+      type: integer
+      nullable: false
+      default: nextval('achat.artwork_id_seq'::regclass)
+    - name: po_number
+      type: text
+      nullable: false
+      default: null
+    - name: code_article
+      type: text
+      nullable: false
+      default: null
+    - name: designation
+      type: text
+      nullable: true
+      default: null
+    - name: statut_artwork
+      type: text
+      nullable: true
+      default: '''Aucun''::text'
+    - name: responsable
+      type: text
+      nullable: true
+      default: null
+    - name: commentaire
+      type: text
+      nullable: true
+      default: null
+    - name: date_demande
+      type: date
+      nullable: true
+      default: null
+    - name: updated_at
+      type: timestamp with time zone
+      nullable: true
+      default: now()
+  artwork_statut:
+    role: Statut validation design
+    grain: article
+    source_captation: Suivi artworks (Clarisse, gsheet)
+    existe_dans_sylob: non
+    cles:
+      PRIMARY KEY:
+      - code_article
+    colonnes:
+    - name: code_article
+      type: text
+      nullable: false
+      default: null
+    - name: designation
+      type: text
+      nullable: true
+      default: null
+    - name: statut_artwork
+      type: text
+      nullable: true
+      default: null
+    - name: date_demande
+      type: date
+      nullable: true
+      default: null
+    - name: date_validation
+      type: date
+      nullable: true
+      default: null
+    - name: derniere_version
+      type: date
+      nullable: true
+      default: null
+    - name: priorite
+      type: integer
+      nullable: true
+      default: null
+    - name: valideur
+      type: text
+      nullable: true
+      default: null
+    - name: commentaire
+      type: text
+      nullable: true
+      default: null
+    - name: source_fichier
+      type: text
+      nullable: true
+      default: null
+    - name: charge_le
+      type: timestamp without time zone
+      nullable: true
+      default: now()
+  commande:
+    role: Suivi commandes import (coeur)
+    grain: ligne article x commande
+    source_captation: IMPORT 2025.xlsx (copie figee poste Antho)
+    existe_dans_sylob: 'partiel -- oui : Achat.f_commandeachat/f_lignecommandeachat/vue_commande_achat_detail
+      (societe TARRERIAS_SE_TARRERIAS_BONJEAN, V25)'
+    cles:
+      PRIMARY KEY:
+      - id
+      UNIQUE:
+      - po_number
+      - code_article
+    colonnes:
+    - name: id
+      type: integer
+      nullable: false
+      default: nextval('achat.commande_id_seq'::regclass)
+    - name: po_number
+      type: text
+      nullable: true
+      default: null
+    - name: men_number
+      type: text
+      nullable: true
+      default: null
+    - name: n_lot
+      type: text
+      nullable: true
+      default: null
+    - name: intermediaire
+      type: text
+      nullable: true
+      default: null
+    - name: fournisseur
+      type: text
+      nullable: true
+      default: null
+    - name: code_article
+      type: text
+      nullable: true
+      default: null
+    - name: designation
+      type: text
+      nullable: true
+      default: null
+    - name: quantite
+      type: integer
+      nullable: true
+      default: null
+    - name: prix_unitaire
+      type: numeric
+      nullable: true
+      default: null
+    - name: total_prix
+      type: numeric
+      nullable: true
+      default: null
+    - name: frais_supp
+      type: numeric
+      nullable: true
+      default: null
+    - name: volume_m3_cmd
+      type: numeric
+      nullable: true
+      default: null
+    - name: statut
+      type: text
+      nullable: true
+      default: null
+    - name: date_statut
+      type: date
+      nullable: true
+      default: null
+    - name: date_commande
+      type: date
+      nullable: true
+      default: null
+    - name: date_paiement
+      type: date
+      nullable: true
+      default: null
+    - name: etd_confirme
+      type: date
+      nullable: true
+      default: null
+    - name: etd_reel
+      type: date
+      nullable: true
+      default: null
+    - name: eta
+      type: date
+      nullable: true
+      default: null
+    - name: date_livraison
+      type: date
+      nullable: true
+      default: null
+    - name: lieu_livraison
+      type: text
+      nullable: true
+      default: null
+    - name: n_bl
+      type: text
+      nullable: true
+      default: null
+    - name: n_conteneur
+      type: text
+      nullable: true
+      default: null
+    - name: n_facture
+      type: text
+      nullable: true
+      default: null
+    - name: transitaire
+      type: text
+      nullable: true
+      default: null
+      note: Transporteur reel (colonne Excel 'Transitaire', ex. QUALITAIRSEA/SEALOGIS).
+        Distinct de nom_navire.
+    - name: non_conformite
+      type: text
+      nullable: true
+      default: null
+    - name: retard_jours
+      type: integer
+      nullable: true
+      default: null
+    - name: colis_manquants
+      type: text
+      nullable: true
+      default: null
+    - name: updated_at
+      type: timestamp with time zone
+      nullable: true
+      default: now()
+    - name: doc_proforma
+      type: text
+      nullable: true
+      default: null
+    - name: ps_signe
+      type: boolean
+      nullable: true
+      default: null
+    - name: date_planning_log
+      type: date
+      nullable: true
+      default: null
+    - name: op_client_appro
+      type: text
+      nullable: true
+      default: null
+    - name: alerte
+      type: text
+      nullable: true
+      default: null
+    - name: nb_mois_livraison
+      type: numeric
+      nullable: true
+      default: null
+    - name: prix_reference
+      type: numeric
+      nullable: true
+      default: null
+      note: Colonne Excel 'Prix / reference', distincte de prix_unitaire (PU = prix
+        commande).
+    - name: total_prix_facture
+      type: numeric
+      nullable: true
+      default: null
+      note: Colonne Excel 'Total prix sur facture', distincte de total_prix (= prix
+        commande).
+    - name: pcb_ligne
+      type: integer
+      nullable: true
+      default: null
+      note: PCB au grain ligne de commande (colonne Excel 'PCB') -- distinct de produit.pcb
+        (referentiel article).
+    - name: volume_m3_pcb
+      type: numeric
+      nullable: true
+      default: null
+    - name: volume_m3_ref_total
+      type: numeric
+      nullable: true
+      default: null
+    - name: nom_navire
+      type: text
+      nullable: true
+      default: null
+      note: 'Nom du navire (colonne Excel ''Transport''). Fix 02/07 : anciennement
+        mal-mappe dans transitaire.'
+  commande_annotation:
+    role: Notes metier (survit au full-refresh de commande)
+    grain: po x article
+    source_captation: saisie FUSEAU
+    existe_dans_sylob: non (custom FUSEAU)
+    cles:
+      PRIMARY KEY:
+      - id
+      UNIQUE:
+      - po_number
+      - code_article
+    colonnes:
+    - name: id
+      type: integer
+      nullable: false
+      default: nextval('achat.commande_annotation_id_seq'::regclass)
+    - name: po_number
+      type: text
+      nullable: false
+      default: null
+    - name: code_article
+      type: text
+      nullable: false
+      default: null
+    - name: statut_retard
+      type: text
+      nullable: true
+      default: null
+    - name: date_etd
+      type: date
+      nullable: true
+      default: null
+    - name: commentaire
+      type: text
+      nullable: true
+      default: null
+    - name: updated_by
+      type: text
+      nullable: true
+      default: null
+    - name: updated_at
+      type: timestamp with time zone
+      nullable: true
+      default: now()
+  fournisseur_ca:
+    role: CA cumule 3 ans
+    grain: fournisseur
+    source_captation: Sylob (vue_commande_achat)
+    existe_dans_sylob: oui (derivable de vue_commande_achat)
+    cles:
+      PRIMARY KEY:
+      - fournisseur
+    colonnes:
+    - name: fournisseur
+      type: text
+      nullable: false
+      default: null
+    - name: frn_codes
+      type: text
+      nullable: true
+      default: null
+    - name: ca_3ans
+      type: numeric
+      nullable: true
+      default: null
+    - name: nb_commandes
+      type: integer
+      nullable: true
+      default: null
+    - name: charge_le
+      type: timestamp with time zone
+      nullable: true
+      default: now()
+  mif_suivi:
+    role: Bilan Made In France (lames/couteaux par lot PP x coloris)
+    grain: gamme x stade x lot_pp x coloris
+    source_captation: IMPORT 2026 / POINT MIF (copie figee mars 2026)
+    existe_dans_sylob: non
+    cles:
+      PRIMARY KEY:
+      - id
+      UNIQUE:
+      - gamme
+      - stade
+      - lot_pp
+      - coloris
+    colonnes:
+    - name: id
+      type: integer
+      nullable: false
+      default: nextval('achat.mif_suivi_id_seq'::regclass)
+    - name: gamme
+      type: text
+      nullable: false
+      default: null
+    - name: stade
+      type: text
+      nullable: false
+      default: null
+    - name: lot_pp
+      type: text
+      nullable: false
+      default: null
+    - name: coloris
+      type: text
+      nullable: false
+      default: null
+    - name: quantite
+      type: numeric
+      nullable: true
+      default: null
+    - name: total_ligne
+      type: numeric
+      nullable: true
+      default: null
+    - name: source_fichier
+      type: text
+      nullable: true
+      default: null
+    - name: charge_le
+      type: timestamp without time zone
+      nullable: true
+      default: now()
+  ot_transport:
+    role: Suivi expedition maritime
+    grain: conteneur
+    source_captation: SUIVI MARITIME (transitaire, gsheet live) ; bootstrap depuis
+      achat.commande si absent
+    existe_dans_sylob: non (aucun concept transport/conteneur dans les schemas audites)
+    cles:
+      PRIMARY KEY:
+      - n_conteneur
+    colonnes:
+    - name: n_conteneur
+      type: text
+      nullable: false
+      default: null
+    - name: etd_reel
+      type: date
+      nullable: true
+      default: null
+    - name: eta
+      type: date
+      nullable: true
+      default: null
+    - name: date_livraison
+      type: timestamp without time zone
+      nullable: true
+      default: null
+    - name: transport
+      type: text
+      nullable: true
+      default: null
+    - name: transitaire
+      type: text
+      nullable: true
+      default: null
+    - name: n_bl
+      type: text
+      nullable: true
+      default: null
+    - name: n_facture
+      type: text
+      nullable: true
+      default: null
+    - name: lieu_livraison
+      type: text
+      nullable: true
+      default: null
+    - name: source_fichier
+      type: text
+      nullable: true
+      default: null
+    - name: charge_le
+      type: timestamp without time zone
+      nullable: false
+      default: now()
+  produit:
+    role: Referentiel produit enrichi
+    grain: article
+    source_captation: Matrice TB Import.xlsx + pull direct Sylob V25 (enrich_dimensions.py,
+      packaging/dimensions)
+    existe_dans_sylob: oui (Article.af_article, 149 colonnes natives)
+    cles:
+      PRIMARY KEY:
+      - code_article
+    colonnes:
+    - name: code_article
+      type: text
+      nullable: false
+      default: null
+    - name: code_provisoire
+      type: text
+      nullable: true
+      default: null
+    - name: type_circuit
+      type: text
+      nullable: true
+      default: null
+    - name: ean13
+      type: text
+      nullable: true
+      default: null
+    - name: ean14_pcb
+      type: text
+      nullable: true
+      default: null
+    - name: ean14_spcb
+      type: text
+      nullable: true
+      default: null
+    - name: designation_fr
+      type: text
+      nullable: true
+      default: null
+    - name: designation_en
+      type: text
+      nullable: true
+      default: null
+    - name: marque
+      type: text
+      nullable: true
+      default: null
+    - name: gamme
+      type: text
+      nullable: true
+      default: null
+    - name: grande_famille
+      type: text
+      nullable: true
+      default: null
+    - name: fournisseur
+      type: text
+      nullable: true
+      default: null
+    - name: pays_fournisseur
+      type: text
+      nullable: true
+      default: null
+    - name: client_unique
+      type: text
+      nullable: true
+      default: null
+    - name: code_client
+      type: text
+      nullable: true
+      default: null
+    - name: prix_vente
+      type: numeric
+      nullable: true
+      default: null
+    - name: type_lot
+      type: text
+      nullable: true
+      default: null
+    - name: nomenclature
+      type: text
+      nullable: true
+      default: null
+    - name: matiere_lame
+      type: text
+      nullable: true
+      default: null
+    - name: chrome_pct
+      type: numeric
+      nullable: true
+      default: null
+    - name: traitement_thermique
+      type: text
+      nullable: true
+      default: null
+    - name: matiere_manche
+      type: text
+      nullable: true
+      default: null
+    - name: finition
+      type: text
+      nullable: true
+      default: null
+    - name: marquage_libelle
+      type: text
+      nullable: true
+      default: null
+    - name: artwork
+      type: text
+      nullable: true
+      default: null
+    - name: poids_uvc_g
+      type: numeric
+      nullable: true
+      default: null
+    - name: longueur_mm
+      type: numeric
+      nullable: true
+      default: null
+    - name: epaisseur_mm
+      type: numeric
+      nullable: true
+      default: null
+    - name: pcb
+      type: integer
+      nullable: true
+      default: null
+    - name: spcb
+      type: integer
+      nullable: true
+      default: null
+    - name: inner_qty
+      type: integer
+      nullable: true
+      default: null
+    - name: master_qty
+      type: integer
+      nullable: true
+      default: null
+    - name: longueur_pcb_cm
+      type: numeric
+      nullable: true
+      default: null
+    - name: largeur_pcb_cm
+      type: numeric
+      nullable: true
+      default: null
+    - name: hauteur_pcb_cm
+      type: numeric
+      nullable: true
+      default: null
+    - name: poids_pcb_kg
+      type: numeric
+      nullable: true
+      default: null
+    - name: volume_m3
+      type: numeric
+      nullable: true
+      default: null
+    - name: date_creation
+      type: date
+      nullable: true
+      default: null
+    - name: date_maj
+      type: date
+      nullable: true
+      default: null
+    - name: updated_at
+      type: timestamp with time zone
+      nullable: true
+      default: now()
+    - name: delai_reappro_jours
+      type: integer
+      nullable: true
+      default: null
+    - name: sylob_last_price
+      type: numeric
+      nullable: true
+      default: null
+    - name: sylob_synced_at
+      type: timestamp with time zone
+      nullable: true
+      default: null
+      note: Horodatage du dernier sync Sylob pour le bloc prix/delai_reappro (enrich_from_sylob.py).
+    - name: sylob_code_article
+      type: text
+      nullable: true
+      default: null
+    - name: sylob_match_type
+      type: text
+      nullable: true
+      default: null
+    - name: sylob_societe
+      type: text
+      nullable: true
+      default: null
+    - name: source_dimensions
+      type: text
+      nullable: true
+      default: null
+      note: '''sylob_v25'' si au moins un champ packaging/dimension vient du pull
+        Sylob V25 (enrich_dimensions.py), NULL sinon (Matrice Excel ou jamais renseigne).'
+    - name: sylob_dimensions_synced_at
+      type: timestamp with time zone
+      nullable: true
+      default: null
+      note: Horodatage dedie packaging/dimensions -- distinct de sylob_synced_at (pose
+        par enrich_from_sylob.py pour le bloc prix/delai) pour ne pas ecraser le marqueur
+        de l'autre job.
+  qualite:
+    role: Qualite par commande
+    grain: po x article
+    source_captation: IMPORT (MAT/SP/conformite)
+    existe_dans_sylob: 'partiel-oui : Qualite.f_controlequalitereception/vue_controle_qualite_reception
+      couvre le controle reception ; af_article.sup_rapport_dinspection/sup_certificat_matiere
+      = flags Oui/Non (pas de lien fichier)'
+    cles:
+      PRIMARY KEY:
+      - id
+      UNIQUE:
+      - po_number
+      - code_article
+    colonnes:
+    - name: id
+      type: integer
+      nullable: false
+      default: nextval('achat.qualite_id_seq'::regclass)
+    - name: po_number
+      type: text
+      nullable: false
+      default: null
+    - name: code_article
+      type: text
+      nullable: false
+      default: null
+    - name: fournisseur
+      type: text
+      nullable: true
+      default: null
+    - name: designation
+      type: text
+      nullable: true
+      default: null
+    - name: matiere
+      type: text
+      nullable: true
+      default: null
+    - name: semi_production
+      type: text
+      nullable: true
+      default: null
+    - name: echantillon_conformite
+      type: text
+      nullable: true
+      default: null
+    - name: production_bat
+      type: text
+      nullable: true
+      default: null
+    - name: date_inspection
+      type: date
+      nullable: true
+      default: null
+    - name: resultat_inspection
+      type: text
+      nullable: true
+      default: null
+    - name: ref_rapport
+      type: text
+      nullable: true
+      default: null
+    - name: reception
+      type: text
+      nullable: true
+      default: null
+    - name: ncr
+      type: text
+      nullable: true
+      default: null
+    - name: charge_le
+      type: timestamp with time zone
+      nullable: true
+      default: now()
+  qualite_analyse:
+    role: Mesures labo (chrome/durete/conformite)
+    grain: fichier rapport
+    source_captation: rapports SPECTRO (PDF)
+    existe_dans_sylob: non (mesures labo detaillees absentes de Sylob)
+    cles:
+      PRIMARY KEY:
+      - drive_file_id
+    colonnes:
+    - name: drive_file_id
+      type: text
+      nullable: false
+      default: null
+    - name: ref_rapport
+      type: text
+      nullable: true
+      default: null
+    - name: po_number
+      type: text
+      nullable: true
+      default: null
+    - name: echantillon
+      type: text
+      nullable: true
+      default: null
+    - name: sample_name
+      type: text
+      nullable: true
+      default: null
+    - name: hardness_hrc
+      type: numeric
+      nullable: true
+      default: null
+    - name: cr_pct
+      type: numeric
+      nullable: true
+      default: null
+    - name: conformite
+      type: text
+      nullable: true
+      default: null
+    - name: norme
+      type: text
+      nullable: true
+      default: null
+    - name: date_mesure
+      type: timestamp without time zone
+      nullable: true
+      default: null
+    - name: source_fichier
+      type: text
+      nullable: true
+      default: null
+    - name: charge_le
+      type: timestamp without time zone
+      nullable: true
+      default: now()
+  qualite_doc:
+    role: Index rapports (lien FAIL vers fichier)
+    grain: fichier rapport
+    source_captation: Drive/serveur ANALYSES ET INSPECTIONS
+    existe_dans_sylob: non (Sylob n'a que le flag Oui/Non, pas le lien vers le PDF)
+    cles:
+      PRIMARY KEY:
+      - drive_file_id
+    colonnes:
+    - name: drive_file_id
+      type: text
+      nullable: false
+      default: null
+    - name: po_number
+      type: text
+      nullable: true
+      default: null
+    - name: societe
+      type: text
+      nullable: true
+      default: null
+    - name: type
+      type: text
+      nullable: true
+      default: null
+    - name: stade
+      type: text
+      nullable: true
+      default: null
+    - name: ref_rapport
+      type: text
+      nullable: true
+      default: null
+    - name: composant
+      type: text
+      nullable: true
+      default: null
+    - name: echantillon
+      type: text
+      nullable: true
+      default: null
+    - name: fichier
+      type: text
+      nullable: true
+      default: null
+    - name: drive_url
+      type: text
+      nullable: true
+      default: null
+    - name: source_fichier
+      type: text
+      nullable: true
+      default: null
+    - name: charge_le
+      type: timestamp without time zone
+      nullable: true
+      default: now()
+  qualite_facturation:
+    role: Facturation qualite (bloc E)
+    grain: id
+    source_captation: Suivi analyses (Gmail/Drive, Andrea)
+    existe_dans_sylob: non
+    cles:
+      PRIMARY KEY:
+      - id
+    colonnes:
+    - name: id
+      type: integer
+      nullable: false
+      default: nextval('achat.qualite_facturation_id_seq'::regclass)
+    - name: stade
+      type: text
+      nullable: true
+      default: null
+    - name: po_number
+      type: text
+      nullable: true
+      default: null
+    - name: ref_rapport
+      type: text
+      nullable: true
+      default: null
+    - name: nb_spectro
+      type: integer
+      nullable: true
+      default: null
+    - name: nb_durete
+      type: integer
+      nullable: true
+      default: null
+    - name: nb_meca
+      type: integer
+      nullable: true
+      default: null
+    - name: nb_cycle10
+      type: integer
+      nullable: true
+      default: null
+    - name: nb_cycle_10_50
+      type: integer
+      nullable: true
+      default: null
+    - name: nb_cycle_50
+      type: integer
+      nullable: true
+      default: null
+    - name: nb_rapport
+      type: integer
+      nullable: true
+      default: null
+    - name: montant_ht_ca
+      type: numeric
+      nullable: true
+      default: null
+    - name: n_bl
+      type: text
+      nullable: true
+      default: null
+    - name: date_bl
+      type: date
+      nullable: true
+      default: null
+    - name: montant_ht_bl
+      type: numeric
+      nullable: true
+      default: null
+    - name: a_facturer
+      type: boolean
+      nullable: true
+      default: null
+    - name: facturation_faite
+      type: boolean
+      nullable: true
+      default: null
+    - name: source_fichier
+      type: text
+      nullable: true
+      default: null
+    - name: charge_le
+      type: timestamp without time zone
+      nullable: true
+      default: now()
+  qualite_suivi:
+    role: Suivi analyses labo (blocs A+D)
+    grain: id
+    source_captation: Suivi analyses (Gmail/Drive, Andrea)
+    existe_dans_sylob: non
+    cles:
+      PRIMARY KEY:
+      - id
+    colonnes:
+    - name: id
+      type: integer
+      nullable: false
+      default: nextval('achat.qualite_suivi_id_seq'::regclass)
+    - name: code_article
+      type: text
+      nullable: true
+      default: null
+    - name: designation
+      type: text
+      nullable: true
+      default: null
+    - name: stade
+      type: text
+      nullable: true
+      default: null
+    - name: po_number
+      type: text
+      nullable: true
+      default: null
+    - name: ref_rapport
+      type: text
+      nullable: true
+      default: null
+    - name: date_envoi
+      type: date
+      nullable: true
+      default: null
+    - name: n_bl
+      type: text
+      nullable: true
+      default: null
+    - name: date_bl
+      type: date
+      nullable: true
+      default: null
+    - name: niveau_urgence
+      type: integer
+      nullable: true
+      default: null
+    - name: etat_produit
+      type: text
+      nullable: true
+      default: null
+    - name: etat_analyse
+      type: text
+      nullable: true
+      default: null
+    - name: operateur
+      type: text
+      nullable: true
+      default: null
+    - name: origine
+      type: text
+      nullable: true
+      default: null
+    - name: source_fichier
+      type: text
+      nullable: true
+      default: null
+    - name: charge_le
+      type: timestamp without time zone
+      nullable: true
+      default: now()
+  v_artwork:
+    role: Vue de lecture -- statut artwork consolide
+    grain: derive de artwork_statut
+    source_captation: vue SQL (pas de captation propre)
+    existe_dans_sylob: n/a (vue)
+    cles: {}
+    colonnes:
+    - name: id
+      type: integer
+      nullable: true
+      default: null
+    - name: po_number
+      type: text
+      nullable: true
+      default: null
+    - name: code_article
+      type: text
+      nullable: true
+      default: null
+    - name: designation
+      type: text
+      nullable: true
+      default: null
+    - name: statut_artwork
+      type: text
+      nullable: true
+      default: null
+    - name: responsable
+      type: text
+      nullable: true
+      default: null
+    - name: commentaire
+      type: text
+      nullable: true
+      default: null
+    - name: date_demande
+      type: date
+      nullable: true
+      default: null
+    - name: date_validation
+      type: date
+      nullable: true
+      default: null
+    - name: derniere_version
+      type: date
+      nullable: true
+      default: null
+    - name: priorite
+      type: integer
+      nullable: true
+      default: null
+    - name: valideur
+      type: text
+      nullable: true
+      default: null
+    - name: updated_at
+      type: timestamp with time zone
+      nullable: true
+      default: null
+  v_previsionnel:
+    role: Vue de lecture -- previsionnel merge (BL/maritime prioritaire, COALESCE)
+    grain: derive de commande + ot_transport
+    source_captation: vue SQL (pas de captation propre)
+    existe_dans_sylob: n/a (vue)
+    cles: {}
+    colonnes:
+    - name: id
+      type: integer
+      nullable: true
+      default: null
+    - name: po_number
+      type: text
+      nullable: true
+      default: null
+    - name: code_article
+      type: text
+      nullable: true
+      default: null
+    - name: fournisseur
+      type: text
+      nullable: true
+      default: null
+    - name: designation
+      type: text
+      nullable: true
+      default: null
+    - name: statut
+      type: text
+      nullable: true
+      default: null
+    - name: etd_eff
+      type: date
+      nullable: true
+      default: null
+    - name: eta
+      type: date
+      nullable: true
+      default: null
+    - name: date_livraison
+      type: date
+      nullable: true
+      default: null
+    - name: date_paiement
+      type: date
+      nullable: true
+      default: null
+    - name: montant
+      type: numeric
+      nullable: true
+      default: null
+    - name: est_achete
+      type: boolean
+      nullable: true
+      default: null
+    - name: est_a_payer
+      type: boolean
+      nullable: true
+      default: null
+    - name: est_en_inspection
+      type: boolean
+      nullable: true
+      default: null
+    - name: est_parti
+      type: boolean
+      nullable: true
+      default: null
+    - name: est_en_retard
+      type: boolean
+      nullable: true
+      default: null
+    - name: est_livre
+      type: boolean
+      nullable: true
+      default: null
+    - name: mois_etd
+      type: text
+      nullable: true
+      default: null
+    - name: est_a_payer_en_retard
+      type: boolean
+      nullable: true
+      default: null
+  v_qualite_fournisseur:
+    role: Vue de lecture -- qualite par fournisseur
+    grain: derive de qualite_doc
+    source_captation: vue SQL (pas de captation propre)
+    existe_dans_sylob: n/a (vue)
+    cles: {}
+    colonnes:
+    - name: fournisseur
+      type: text
+      nullable: true
+      default: null
+    - name: nb_articles
+      type: bigint
+      nullable: true
+      default: null
+    - name: nb_inspectes
+      type: bigint
+      nullable: true
+      default: null
+    - name: nb_ok
+      type: bigint
+      nullable: true
+      default: null
+    - name: nb_fail
+      type: bigint
+      nullable: true
+      default: null
+    - name: taux_fail_pct
+      type: numeric
+      nullable: true
+      default: null
+    - name: nb_ncr
+      type: bigint
+      nullable: true
+      default: null
+    - name: nb_reception_non_conforme
+      type: bigint
+      nullable: true
+      default: null
+  v_retard_article:
+    role: Vue de lecture -- retard par article
+    grain: derive de commande
+    source_captation: vue SQL (pas de captation propre)
+    existe_dans_sylob: n/a (vue)
+    cles: {}
+    colonnes:
+    - name: code_article
+      type: text
+      nullable: true
+      default: null
+    - name: fournisseur
+      type: text
+      nullable: true
+      default: null
+    - name: date_etd
+      type: date
+      nullable: true
+      default: null
+    - name: jours_retard
+      type: integer
+      nullable: true
+      default: null
+    - name: statut_retard
+      type: text
+      nullable: true
+      default: null
