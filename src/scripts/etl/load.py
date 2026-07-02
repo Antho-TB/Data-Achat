@@ -94,10 +94,25 @@ CREATE TABLE IF NOT EXISTS achat.commande (
     n_bl             TEXT,
     n_conteneur      TEXT,
     n_facture        TEXT,
-    transitaire      TEXT,
+    nom_navire       TEXT,     -- nom du navire (colonne Excel "Transport") -- fix 02/07, cf. sql/20260702_extend_commande.sql
+    transitaire      TEXT,     -- transporteur reel (colonne Excel "Transitaire", ex. QUALITAIRSEA/SEALOGIS)
     non_conformite   TEXT,
     retard_jours     INTEGER,
     colis_manquants  TEXT,
+    -- Colonnes IMPORT ajoutees 02/07 (item #5 plan_action.md, audit champ-par-champ)
+    op_client_appro      TEXT,
+    alerte               TEXT,
+    nb_mois_livraison    NUMERIC,
+    prix_reference       NUMERIC,
+    total_prix_facture   NUMERIC,
+    pcb_ligne            INTEGER,
+    volume_m3_pcb        NUMERIC,
+    volume_m3_ref_total  NUMERIC,
+    -- Colonnes ajoutees ad-hoc en prod (ALTER TABLE non trace avant le 02/07) --
+    -- ajoutees ici pour que le DDL reflete la realite (cf. audit information_schema)
+    doc_proforma         TEXT,
+    ps_signe             TEXT,
+    date_planning_log    TEXT,
     updated_at       TIMESTAMPTZ DEFAULT now()
 );
 """

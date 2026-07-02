@@ -369,10 +369,30 @@ def transform_commande(df_import: pd.DataFrame) -> pd.DataFrame:
         "n_bl":            df.get("N° BL"),
         "n_conteneur":     df.get("N° Conteneur"),
         "n_facture":       df.get("N° Facture"),
-        "transitaire":     df.get("Transport"),
+        # Fix bug 02/07 : "Transport" = NOM DU NAVIRE (ex. "CMA CGM ALEXANDER
+        # VON HUMBOLDT"), "Transitaire" = transporteur reel (QUALITAIRSEA,
+        # SEALOGIS...). transitaire lisait a tort la colonne "Transport" --
+        # verifie par comptage de valeurs distinctes sur IMPORT 2025 (02/07),
+        # les deux colonnes sont non-redondantes. cf. sql/20260702_extend_commande.sql.
+        "nom_navire":      df.get("Transport"),
+        "transitaire":     df.get("Transitaire"),
         "non_conformite":  df.get("Non-conformité (NCR)"),
         "retard_jours":    pd.to_numeric(df.get("Retard  (jours)"), errors="coerce"),
         "colis_manquants": df.get("Colis/pièces manquantes"),
+        # Colonnes IMPORT non mappees jusqu'ici (audit champ-par-champ 02/07,
+        # docs/plan_action.md item #5)
+        "op_client_appro":     df.get("OP/Client/Appro"),
+        "alerte":              df.get("Alerte"),
+        # Noms de colonnes source verifies fideles au fichier -- deux fautes de
+        # frappe natives (double espace, "réfernce" sans e) confirmees le 02/07
+        # par dump brut du header ; NE PAS "corriger" ces libelles, ils doivent
+        # matcher exactement l'entete Excel sous peine de df.get() -> None silencieux.
+        "nb_mois_livraison":   pd.to_numeric(df.get("Nombre de mois  (de la commande à la livraison)"), errors="coerce"),
+        "prix_reference":      pd.to_numeric(df.get("Prix / référence"), errors="coerce"),
+        "total_prix_facture":  pd.to_numeric(df.get("Total prix sur facture"), errors="coerce"),
+        "pcb_ligne":           pd.to_numeric(df.get("PCB"), errors="coerce"),
+        "volume_m3_pcb":       pd.to_numeric(df.get("Volume m3  PCB"), errors="coerce"),
+        "volume_m3_ref_total": pd.to_numeric(df.get("Volume m3 réfernce total"), errors="coerce"),
     })
 
     # Convertir code_article en str propre -- même nettoyage que PO#/MEN#
@@ -486,8 +506,10 @@ def transform_ot_transport(
             "etd_reel":       df_commande.get("etd_reel"),
             "eta":            df_commande.get("eta"),
             "date_livraison": df_commande.get("date_livraison"),
-            "transport":      df_commande.get("transitaire"),  # col AR "Transport" dans commande
-            "transitaire":    pd.Series([None] * len(df_commande)),
+            # Fix 02/07 : commande.nom_navire porte desormais le nom du navire
+            # (anciennement mal-mappe dans commande.transitaire, cf. transform_commande)
+            "transport":      df_commande.get("nom_navire"),
+            "transitaire":    df_commande.get("transitaire"),
             "n_bl":           df_commande.get("n_bl"),
             "n_facture":      df_commande.get("n_facture"),
             "lieu_livraison": df_commande.get("lieu_livraison"),
