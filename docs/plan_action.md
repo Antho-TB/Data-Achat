@@ -346,6 +346,9 @@ Emmanuelle crée le CODE ARTICLE dans Sylob  →  PK définitive
 - **Rôle Emmanuelle** = **Supply Chain & Data Analyst** (correction — pas Qualité).
 - **Historique des prix : DÉJÀ dans le SI Sylob** → la fonction "historique prix" de FUSEAU fait doublon avec Sylob. Ne pas réinvestir dessus.
 - ➜ **ACTION (au retour de congés d'Emmanuelle)** : auditer **tout ce que FUSEAU fait/stocke qui existe déjà dans Sylob** (candidats à supprimer/déléguer à Sylob), pour recentrer FUSEAU sur sa vraie valeur (suivi import maritime, artwork, suivi analyses, ingestion email-first).
+- **Fiche achat = source de la nomenclature** : la fiche achat est créée à la **création de l'article** et **contient la nomenclature composant ET packaging**. Elle est maintenue à jour toute la vie de l'article via le **tableau Excel d'Andréa** (Excel → MAJ automatique de la fiche achat).
+  - ➜ Réponse à « assez de données pour la nomenclature ? » = **OUI** (composant + packaging y sont).
+  - ➜ Candidate directe pour combler le concept BI manquant n°2 « **Gammes & Sous-familles / nomenclature** ». Action : localiser + parser la structure de la fiche achat et documenter le lien **Excel Andréa → fiche achat**.
 
 ---
 
