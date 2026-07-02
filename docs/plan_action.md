@@ -337,7 +337,9 @@ Emmanuelle crée le CODE ARTICLE dans Sylob  →  PK définitive
 > Corrections/validations recueillies avec Emmanuelle (Supply Chain).
 
 - **Code article — pivot avancé** : Emmanuelle crée le code article **dès qu'on passe une commande fournisseur** (⚠️ correction : PAS en fin de flux à la réception comme dessiné en Circuit A2). Dès qu'il existe : **Clarisse** l'utilise pour l'artwork, **Andréa** pour la fiche achat. Le code article est donc le pivot amont du Circuit A.
-- **Prérequis = gamme** : Emmanuelle a besoin de la **gamme** pour créer le code article → la gamme est le point de départ. Avant gamme/code = **prototype**. ➜ **DÉCISION à prendre : créer un ID prototype** (à réconcilier avec le « code provisoire `JJMMAAHHMM` » déjà prévu) porté du prototype jusqu'à l'attribution du code article Sylob (mapping conservé dans FUSEAU).
+- **Prérequis = gamme** : Emmanuelle a besoin de la **gamme** pour créer le code article → la gamme est le point de départ. Avant gamme/code = **prototype**.
+  - **État actuel** : pas d'ID prototype formel. Le prototype est suivi dans **Gmail (côté TB)** et dans **BaseCamp (côté GDD)** — deux outils distincts, pas de référentiel unifié. ➜ **ACTION : creuser avec Olivier** (workflow proto GDD/BaseCamp).
+  - ➜ **DÉCISION à prendre** : faut-il un **ID prototype unifié** (à réconcilier avec le « code provisoire `JJMMAAHHMM` » déjà prévu), porté du prototype jusqu'à l'attribution du code article Sylob (mapping conservé dans FUSEAU) ?
 - **Circuit A1 élargi** : s'applique aussi à la **création de nouveaux composants (packaging)**, pas seulement aux composants GDD.
 - **Validation des rapports d'analyse = Direction** (pas Emmanuelle).
 - **Planning de livraison** (envoyé par Andréa) fan-out : **Logistique** (anticipe besoins humains / matériels / temps) **+ RH + Qualité** (fiche d'inspection).
