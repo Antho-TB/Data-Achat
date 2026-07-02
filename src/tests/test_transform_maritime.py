@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests transform_maritime -- lignes réelles du gsheet SUIVI MARITIME (30/06)."""
+"""[TEST] Tests transform_maritime -- lignes réelles du gsheet SUIVI MARITIME (30/06)."""
 from src.scripts.etl.transform_maritime import (
     transform_rows, parse_maritime_date, clean_pos,
 )

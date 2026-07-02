@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests parse_qualite -- nom de fichier + extraction SPECTRO (échantillon réel CA183435)."""
+"""[TEST] Tests parse_qualite -- nom de fichier + extraction SPECTRO (échantillon réel CA183435)."""
 from src.scripts.etl.parse_qualite import parse_filename, parse_spectro
 
 # Extrait réel du rapport labo SPECTRO (PO181325, éch3, CA183435).

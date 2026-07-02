@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests transform_artwork -- 2 blocs empilés, dates FR, gotchas (profil #3)."""
+"""[TEST] Tests transform_artwork -- 2 blocs empilés, dates FR, gotchas (profil #3)."""
 from src.scripts.etl.transform_artwork import transform_rows, parse_fr_date
 
 # Bloc 1 (10 col) puis Bloc 2 (6 col), en-têtes distincts -> mapping par NOM.

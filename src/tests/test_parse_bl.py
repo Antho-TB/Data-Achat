@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests parse_bl -- logique d'extraction (sans dépendance PDF/OCR)."""
+"""[TEST] Tests parse_bl -- logique d'extraction (sans dépendance PDF/OCR)."""
 from src.scripts.gmail.parse_bl import parse_bl, _to_iso
 
 
