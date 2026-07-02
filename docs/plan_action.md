@@ -359,11 +359,11 @@ Emmanuelle crée le CODE ARTICLE dans Sylob  →  PK définitive
 | # | Source | Cible | Débloque | Effort | Statut |
 |---|--------|-------|----------|--------|--------|
 | 1 | `Matrice TB Import` (Lot-Vrac) | `achat.article_nomenclature` | Nomenclature composant+packaging, **Gammes & Sous-familles** (concept BI #2) | Faible | ✅ **FAIT 30/06 (1198 art.)** |
-| 1b | `Matrice` (Lot Multiples, 122 col) | `article_nomenclature` (multi-composant) | Nomenclature d'assemblage (ménagères/sets) | Moyen | ⏳ 2ᵉ passe |
-| 2 | `Base article dimensions volume` | `achat.article_dimensions` | Dimensions/volume/poids **officiels** (fiabilise le volume aujourd'hui recalculé) | Faible | ⏳ |
-| 3 | `IMPORT`/`POINT MIF` | `achat.mif_suivi` | **BILAN MADE IN France** (lames envoyées/retour par lot PP) | Moyen (format pivot) | ⏳ |
-| 4 | `IMPORT`/`STOP REF CARREFOUR` | `achat.article_cycle` ou flag `produit` | Cycle de vie / **Articles en sommeil** | Faible | ⏳ |
-| 5 | `IMPORT 2025` colonnes non mappées | étendre `commande` + `transform_commande` | OP/Client, Acompte, Alerte, Nb mois, **MAT/SP/Échantillon conformité** (lien qualité) | Faible-moyen | ⏳ |
+| 1b | `Matrice` (Lot Multiples, 122 col) | `article_nomenclature` (header, lot_vrac='Multiple') + `article_nomenclature_composant` (détail 1..8) | Nomenclature d'assemblage (ménagères/sets) | Moyen | ✅ **FAIT 02/07** (298 art. / 628 composants, copie figée mars — à rafraîchir) |
+| 2 | ~~`Base article dimensions volume`~~ **Sylob V25 `af_article.sup_*`** (audit 02/07, pas d'Excel) | `achat.produit` (colonnes existantes, pas de nouvelle table) | Dimensions/volume/poids/EAN/PCB **officiels Sylob** | Faible | ✅ **FAIT 02/07** (`enrich_dimensions.py`, 1187/1198 art. enrichis) |
+| 3 | `IMPORT`/`POINT MIF` | `achat.mif_suivi` | **BILAN MADE IN France** (lames envoyées/retour par lot PP) | Moyen (format pivot) | ✅ **FAIT 02/07** (16 lignes, copie figée mars — à rafraîchir) |
+| 4 | `IMPORT`/`STOP REF CARREFOUR` | `achat.article_cycle_vie` | Cycle de vie / **Articles en sommeil** | Faible | ✅ **FAIT 02/07** (9 lignes, copie figée mars — à rafraîchir) |
+| 5 | `IMPORT 2025` colonnes non mappées | étendre `commande` + `transform_commande` | OP/Client, Acompte, Alerte, Nb mois, **MAT/SP/Échantillon conformité** (lien qualité) | Faible-moyen | ✅ **FAIT 02/07** (636 lignes ; 8 colonnes ajoutées ; **bug corrigé** : `transitaire` lisait "Transport"=nom du navire au lieu de "Transitaire"=transporteur réel → nouvelle colonne `nom_navire` + `transitaire` fixé, `ot_transport` réupsertée) |
 | 6 | PS remplies (PDF Drive) | croisement `article_nomenclature` | Validation par article (redondant si Matrice OK) | Élevé (OCR/parse) | Basse priorité |
 
 **Transverse** : chaque champ ci-dessus doit être audité contre Sylob (table `tarrerias_production_dwh`) — cf. `docs/modele_semantique.md` (colonne « existe dans Sylob ? »).
