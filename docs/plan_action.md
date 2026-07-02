@@ -178,7 +178,7 @@ Légende : [QW] quick win · [M] touche modèle/intégration · [DEC] décision 
 | **Andréa** | Achats | Coordinatrice, passe les commandes dans Sylob |
 | **Marlène** | Achats | Collaboratrice Andréa, co-utilisatrice du système |
 | **Olivier** | Appro | Réappro des produits existants (suggestion d'appro) |
-| **Emmanuelle** | Logistique / Supply Chain | Crée le code article dans Sylob, bloc PCB/SPCB/EAN |
+| **Emmanuelle** | Supply Chain & Data Analyst | Crée le code article dans Sylob (dès la commande frns, prérequis = gamme), bloc PCB/SPCB/EAN |
 | **Eric** | Commerce | Bloc commercial de la fiche achat (prix, client) |
 | **Charles** | Commerce | Commerce -- avec Eric et David |
 | **David** | Commerce | Commerce -- avec Eric et Charles |
@@ -329,6 +329,21 @@ Emmanuelle crée le CODE ARTICLE dans Sylob  →  PK définitive
 | **Etiquettes + Shipping marks** | Données produit | Champs manquants dans `achat.produit` |
 | **Planning livraison 1 semaine avant** | Alerte | À intégrer comme notification dans le dashboard |
 | **ETD/ETA/Retard imprévu** géré par Transitaire | Info source | Transitaire = source de vérité ETD/ETA |
+
+---
+
+## Précisions process — Emmanuelle (2026-06-30)
+
+> Corrections/validations recueillies avec Emmanuelle (Supply Chain).
+
+- **Code article — pivot avancé** : Emmanuelle crée le code article **dès qu'on passe une commande fournisseur** (⚠️ correction : PAS en fin de flux à la réception comme dessiné en Circuit A2). Dès qu'il existe : **Clarisse** l'utilise pour l'artwork, **Andréa** pour la fiche achat. Le code article est donc le pivot amont du Circuit A.
+- **Prérequis = gamme** : Emmanuelle a besoin de la **gamme** pour créer le code article → la gamme est le point de départ. Avant gamme/code = **prototype**. ➜ **DÉCISION à prendre : créer un ID prototype** (à réconcilier avec le « code provisoire `JJMMAAHHMM` » déjà prévu) porté du prototype jusqu'à l'attribution du code article Sylob (mapping conservé dans FUSEAU).
+- **Circuit A1 élargi** : s'applique aussi à la **création de nouveaux composants (packaging)**, pas seulement aux composants GDD.
+- **Validation des rapports d'analyse = Direction** (pas Emmanuelle).
+- **Planning de livraison** (envoyé par Andréa) fan-out : **Logistique** (anticipe besoins humains / matériels / temps) **+ RH + Qualité** (fiche d'inspection).
+- **Rôle Emmanuelle** = **Supply Chain & Data Analyst** (correction — pas Qualité).
+- **Historique des prix : DÉJÀ dans le SI Sylob** → la fonction "historique prix" de FUSEAU fait doublon avec Sylob. Ne pas réinvestir dessus.
+- ➜ **ACTION (au retour de congés d'Emmanuelle)** : auditer **tout ce que FUSEAU fait/stocke qui existe déjà dans Sylob** (candidats à supprimer/déléguer à Sylob), pour recentrer FUSEAU sur sa vraie valeur (suivi import maritime, artwork, suivi analyses, ingestion email-first).
 
 ---
 
