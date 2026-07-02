@@ -52,11 +52,28 @@ RE_CAL_STOP = re.compile(r"\bSEM\b|^(janvier|février|mars|avril|mai|juin|juille
                          r"ao[uû]t|septembre|octobre|novembre|décembre)\b", re.I)
 
 
+RE_ISO_DATE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})(?:[ T]\d{2}:\d{2}:\d{2})?$")
+
+
+def _safe_maritime(y: int, mo: int, d: int) -> Optional[str]:
+    try:
+        return date(y, mo, d).isoformat()
+    except ValueError:
+        return None
+
+
 def parse_maritime_date(raw: Optional[str], campaign_year: int = 2026) -> Optional[str]:
-    """'28 December' / '6 March' -> ISO. Année inférée (oct-déc => campagne-1)."""
+    """'2025-12-28 00:00:00' (ISO, cellule datetime Sheets) OU '28 December' / '6 March'
+    (texte legacy sans année) -> ISO. Année inférée uniquement pour le format texte
+    (oct-déc => campagne-1) ; le format ISO porte déjà sa propre année."""
     if not raw:
         return None
-    m = re.match(r"(\d{1,2})\s+([A-Za-z]+)", str(raw).strip())
+    s = str(raw).strip()
+    m_iso = RE_ISO_DATE.match(s)
+    if m_iso:
+        y, mo, d = (int(x) for x in m_iso.groups())
+        return _safe_maritime(y, mo, d)
+    m = re.match(r"(\d{1,2})\s+([A-Za-z]+)", s)
     if not m:
         return None
     day = int(m.group(1))
