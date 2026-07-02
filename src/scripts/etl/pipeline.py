@@ -180,4 +180,32 @@ def _print_report(
 
     if not df_commande.empty and "statut" in df_commande.columns:
         logger.info("  Répartition statuts commandes :")
+        for statut, n in df_commande["statut"].value_counts().items():
+            logger.info("    - %-20s %6d", statut, n)
+    logger.info(sep)
+
+
+def main() -> int:
+    """
+    Point d'entree CLI -- python -m src.scripts.etl.pipeline [--dry-run].
+
+    Junior Tip : ce garde-fou (if __name__ == "__main__") etait absent avant
+    le 02/07 -- la commande documentee dans docs/plan_action.md n'executait
+    donc rien (import silencieux, exit 0, aucun log). Corrige suite a l'audit
+    de nettoyage AIOps du 02/07.
+    """
+    ap = argparse.ArgumentParser(description="Pipeline ETL Data-Achat (Extract -> Transform -> Load).")
+    ap.add_argument("--dry-run", action="store_true",
+                     help="Extract + Transform uniquement, sans écriture PostgreSQL.")
+    args = ap.parse_args()
+
+    stats = run(dry_run=args.dry_run)
+    if stats.get("erreurs"):
+        logger.error("[ÉCHEC] Pipeline terminé avec %d erreur(s).", stats["erreurs"])
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
  
