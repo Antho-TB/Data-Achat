@@ -372,6 +372,54 @@ Emmanuelle crée le CODE ARTICLE dans Sylob  →  PK définitive
 
 ---
 
+## Décisions actées en démo — 07/07 (14h, équipe métier)
+
+> Compte-rendu du questionnaire d'entretien (`docs/20260707_questionnaire_demo.md`,
+> 22 questions). Décisions actées + actions techniques qui en découlent.
+
+### Qualité / conformité
+- **Conforme = validé implicitement ; non conforme = décision d'Eric T (Commerce) par mail.** Asymétrie à gérer : pas de signal positif systématique, seulement un signal de rejet.
+  → **Action [M]** : parser le corps des mails (boîte Eric T) pour détecter les rejets, plutôt que d'étendre l'OCR SPECTRO sur `conformite` (le champ n'est de toute façon pas dans le PDF). À rapprocher du Plan A Gmail existant (`fetch_attachments.py`).
+- **GDD = circuit qualité distinct**, moins formalisé que TB. Ne pas généraliser `crawl_drive_qualite.py` à GDD avec la même logique — traiter séparément, priorité basse.
+- **`hardness_hrc` NULL = normal**, confirmé : test de dureté fait uniquement sur les couteaux, jamais sur semi-produits/couverts. Rien à corriger sur le pilote OCR SPECTRO.
+
+### Historique prix
+- **Décision : former l'équipe sur Sylob natif plutôt que maintenir "Historique prix" côté FUSEAU.** Ne pas prioriser de nouveaux développements sur cette fonctionnalité (le fix désignation du 07/07 reste utile en transition).
+
+### Suivi commandes — retards
+- **UI/UX de la distinction "(parti)"/"(pas parti)" à revoir** — le fond est bon, la présentation non.
+  → **Action [QW/UI]** : retravailler l'affichage (pas juste un `<small>` à côté du badge).
+- **⚠️ Calcul du retard à corriger.** Définition validée : `retard = ETD réel − ETD confirmé`, moyenne **par fournisseur, par an, sur 12 mois glissants**, **figée à l'ETD** (pas recalculée en continu). Ce n'est PAS `date_livraison − ETD` comme documenté précédemment.
+  → **Action [M] prioritaire** : auditer et corriger `v_retard_article` (et toute vue/requête dérivée) pour appliquer cette définition exacte avant la prochaine démo.
+- Édition du commentaire retard : **aucune restriction de rôle** à implémenter (tous les comptes authentifiés).
+
+### Code article / prototype (Circuit A)
+- La demande de code article démarre **très tôt, via des échanges Gmail informels (boîte Eric T)**, pas une demande formelle.
+- **Problème structurel identifié : relation plusieurs-à-plusieurs** entre prototypes/conversations et code article.
+  → **Action** : explorer la structure du **"code affaire" dans la BDD GDD** comme précédent/modèle possible pour l'ID prototype unifié, avant la discussion avec Olivier.
+- Q11 (données circulant avant le code article) et Q12 (ID prototype unifié) : **non tranchées**, à reposer.
+
+### Paiement / conteneur (validé GO, à planifier)
+- Paiement = **liasse documentaire BL + facture + packing list** (pas le BL seul) → modèle de données doit lier les 3.
+- Flag promo/urgence : posé **à la commande OU en milieu de circuit** (vente commerce) → champ modifiable à plusieurs étapes, pas figé à la création.
+- Règle de retard de paiement : **ETD_BL + 15 jours de tolérance**, retard compté seulement au-delà.
+  → **Action [M]** : ces 3 règles à implémenter ensemble dans le futur module paiement/conteneur (post-démo, effort [M] déjà estimé le 25/06).
+
+### Nouveaux onglets — validés, périmètre cadré
+- **Article** : suivi du changement de fournisseur dans le temps uniquement — stock/cycle de vie = Supply Chain, **hors périmètre Achats**.
+- **Promo** : périmètre large validé ("oui pour tout" : fidélité, promo ponctuelle, nouveau client type COSTCO) — à détailler avec exemples concrets au design.
+
+### Divers
+- **GUANGWEI = DIAMOND TRACK, même fournisseur** — le CA cumulé partagé (double-attribution) est **correct**, pas un bug. Rien à corriger.
+- **Tous les montants sont en USD**, toutes sources confondues — confirmé.
+
+### Points non traités en démo (à relancer, cf. questionnaire §7)
+- 🔴 **Accès Gmail boîte Andréa avant le 31/07** — reste LE point bloquant deadline, non traité en démo, à relancer en priorité absolue.
+- Fraîcheur de l'IMPORT Excel (10/06) à vérifier avant validation finale.
+- Accès réseau au dossier `2026 SUIVI MARITIME.xlsx` (transitaire) toujours en attente.
+
+---
+
 ## Suites pilote Drive qualité — arbitrages 02/07
 
 > Décisions prises avec Antho suite au pilote OCR SPECTRO (item #7 ci-dessus).
