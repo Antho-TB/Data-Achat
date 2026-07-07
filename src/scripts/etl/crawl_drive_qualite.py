@@ -56,9 +56,11 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(name)s -- %(message)s")
 logger = logging.getLogger("crawl_drive_qualite")
 
-# Sous-dossiers cibles a l'interieur de chaque dossier PO (nommage observe sur
-# le pilote 02/07 -- a ajuster si un autre libelle apparait en prod).
-TARGET_SUBFOLDERS = {"Inspection", "Results of analysis"}
+# Sous-dossiers cibles a l'interieur de chaque dossier PO. "Results of analysis"
+# vient du nommage observe sur le pilote 02/07 ; "Reports of analysis" vient du
+# mail Andrea 25/06 (docs/plan_action.md) -- les deux graphies coexistent selon
+# les commandes, on accepte les deux plutot que d'en rater une silencieusement.
+TARGET_SUBFOLDERS = {"Inspection", "Results of analysis", "Reports of analysis"}
 
 FOLDER_MIME = "application/vnd.google-apps.folder"
 

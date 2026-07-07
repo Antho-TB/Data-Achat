@@ -396,17 +396,22 @@ def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
     engine = get_engine()
     params: dict[str, Any] = {"fournisseur": fournisseur}
     article_filter = ""
+    article_filter_h = ""
     if code_article:
         article_filter = "AND code_article = :code_article"
+        article_filter_h = "AND h.code_article = :code_article"
         params["code_article"] = code_article
 
     with engine.connect() as conn:
         try:
+            # LEFT JOIN produit : libelle metier (designation) au lieu du seul
+            # code article brut -- retour utilisateur demo du 07/07 (Antho).
             r = conn.execute(text(f"""
-                SELECT po_number, code_article, fournisseur, prix, date_mail
-                FROM {SCHEMA}.historique_prix
-                WHERE fournisseur = :fournisseur {article_filter}
-                ORDER BY date_mail DESC
+                SELECT h.po_number, h.code_article, COALESCE(p.designation_fr, p.designation_en) AS designation, h.fournisseur, h.prix, h.date_mail
+                FROM {SCHEMA}.historique_prix h
+                LEFT JOIN {SCHEMA}.produit p ON p.code_article = h.code_article
+                WHERE h.fournisseur = :fournisseur {article_filter_h}
+                ORDER BY h.date_mail DESC
                 LIMIT 100
             """), params)
             return {"source": "historique_prix", "data": rows_to_dicts(r)}
@@ -420,8 +425,9 @@ def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
         try:
             # 3 dernieres commandes PAR ARTICLE (besoin metier : evolution recente du prix).
             # ROW_NUMBER fenetre par code_article, on garde les 3 plus recentes.
+            # LEFT JOIN produit : libelle metier (designation) -- retour demo 07/07.
             r = conn.execute(text(f"""
-                SELECT po_number, code_article, fournisseur, prix, date_mail
+                SELECT t.po_number, t.code_article, COALESCE(p.designation_fr, p.designation_en) AS designation, t.fournisseur, t.prix, t.date_mail
                 FROM (
                     SELECT po_number, code_article, fournisseur,
                            prix_unitaire AS prix, date_commande AS date_mail,
@@ -431,8 +437,9 @@ def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
                     WHERE fournisseur = :fournisseur {article_filter}
                       AND prix_unitaire IS NOT NULL
                 ) t
+                LEFT JOIN {SCHEMA}.produit p ON p.code_article = t.code_article
                 WHERE rn <= 3
-                ORDER BY code_article, date_mail DESC NULLS LAST
+                ORDER BY t.code_article, t.date_mail DESC NULLS LAST
             """), params)
             return {"source": "commande_fallback", "data": rows_to_dicts(r)}
         except Exception as e:

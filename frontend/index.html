@@ -705,6 +705,7 @@ function renderCommandes(rows) {
         <th>ETD</th>
         <th>Statut retard</th>
         <th>Statut cde</th>
+        <th>Raison retard</th>
         <th>Dernier évènement</th>
         <th>Action</th>
       </tr></thead>
@@ -739,6 +740,11 @@ function renderCommandes(rows) {
             </span>
           </td>
           <td>${badge(r.statut)}</td>
+          <td style="font-size:12px;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer"
+              title="${esc(r.commentaire) || ''}"
+              onclick="openCommentaire('${esc(r.po_number)}', '${esc(r.code_article)}', '${esc(r.commentaire)}')">
+            ${r.commentaire ? esc(r.commentaire) : '<span style="color:var(--muted)">—</span>'}
+          </td>
           <td style="font-size:11px;color:var(--muted)">${fmt(r.derniere_maj, 'date')}</td>
           <td>
             <button class="btn btn-ghost btn-sm"
@@ -885,10 +891,11 @@ function renderFrsDetailRows() {
   const q = (document.getElementById('frs-art') ? document.getElementById('frs-art').value : '').toLowerCase();
   const rows = _frsDetailRows.filter(r => !q || (r.code_article || '').toLowerCase().includes(q));
   document.getElementById('frs-detail-table').innerHTML = rows.length ? `<div class="table-wrap"><table>
-    <thead><tr><th>PO#</th><th>Article</th><th>Prix</th><th>Date</th></tr></thead>
+    <thead><tr><th>PO#</th><th>Article</th><th>Désignation</th><th>Prix</th><th>Date</th></tr></thead>
     <tbody>${rows.map(r => `<tr>
       <td class="mono">${esc(r.po_number) || '-'}</td>
       <td class="mono">${esc(r.code_article) || '-'}</td>
+      <td>${esc(r.designation) || '-'}</td>
       <td style="text-align:right">${r.prix != null ? Number(r.prix).toFixed(2) + ' $' : '-'}</td>
       <td>${fmt(r.date_mail, 'date')}</td>
     </tr>`).join('')}</tbody></table></div>` : '<div class="empty">Aucun resultat</div>';
