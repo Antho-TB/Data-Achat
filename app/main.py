@@ -373,13 +373,16 @@ def get_fournisseurs():
                     COUNT(DISTINCT c.code_article)                    AS nb_articles,
                     COUNT(DISTINCT v.code_article) FILTER (
                         WHERE v.statut_retard = 'EN RETARD')          AS nb_retards,
-                    ROUND(AVG(v.jours_retard) FILTER (
-                        WHERE v.statut_retard = 'EN RETARD'), 0)      AS retard_moyen_jours,
+                    -- Retard moyen FIGE (etd_reel - etd_confirme, plancher 0),
+                    -- 12 mois glissants -- definition metier 07/07 (v_retard_fournisseur).
+                    MAX(rf.retard_moyen_jours)                       AS retard_moyen_jours,
                     MAX(COALESCE(c.date_statut, c.date_commande))     AS derniere_activite,
                     MAX(ca.ca_3ans)                                   AS ca_3ans
                 FROM {SCHEMA}.commande c
                 LEFT JOIN {SCHEMA}.v_retard_article v
                     ON v.code_article = c.code_article AND v.fournisseur = c.fournisseur
+                LEFT JOIN {SCHEMA}.v_retard_fournisseur rf
+                    ON rf.fournisseur = c.fournisseur
                 LEFT JOIN {SCHEMA}.fournisseur_ca ca ON ca.fournisseur = c.fournisseur
                 WHERE c.fournisseur IS NOT NULL
                 GROUP BY c.fournisseur
