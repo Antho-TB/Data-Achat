@@ -624,8 +624,14 @@ async function loadActions(k) {
     const aPayer = rows.filter(x => x.est_a_payer_en_retard);
     if (aPayer.length) {
       const m = aPayer.reduce((s, x) => s + montant(x), 0);
-      actions.push({ prio: 1, icon: '💰', tab: 'previsionnel',
-        txt: `Payer ${aPayer.length} ligne(s) en retard de paiement (${fmt(m, 'money')}) pour ne pas bloquer de conteneur` });
+      const short = (arr) => arr.slice(0, 6).join(', ') + (arr.length > 6 ? ` +${arr.length - 6}` : '');
+      const conts = [...new Set(aPayer.map(x => x.n_conteneur).filter(Boolean))];
+      const posSansCont = [...new Set(aPayer.filter(x => !x.n_conteneur).map(x => x.po_number).filter(Boolean))];
+      let ref = '';
+      if (conts.length) ref += ` — conteneur(s) : ${short(conts)}`;
+      if (posSansCont.length) ref += `${conts.length ? ' ; ' : ' — '}commande(s) sans conteneur : ${short(posSansCont)}`;
+      actions.push({ prio: 1, icon: '💰', tab: conts.length ? 'conteneurs' : 'commandes',
+        txt: `Payer ${aPayer.length} ligne(s) en retard de paiement (${fmt(m, 'money')}) pour débloquer${ref}` });
     }
 
     // 2. Relancer fournisseur / TB China : en retard de livraison ET pas encore parti
