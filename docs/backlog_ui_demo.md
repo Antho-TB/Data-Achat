@@ -15,6 +15,20 @@
 
 ---
 
+## 0bis. 🆕 Dashboard — Carte « Actions prioritaires »
+
+Transformer le dashboard en outil de pilotage : une carte listant les actions à mener, triées par priorité, chacune cliquable vers l'onglet/filtre concerné. Règles de dérivation proposées (à valider par Antho, c'est du métier) :
+
+| Action | Règle de détection (donnée) | Priorité |
+|---|---|---|
+| **Relancer fournisseur / TB China** | lignes EN RETARD **pas encore parties** (ETD confirmé dépassé, statut ≠ En cours de livraison, non livrées) | Haute |
+| **Payer une commande** (débloquer conteneur) | lignes **à payer en retard** : BL reçu / parti, non payées, au-delà de ETD_BL + 15j | Haute |
+| **Relancer Clarisse (artwork)** | artworks en attente de validation depuis > X jours | Moyenne |
+| **Statuer conformité (Eric T)** | inspections/analyses FAIL sans décision enregistrée | Moyenne |
+| **Vérifier ETD/BL manquant** | commande partie sans conteneur/BL rattaché | Basse |
+
+À trancher avec Antho : seuils (X jours artwork, tolérance paiement), périmètre initial, ordre de priorité. Implémentation : endpoint `/api/actions` (SQL sur `commande`/`ot_transport`/`qualite`/`artwork_statut`) + carte dashboard cliquable.
+
 ## 1. Dashboard
 
 - ⬜ **Graph « statut Inconnu »** à traiter (1 commande en statut Inconnu après refresh) : soit reclasser, soit exclure du graph.
