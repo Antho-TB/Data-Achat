@@ -143,6 +143,22 @@ def transform_rows(rows: list[list[str]], campaign_year: int = 2026,
             "po_numbers": clean_pos(_cell(row, COL["commande"])) or None,
             "source_fichier": source_fichier,
         }
+        # Garde-fou rollover : un depart (ETD reel) ne peut pas etre posterieur
+        # a l'arrivee (ETA). Cas des cellules datetime ISO portant une annee
+        # absolue erronee (ex. "25 December" saisi 2026 au lieu de 2025, non
+        # couvert par la regle month>=10 qui ne vaut que pour le format texte).
+        etd, eta = rec_base["etd_reel"], rec_base["eta"]
+        if etd and eta and etd > eta:
+            try:
+                d0 = date.fromisoformat(etd)
+                corrected = d0.replace(year=d0.year - 1).isoformat()
+                logger.warning(
+                    "[ATTENTION] ETD %s > ETA %s (conteneur %s) : rollover annee applique -> ETD %s.",
+                    etd, eta, conteneurs[0], corrected)
+                rec_base["etd_reel"] = corrected
+            except ValueError:
+                logger.warning("[ATTENTION] ETD %s > ETA %s (conteneur %s) : correction impossible, laisse tel quel.",
+                               etd, eta, conteneurs[0])
         for cont in conteneurs:   # 1 record par conteneur (PK)
             records.append({"n_conteneur": cont, **rec_base})
 
