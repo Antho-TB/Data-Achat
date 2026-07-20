@@ -68,6 +68,16 @@ C'est une fiche récapitulative et détaillée d'un produit, base d'échange ave
 
 - ⬜ **HITL (Human-in-the-loop)** : ajouter un point de validation humaine quand il y a **conflit entre deux vérités possibles** (ex. date mail vs date Sylob, prix négocié qui bouge).
 
+## 9. Transverse — Lisibilité des KPI (règle systématique)
+
+Principe : **aucun chiffre affiché sans unité ni définition.** À appliquer à tous les onglets, pas au cas par cas.
+
+- ⬜ **Unité explicite** sur chaque indicateur : `$US`, `jours`, `nb`, `%`. Ex. « 1,31 M » → « 1,31 M USD », « retard 60 » → « 60 jours ».
+- ⬜ **Définition en infobulle** systématique (que compte l'indicateur, sur quel périmètre, quelle date de référence).
+- ⬜ **Éliminer les statuts « Inconnu »** : soit une règle de reclassement, soit un traitement explicite (badge « à qualifier ») plutôt qu'un fourre-tout muet.
+- ⬜ **Cohérence des libellés** : un même concept porte le même nom partout (ex. ne pas titrer « ETD » une colonne qui contient l'ETA).
+- ⬜ **Nommer la date** derrière « dernière activité / dernier événement » (date de quoi exactement).
+
 ---
 
 ## Priorisation suggérée (à valider avec Antho)
