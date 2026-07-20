@@ -43,6 +43,8 @@
 Colonnes : **N° conteneur · nom du bateau · N° BL · destinataire (Pommier / GDD / les 2) · ETD (départ Chine) · ETA (arrivée Fos) · date de livraison sur site · transitaire**.
 Données déjà disponibles dans `achat.ot_transport` (maritime chargé) + BL (Draft puis officiel via ETL Gmail). C'est ici que vit le **prévisionnel logistique des livraisons** (à sortir du Prévisionnel financier, cf. §5).
 
+- ➡️ **Remplace « Planning par mois »** (actuellement dans l'onglet Prévisionnel, `/api/planning`, agrégation par mois d'ETD) par un **regroupement par conteneur** : le conteneur est l'unité réelle d'expédition ET de paiement (le mois est trop grossier). Data prête dans `ot_transport`.
+
 ## 5. Prévisionnel (doit devenir un prévi FINANCIER, pas logistique)
 
 - ⬜ **« À payer EN RETARD 1,31 M USD » ambigu** : en retard de quoi, paiement ou livraison ? Les mesures ne précisent pas **quoi payer**.
