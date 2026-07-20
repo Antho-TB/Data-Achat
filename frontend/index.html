@@ -395,7 +395,7 @@ button { cursor: pointer; }
       <input id="f-art-article" type="text" placeholder="Code article…" oninput="filterArtwork()">
       <select id="f-art-statut" onchange="filterArtwork()">
         <option value="">Tous les statuts</option>
-        <option>Aucun</option>
+        <option>À traiter</option>
         <option>A envoyer</option>
         <option>Envoyé</option>
         <option>Attente Clarisse</option>
@@ -546,7 +546,7 @@ function badge(statut) {
     'Attente Carrefour': 'badge-orange',
     'Bloquée':           'badge-red',
     'Annulée':           'badge-gray',
-    'Aucun':             'badge-gray',
+    'À traiter':         'badge-gray',
     'Archivé':           'badge-gray',
   };
   const cls = map[statut] || 'badge-gray';
@@ -651,9 +651,9 @@ async function loadActions(k) {
     });
 
     // 3. Relancer Clarisse : artworks en attente de validation
-    if (k && k.artwork_en_attente > 0) {
+    if (k && k.artwork_a_envoyer > 0) {
       actions.push({ prio: 3, icon: '🎨', tab: 'artwork',
-        txt: `Relancer Clarisse : ${k.artwork_en_attente} artwork(s) en attente de validation` });
+        txt: `Envoyer ${k.artwork_a_envoyer} artwork(s) à envoyer (Design / Clarisse)` });
     }
 
     if (!actions.length) {

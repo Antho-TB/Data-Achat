@@ -112,8 +112,8 @@ class ArtworkUpdate(BaseModel):
 STATUTS_RETARD = ["EN RETARD", "DANS LES DELAIS", "INCONNU", "CLOTUREE"]
 # Statuts natifs du fichier IMPORT (col N) + statuts de cloture ERP
 STATUTS_ARTWORK = [
-    "Aucun", "A envoyer", "Envoyé", "Attente Clarisse", "Attente Carrefour",
-    "Validé", "Archivé",
+    "À traiter", "A envoyer", "Envoyé", "Attente Clarisse", "Attente Carrefour",
+    "Attente Polyflame", "Validé", "Archivé",
 ]
 
 
@@ -220,7 +220,8 @@ def get_kpis():
                     COUNT(*)                                                      AS total_artwork,
                     COUNT(*) FILTER (WHERE statut_artwork IN ('Envoyé','Validé')) AS valides,
                     COUNT(*) FILTER (WHERE statut_artwork IN
-                        ('A envoyer','Attente Clarisse','Attente Carrefour'))     AS en_attente
+                        ('A envoyer','Attente Clarisse','Attente Carrefour'))     AS en_attente,
+                    COUNT(*) FILTER (WHERE statut_artwork = 'A envoyer')          AS a_envoyer
                 FROM {SCHEMA}.artwork
             """))
             row = r.fetchone()
@@ -228,11 +229,12 @@ def get_kpis():
                 "artwork_total":      int(row[0] or 0),
                 "artwork_valides":    int(row[1] or 0),
                 "artwork_en_attente": int(row[2] or 0),
+                "artwork_a_envoyer":  int(row[3] or 0),
             })
         except Exception as e:
             conn.rollback()
             logger.warning("[ATTENTION] KPI artwork indisponible : %s", str(e).splitlines()[0])
-            kpis.update({"artwork_total": 0, "artwork_valides": 0, "artwork_en_attente": 0})
+            kpis.update({"artwork_total": 0, "artwork_valides": 0, "artwork_en_attente": 0, "artwork_a_envoyer": 0})
 
         try:
             r = conn.execute(text(f"SELECT MAX(date_mail) FROM {SCHEMA}.historique_prix"))

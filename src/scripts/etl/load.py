@@ -182,7 +182,7 @@ CREATE TABLE IF NOT EXISTS achat.artwork (
     po_number       TEXT NOT NULL,
     code_article    TEXT NOT NULL,
     designation     TEXT,
-    statut_artwork  TEXT DEFAULT 'Aucun',
+    statut_artwork  TEXT DEFAULT 'À traiter',
     responsable     TEXT,
     commentaire     TEXT,
     date_demande    DATE,
