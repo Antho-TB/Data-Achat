@@ -310,6 +310,7 @@ button { cursor: pointer; }
   <button class="tab-btn" onclick="switchTab('previsionnel')">Prévisionnel</button>
   <button class="tab-btn" onclick="switchTab('conteneurs')">Conteneurs</button>
   <button class="tab-btn" onclick="switchTab('qualite')">Qualité</button>
+  <button class="tab-btn" onclick="switchTab('fiche')">Fiche Achat</button>
 </div>
 
 <!-- ── Main ─────────────────────────────────────────────────────────────────── -->
@@ -472,6 +473,17 @@ button { cursor: pointer; }
     <div id="table-qualite"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
   </div>
 
+  <!-- FICHE ACHAT -->
+  <div id="tab-fiche" class="tab-panel">
+    <div class="toolbar">
+      <input id="f-fiche-art" type="text" placeholder="Code article ou PO…">
+      <button class="btn btn-ghost btn-sm" onclick="loadFiche()">Charger / pré-remplir</button>
+      <button class="btn btn-ghost btn-sm" onclick="alert('Génération de la fiche (PDF/xlsx) : à venir en Phase B.')">Générer la fiche (à venir)</button>
+      <span id="fiche-hint" style="font-size:12px;color:var(--muted);margin-left:auto;">Saisir un code article ou PO pour pré-remplir depuis FUSEAU</span>
+    </div>
+    <div id="fiche-form"></div>
+  </div>
+
 </div><!-- .main -->
 
 <div id="toast"></div>
@@ -570,7 +582,64 @@ const loaders = {
   previsionnel: loadPrevisionnel,
   conteneurs:   loadConteneurs,
   qualite:      loadQualite,
+  fiche:        loadFiche,
 };
+
+// ── Fiche Achat (Purchase Sheet) ─────────────────────────────────────────────
+// Formulaire mono-utilisateur (Andréa / successeur) : pre-rempli au max depuis
+// FUSEAU (champs "auto"), le reste = pêche interne. Génération PDF/xlsx = Phase B.
+const FICHE_BLOCS = [
+  ['Fournisseur & Produit', [['Fournisseur','fournisseur',1],['Référence article','code_article',1],['Désignation','designation',1]]],
+  ['Transport', [['Transitaire','transitaire',1],['Type de transport','type_transport',0],['Port destination','port',1],['ETD','etd',1]]],
+  ['Packaging & EAN', [['Item / Inner / Master','packaging',0],['Description emballage','emballage',0],['Shipping marks','shipping_marks',0],['EAN Item(13) / Inner(SPCB) / Master(PCB)','ean',0]]],
+  ['Matière — Métal', [['Épaisseur (mm)','thickness',0],['Longueur (mm)','length',0],['Qualité acier','quality',0],['% Chrome','chrome',0],['Traitement thermique','heat',0],['Finition','finishing',0]]],
+  ['Matière — Manche', [['Matière manche','handle_material',0],['Pantone','pantone',0]]],
+  ['Marquage', [['Marquage (texte)','stamping',0],['Dimensions marquage (mm)','stamping_dim',0]]],
+  ['Production & Master carton', [['Dimensions master carton (L/l/H cm)','carton',0]]],
+  ['Divers', [['Documents particuliers exigés','docs',0],['Échantillons de test','samples',0],['Traduction FR','fr',0]]],
+];
+
+async function loadFiche() {
+  const el = document.getElementById('f-fiche-art');
+  const q = el && el.value ? el.value.trim() : '';
+  let pre = {};
+  if (q) {
+    try {
+      const r = await apiFetch('/api/commandes?limit=1000');
+      const data = r.data || [];
+      const row = data.find(x => (x.code_article || '') === q || (x.po_number || '') === q)
+               || data.find(x => (x.code_article || '').toLowerCase().includes(q.toLowerCase()));
+      if (row) {
+        pre = {
+          fournisseur: row.fournisseur, code_article: row.code_article, designation: row.designation,
+          transitaire: row.transitaire, etd: row.date_etd ? String(row.date_etd).slice(0, 10) : '',
+          port: 'FOS SUR MER (= MARSEILLE)',
+        };
+        document.getElementById('fiche-hint').textContent = `Pré-rempli depuis PO ${row.po_number || '—'}`;
+      } else {
+        document.getElementById('fiche-hint').textContent = 'Article/PO non trouvé — formulaire vierge';
+      }
+    } catch (e) { document.getElementById('fiche-hint').textContent = e.message; }
+  }
+  renderFicheForm(pre);
+}
+
+function renderFicheForm(pre) {
+  pre = pre || {};
+  const v = k => String(pre[k] == null ? '' : pre[k]).replace(/"/g, '&quot;');
+  document.getElementById('fiche-form').innerHTML = FICHE_BLOCS.map(([titre, champs]) => `
+    <div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:12px;">
+      <div style="font-weight:600;font-size:13px;margin-bottom:8px;">${titre}</div>
+      ${champs.map(([lbl, key, auto]) => `
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+          <label style="width:240px;font-size:12px;color:var(--muted);">${lbl}${auto ? ' <span style="color:#2E7D32;font-size:10px;">● auto</span>' : ''}</label>
+          <input type="text" data-k="${key}" value="${v(key)}"
+            placeholder="${auto ? '(pré-rempli FUSEAU)' : 'à renseigner (pêche interne)'}"
+            style="flex:1;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:13px;${auto && pre[key] ? 'background:#F1F7F1;' : ''}">
+        </div>`).join('')}
+    </div>`).join('')
+    + '<div style="font-size:12px;color:var(--muted);padding:4px 2px;">🟢 « auto » = champ pré-remplissable depuis FUSEAU/Sylob. Les autres sont à renseigner (pêche interne). La génération PDF/xlsx viendra en Phase B.</div>';
+}
 const loaded = new Set();
 
 // Tri generique : clic sur un entete de colonne trie le tableau (asc/desc),
@@ -633,6 +702,18 @@ async function checkHealth() {
 // ════════════════════════════════════════════════════════════════════════════
 // DASHBOARD
 // ════════════════════════════════════════════════════════════════════════════
+// Palette TB Groupe -- Design System officiel (institutionnel) :
+// slate #2E495B, rouge signal #E2001A (alerte/CTA), bleu profond #1B0BB5, gris, sand.
+// Aliases (navy/orange/green) mappes sur la charte pour uniformiser les graphes
+// existants : plus d'orange/vert "reggae", que slate / bleu / rouge / gris.
+const TB = {
+  slate: '#2E495B', blue: '#1B0BB5', red: '#E2001A', grey: '#999999', sand: '#CCC7B9',
+  navy: '#2E495B',   // alias -> slate (couleur de série principale)
+  orange: '#1B0BB5', // alias -> bleu profond (2e série, ex-"attention")
+  green: '#2E495B',  // alias -> slate (neutre "dans les délais", pas de vert)
+};
+const TB_SERIES = [TB.slate, TB.blue, TB.grey, TB.sand, TB.red];
+
 let chartRetards = null, chartStatuts = null;
 
 async function loadDashboard() {
@@ -691,7 +772,7 @@ async function loadActions(k) {
       el.innerHTML = '<div style="color:var(--muted);font-size:13px;">Aucune action prioritaire détectée. 👍</div>';
       return;
     }
-    const colors = { 1: 'var(--red,#c0392b)', 2: 'var(--orange,#f59e0b)', 3: '#2563eb' };
+    const colors = { 1: TB.red, 2: TB.orange, 3: TB.navy };
     el.innerHTML = actions.sort((a, b) => a.prio - b.prio).map(a => `
       <div onclick="switchTab('${a.tab}')" title="Ouvrir l'onglet concerné"
            style="display:flex;gap:10px;align-items:center;padding:8px 10px;border-left:3px solid ${colors[a.prio]};
@@ -737,7 +818,7 @@ function renderCharts(k) {
       datasets: [{
         label: 'Articles en retard',
         data: top.map(r => r.retards),
-        backgroundColor: '#dc2626cc',
+        backgroundColor: TB.orange,
         borderRadius: 4,
       }]
     },
@@ -760,7 +841,7 @@ function renderCharts(k) {
           k.lignes_en_retard,
           k.lignes_dans_delais
         ],
-        backgroundColor: ['#dc2626', '#16a34a'],
+        backgroundColor: [TB.red, TB.green],
         borderWidth: 2,
       }]
     },
@@ -811,7 +892,7 @@ let chartCmdRetard = null, chartCmdStatut = null;
 const _logiBucket = r => r.est_livre ? 'Livré' : (r.est_parti ? 'En transit' : 'Pas parti');
 const _payBucket  = r => r.est_a_payer_en_retard ? 'À payer (retard)' : (r.est_a_payer ? 'À payer' : 'Payé');
 const _PAY_ORDER  = ['Payé', 'À payer', 'À payer (retard)'];
-const _PAY_COLORS = { 'Payé': '#16a34a', 'À payer': '#f59e0b', 'À payer (retard)': '#dc2626' };
+const _PAY_COLORS = { 'Payé': TB.navy, 'À payer': TB.orange, 'À payer (retard)': TB.red };
 const _LOGI_ORDER = ['Pas parti', 'En transit', 'Livré'];
 
 function renderCommandesCharts(rows) {
@@ -1417,8 +1498,8 @@ function renderConteneursM3(rows) {
     data: {
       labels: rows.map(r => r.mois),
       datasets: [
-        { type: 'bar', label: 'Valeur à recevoir (USD)', data: rows.map(r => Number(r.valeur || 0)), backgroundColor: '#2563ebcc', yAxisID: 'y', borderRadius: 3 },
-        { type: 'line', label: 'Conteneurs (nb)', data: rows.map(r => Number(r.nb_conteneurs || 0)), borderColor: '#f59e0b', backgroundColor: '#f59e0b', yAxisID: 'y1', tension: 0.3 },
+        { type: 'bar', label: 'Valeur à recevoir (USD)', data: rows.map(r => Number(r.valeur || 0)), backgroundColor: TB.navy, yAxisID: 'y', borderRadius: 3 },
+        { type: 'line', label: 'Conteneurs (nb)', data: rows.map(r => Number(r.nb_conteneurs || 0)), borderColor: TB.orange, backgroundColor: TB.orange, yAxisID: 'y1', tension: 0.3 },
       ]
     },
     options: {
@@ -1468,7 +1549,7 @@ function renderCash(rows) {
   const ctx = document.getElementById('chart-cash');
   if (chartCash) chartCash.destroy();
   // Tranche "En retard" en rouge, le reste en bleu.
-  const colors = rows.map(r => (r.tranche || '').startsWith('1.') ? '#dc2626' : '#2563ebcc');
+  const colors = rows.map(r => (r.tranche || '').startsWith('1.') ? TB.red : TB.navy);
   chartCash = new Chart(ctx, {
     type: 'bar',
     data: {
