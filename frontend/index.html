@@ -573,6 +573,37 @@ const loaders = {
 };
 const loaded = new Set();
 
+// Tri generique : clic sur un entete de colonne trie le tableau (asc/desc),
+// sur TOUS les tableaux de TOUS les onglets, sans cablage par table (delegation
+// sur document -> marche aussi apres re-rendu). Detecte les nombres (montants,
+// quantites, dates ISO) sinon tri alphabetique FR.
+(function () {
+  const st = document.createElement('style');
+  st.textContent = 'table thead th{cursor:pointer;user-select:none}'
+    + ' table thead th[data-sort="asc"]::after{content:" \\25B2";font-size:9px;opacity:.7}'
+    + ' table thead th[data-sort="desc"]::after{content:" \\25BC";font-size:9px;opacity:.7}';
+  document.head.appendChild(st);
+  document.addEventListener('click', function (e) {
+    const th = e.target.closest('table thead th');
+    if (!th) return;
+    const thead = th.parentElement;
+    const table = th.closest('table');
+    const tbody = table && table.querySelector('tbody');
+    if (!tbody) return;
+    const idx = Array.prototype.indexOf.call(thead.children, th);
+    const dir = th.getAttribute('data-sort') === 'asc' ? 'desc' : 'asc';
+    Array.prototype.forEach.call(thead.children, h => h.removeAttribute('data-sort'));
+    th.setAttribute('data-sort', dir);
+    const txt = tr => (tr.children[idx] ? tr.children[idx].textContent.trim() : '');
+    const num = s => { const n = parseFloat(String(s).replace(/[^0-9,.\-]/g, '').replace(',', '.')); return isNaN(n) ? null : n; };
+    Array.from(tbody.querySelectorAll(':scope > tr')).sort((a, b) => {
+      const va = txt(a), vb = txt(b), na = num(va), nb = num(vb);
+      const c = (na !== null && nb !== null) ? na - nb : va.localeCompare(vb, 'fr', { numeric: true });
+      return dir === 'asc' ? c : -c;
+    }).forEach(r => tbody.appendChild(r));
+  });
+})();
+
 function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach((b, i) => {
     b.classList.toggle('active', Object.keys(loaders)[i] === name);
