@@ -605,6 +605,59 @@ def get_previsionnel():
 
 
 # ==============================================================================
+# Conteneurs (suivi logistique)
+# ==============================================================================
+@app.get("/api/conteneurs")
+def get_conteneurs():
+    """Suivi des conteneurs : liste complete (ot_transport enrichi par commande) +
+    previsionnel des arrivees par mois sur le mois courant et les 3 suivants.
+
+    Le conteneur est l'unite reelle d'expedition ET de paiement (le BL declenche
+    le paiement). On agrege la valeur des lignes commande rattachees a chaque
+    conteneur pour donner la lecture financiere par arrivee.
+    """
+    engine = get_engine()
+    with engine.connect() as conn:
+        try:
+            agg = f"""
+                SELECT c.n_conteneur,
+                       COUNT(DISTINCT c.po_number) AS nb_po,
+                       COUNT(*)                    AS nb_articles,
+                       ROUND(SUM(CASE WHEN c.code_article IS NULL THEN COALESCE(c.total_prix, 0)
+                                      ELSE COALESCE(c.prix_unitaire * c.quantite, 0) END), 2) AS valeur
+                FROM {SCHEMA}.commande c
+                WHERE c.statut <> 'Annulée' AND c.n_conteneur IS NOT NULL AND c.n_conteneur <> ''
+                GROUP BY c.n_conteneur
+            """
+            liste = rows_to_dicts(conn.execute(text(f"""
+                SELECT ot.n_conteneur, ot.n_bl, ot.transport AS navire, ot.transitaire,
+                       ot.lieu_livraison AS destinataire,
+                       ot.etd_reel AS etd, ot.eta, ot.date_livraison,
+                       COALESCE(a.nb_po, 0) AS nb_po, COALESCE(a.nb_articles, 0) AS nb_articles,
+                       COALESCE(a.valeur, 0) AS valeur
+                FROM {SCHEMA}.ot_transport ot
+                LEFT JOIN ({agg}) a ON a.n_conteneur = ot.n_conteneur
+                ORDER BY COALESCE(ot.eta, ot.etd_reel) DESC NULLS LAST
+            """)))
+
+            # Previsionnel des arrivees (ETA) : mois courant + 3 suivants.
+            previsionnel_m3 = rows_to_dicts(conn.execute(text(f"""
+                SELECT TO_CHAR(ot.eta, 'YYYY-MM') AS mois,
+                       COUNT(*)                   AS nb_conteneurs,
+                       ROUND(SUM(COALESCE(a.valeur, 0)), 2) AS valeur
+                FROM {SCHEMA}.ot_transport ot
+                LEFT JOIN ({agg}) a ON a.n_conteneur = ot.n_conteneur
+                WHERE ot.eta >= date_trunc('month', CURRENT_DATE)
+                  AND ot.eta <  date_trunc('month', CURRENT_DATE) + INTERVAL '4 months'
+                GROUP BY 1 ORDER BY 1
+            """)))
+
+            return {"liste": liste, "previsionnel_m3": previsionnel_m3}
+        except Exception as e:
+            raise internal_error(e)
+
+
+# ==============================================================================
 # Sante
 # ==============================================================================
 @app.get("/api/health")
