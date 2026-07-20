@@ -319,6 +319,10 @@ button { cursor: pointer; }
     <div class="kpi-grid" id="kpi-grid">
       <div class="loader"><span class="spinner"></span>Chargement…</div>
     </div>
+    <div id="dash-actions" style="margin:4px 0 16px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:14px;">
+      <div style="font-weight:600;font-size:14px;margin-bottom:10px;">⚡ Actions prioritaires</div>
+      <div id="dash-actions-list"><div class="loader"><span class="spinner"></span>Analyse…</div></div>
+    </div>
     <div class="charts-row">
       <div class="chart-card">
         <h3>Retards par fournisseur</h3>
@@ -348,11 +352,11 @@ button { cursor: pointer; }
     </div>
     <div id="cmd-charts" style="display:none;gap:16px;margin-bottom:14px;flex-wrap:wrap;">
       <div style="flex:1;min-width:240px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:10px;">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">Statut retard (lignes affichées, nb)</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">Paiement (lignes ouvertes, nb)</div>
         <div style="height:180px;"><canvas id="chart-cmd-retard"></canvas></div>
       </div>
       <div style="flex:1;min-width:240px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:10px;">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">Statut commande (lignes affichées, nb)</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">Paiement × Logistique (lignes ouvertes, nb)</div>
         <div style="height:180px;"><canvas id="chart-cmd-statut"></canvas></div>
       </div>
     </div>
@@ -587,10 +591,60 @@ async function loadDashboard() {
     const kpis = await apiFetch('/api/kpis');
     renderKpis(kpis);
     renderCharts(kpis);
+    loadActions(kpis);
   } catch (e) {
     document.getElementById('kpi-grid').innerHTML =
       `<div class="empty"><div class="empty-icon">⚠️</div>${esc(e.message)}</div>`;
     toast(e.message, true);
+  }
+}
+
+// Carte Actions prioritaires : derive des actions concretes a partir des axes
+// metier (paiement / logistique) exposes par /api/commandes + les artworks en attente.
+async function loadActions(k) {
+  const el = document.getElementById('dash-actions-list');
+  try {
+    const r = await apiFetch('/api/commandes?limit=1000');
+    const rows = (r.data || []).filter(x => x.statut !== 'Annulée');
+    const montant = x => (Number(x.prix_unitaire) || 0) * (Number(x.quantite) || 0);
+    const actions = [];
+
+    // 1. Payer pour debloquer : lignes a payer EN RETARD (BL / ETD depasse, non paye)
+    const aPayer = rows.filter(x => x.est_a_payer_en_retard);
+    if (aPayer.length) {
+      const m = aPayer.reduce((s, x) => s + montant(x), 0);
+      actions.push({ prio: 1, icon: '💰', tab: 'previsionnel',
+        txt: `Payer ${aPayer.length} ligne(s) en retard de paiement (${fmt(m, 'money')}) pour ne pas bloquer de conteneur` });
+    }
+
+    // 2. Relancer fournisseur / TB China : en retard de livraison ET pas encore parti
+    const bloque = rows.filter(x => x.est_en_retard && !x.est_parti);
+    const parFrs = {};
+    bloque.forEach(x => { const f = x.fournisseur || '—'; parFrs[f] = (parFrs[f] || 0) + 1; });
+    Object.entries(parFrs).sort((a, b) => b[1] - a[1]).slice(0, 5).forEach(([f, n]) => {
+      actions.push({ prio: 2, icon: '📞', tab: 'commandes',
+        txt: `Relancer ${f} (ou TB China) : ${n} ligne(s) en retard, pas encore parties` });
+    });
+
+    // 3. Relancer Clarisse : artworks en attente de validation
+    if (k && k.artwork_en_attente > 0) {
+      actions.push({ prio: 3, icon: '🎨', tab: 'artwork',
+        txt: `Relancer Clarisse : ${k.artwork_en_attente} artwork(s) en attente de validation` });
+    }
+
+    if (!actions.length) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:13px;">Aucune action prioritaire détectée. 👍</div>';
+      return;
+    }
+    const colors = { 1: 'var(--red,#c0392b)', 2: 'var(--orange,#f59e0b)', 3: '#2563eb' };
+    el.innerHTML = actions.sort((a, b) => a.prio - b.prio).map(a => `
+      <div onclick="switchTab('${a.tab}')" title="Ouvrir l'onglet concerné"
+           style="display:flex;gap:10px;align-items:center;padding:8px 10px;border-left:3px solid ${colors[a.prio]};
+                  background:var(--bg,#f8fafc);border-radius:4px;margin-bottom:6px;cursor:pointer;font-size:13px;">
+        <span>${a.icon}</span><span>${esc(a.txt)}</span>
+      </div>`).join('');
+  } catch (e) {
+    el.innerHTML = `<div style="color:var(--muted);font-size:13px;">Actions indisponibles : ${esc(e.message)}</div>`;
   }
 }
 
@@ -698,34 +752,50 @@ function filterCommandes() {
 }
 
 let chartCmdRetard = null, chartCmdStatut = null;
+// Buckets metier ORTHOGONAUX (axes exposes par /api/commandes via v_previsionnel).
+const _logiBucket = r => r.est_livre ? 'Livré' : (r.est_parti ? 'En transit' : 'Pas parti');
+const _payBucket  = r => r.est_a_payer_en_retard ? 'À payer (retard)' : (r.est_a_payer ? 'À payer' : 'Payé');
+const _PAY_ORDER  = ['Payé', 'À payer', 'À payer (retard)'];
+const _PAY_COLORS = { 'Payé': '#16a34a', 'À payer': '#f59e0b', 'À payer (retard)': '#dc2626' };
+const _LOGI_ORDER = ['Pas parti', 'En transit', 'Livré'];
+
 function renderCommandesCharts(rows) {
   const box = document.getElementById('cmd-charts');
-  if (!rows || !rows.length) { box.style.display = 'none'; return; }
+  // Hors annulees : elles ne portent aucune action.
+  const data = (rows || []).filter(x => x.statut !== 'Annulée');
+  if (!data.length) { box.style.display = 'none'; return; }
   box.style.display = 'flex';
 
-  // Statut retard (axe logistique) sur les lignes affichees
-  // On exclut CLOTUREE des visuels : ces lignes livrees/soldees noient l actionnable.
-  const rOrder  = ['EN RETARD', 'DANS LES DELAIS', 'INCONNU'];
-  const rLabels = ['En retard', 'Dans les délais', 'Inconnu'];
-  const rColors = ['#dc2626', '#16a34a', '#f59e0b'];
-  const rCounts = rOrder.map(s => rows.filter(x => (x.statut_retard || 'INCONNU') === s).length);
+  // Camembert paiement (Payé / À payer / À payer en retard)
+  const payCounts = _PAY_ORDER.map(p => data.filter(r => _payBucket(r) === p).length);
   if (chartCmdRetard) chartCmdRetard.destroy();
   chartCmdRetard = new Chart(document.getElementById('chart-cmd-retard'), {
     type: 'doughnut',
-    data: { labels: rLabels, datasets: [{ data: rCounts, backgroundColor: rColors, borderWidth: 2 }] },
+    data: { labels: _PAY_ORDER, datasets: [{ data: payCounts, backgroundColor: _PAY_ORDER.map(p => _PAY_COLORS[p]), borderWidth: 2 }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } }
   });
 
-  // Statut commande (axe cycle de vie) sur les lignes affichees
-  const byStatut = {};
-  rows.forEach(x => { const k = x.statut || 'Inconnu'; byStatut[k] = (byStatut[k] || 0) + 1; });
-  const sLabels = Object.keys(byStatut);
-  const sData = sLabels.map(k => byStatut[k]);
+  // Double histogramme : Logistique (x, empile) x Paiement (couleur)
+  const matrix = {};
+  _LOGI_ORDER.forEach(l => { matrix[l] = {}; _PAY_ORDER.forEach(p => matrix[l][p] = 0); });
+  data.forEach(r => { matrix[_logiBucket(r)][_payBucket(r)]++; });
   if (chartCmdStatut) chartCmdStatut.destroy();
   chartCmdStatut = new Chart(document.getElementById('chart-cmd-statut'), {
     type: 'bar',
-    data: { labels: sLabels, datasets: [{ label: 'Lignes', data: sData, backgroundColor: '#2563ebcc', borderRadius: 4 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    data: {
+      labels: _LOGI_ORDER,
+      datasets: _PAY_ORDER.map(p => ({
+        label: p,
+        data: _LOGI_ORDER.map(l => matrix[l][p]),
+        backgroundColor: _PAY_COLORS[p],
+        borderRadius: 3,
+      }))
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+      scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } } }
+    }
   });
 }
 
