@@ -59,5 +59,25 @@ Reste à caler avec Andréa :
 - Les 2 variantes (Produits uniques vs Ménagère/sets) : mêmes blocs ? différences ?
 - Ce qui doit être **modifiable dans le temps** (les lignes bougent pendant la négo : qté, prix).
 
+## 4b. Structure finale de référence — PS-00182725 (validée « parfaite » par Antho)
+
+Exemple : SET OF 4 KNIVES LAG HERITAGE BLACK PVD (réf 20110064, NOSKI). Champ → valeur → source de pré-remplissage possible :
+
+| Champ | Valeur exemple | Pré-remplissable depuis |
+|---|---|---|
+| Supplier | NOSKI | commande.fournisseur |
+| Référence / Name | 20110064 / SET OF 4 KNIVES LAG HERITAGE… | code_article / désignation |
+| Port destination / ETD | FOS SUR MER / 2026-08-30 | ot_transport (ETD), constante Fos |
+| Packaging Item/Inner/Master | 4 / 6 / 6 | Sylob V25 (PCB/SPCB) / article_nomenclature |
+| Shipping marks | GW/NW - Item - EAN - Designation | règle standard |
+| Metal : thickness/length/quality/**chrome%**/heat/finishing | 12mm / 240mm / 2CR14 / 13 / Yes / Mirror + Black PVD | nomenclature + **qualité (chrome)** |
+| Handle : material / pantone | Stainless steel + stamping of bee / Steel | à saisir (Design/Sourcing) |
+| Stamping / dims | LAGUIOLE HERITAGE / 4,5 x 15,5 | à saisir (Design) |
+| Master carton dims (L/W/H) | (bas de fiche) | Sylob dimensions |
+| EAN Item/Inner/Master (13 / 14 SPCB / 14 PCB) | (bas de fiche) | Sylob / référentiel EAN |
+| French translation | item + désignation FR | Jonatan / désignation FR |
+
+➜ **~60% des champs sont déjà dans FUSEAU/Sylob** → le formulaire de création (Phase B) peut être largement pré-rempli ; l'utilisateur ne saisit que le spécifique (handle, stamping, docs). Le `PS-00182725` (xlsx `Modifiable/` + PDF signé `Signé/`) est le gabarit de sortie cible.
+
 ## 5. Reco de démarrage
 Commencer par la **Phase A (consultation)** : indexer les `PS-*.pdf` existants et les rendre consultables/liables depuis FUSEAU. C'est immédiatement utile, réutilise le pattern `qualite_doc`, et ne dépend pas du workflow de création (qui, lui, demande le cadrage détaillé avec Andréa).
