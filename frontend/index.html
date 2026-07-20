@@ -587,14 +587,22 @@ async function loadDashboard() {
 function renderKpis(k) {
   const grid = document.getElementById('kpi-grid');
   grid.innerHTML = `
-    <div class="kpi-card"><div class="kpi-value">${k.total_po}</div><div class="kpi-label">Commandes (PO)</div></div>
-    <div class="kpi-card"><div class="kpi-value">${k.total_lignes}</div><div class="kpi-label">Lignes articles</div></div>
-    <div class="kpi-card danger"><div class="kpi-value">${k.lignes_en_retard}</div><div class="kpi-label">Articles en retard</div></div>
-    <div class="kpi-card ok"><div class="kpi-value">${k.lignes_dans_delais}</div><div class="kpi-label">Dans les délais</div></div>
-    <div class="kpi-card"><div class="kpi-value">${k.nb_fournisseurs}</div><div class="kpi-label">Fournisseurs actifs</div></div>
-    <div class="kpi-card orange"><div class="kpi-value">${fmt(k.valeur_totale, 'money')}</div><div class="kpi-label">Valeur commandes</div></div>
-    <div class="kpi-card warn"><div class="kpi-value">${k.artwork_en_attente}</div><div class="kpi-label">Artworks en attente</div></div>
-    <div class="kpi-card ok"><div class="kpi-value">${k.artwork_valides}</div><div class="kpi-label">Artworks validés</div></div>
+    <div class="kpi-card" title="Nombre de commandes distinctes (numéros de PO).">
+      <div class="kpi-value">${k.total_po}</div><div class="kpi-label">Commandes · nb PO</div></div>
+    <div class="kpi-card" title="Nombre de lignes article. Une commande (PO) contient plusieurs lignes article.">
+      <div class="kpi-value">${k.total_lignes}</div><div class="kpi-label">Lignes articles · nb</div></div>
+    <div class="kpi-card danger" title="Lignes dont l'ETD confirmé est dépassé et qui ne sont pas encore livrées.">
+      <div class="kpi-value">${k.lignes_en_retard}</div><div class="kpi-label">Articles en retard · nb</div></div>
+    <div class="kpi-card ok" title="Lignes en cours dont l'ETD confirmé n'est pas dépassé (hors livrées).">
+      <div class="kpi-value">${k.lignes_dans_delais}</div><div class="kpi-label">Dans les délais · nb</div></div>
+    <div class="kpi-card" title="Nombre de fournisseurs distincts sur les commandes en cours.">
+      <div class="kpi-value">${k.nb_fournisseurs}</div><div class="kpi-label">Fournisseurs actifs · nb</div></div>
+    <div class="kpi-card orange" title="Somme (prix unitaire x quantité) hors commandes annulées. Devise : USD.">
+      <div class="kpi-value">${fmt(k.valeur_totale, 'money')}</div><div class="kpi-label">Valeur commandes · USD</div></div>
+    <div class="kpi-card warn" title="Nombre d'artworks en attente de validation design.">
+      <div class="kpi-value">${k.artwork_en_attente}</div><div class="kpi-label">Artworks en attente · nb</div></div>
+    <div class="kpi-card ok" title="Nombre d'artworks validés par le design.">
+      <div class="kpi-value">${k.artwork_valides}</div><div class="kpi-label">Artworks validés · nb</div></div>
   `;
 }
 
@@ -627,7 +635,7 @@ function renderCharts(k) {
   chartStatuts = new Chart(statutsCtx, {
     type: 'doughnut',
     data: {
-      labels: ['En retard', 'Dans les délais', 'Inconnu'],
+      labels: ['En retard', 'Dans les délais', 'Autres (livré / clôturé)'],
       datasets: [{
         data: [
           k.lignes_en_retard,
@@ -699,14 +707,14 @@ function renderCommandes(rows) {
         <th>Article</th>
         <th>Désignation</th>
         <th>Fournisseur</th>
-        <th>Qté</th>
-        <th>Prix unit.</th>
-        <th>Acompte ($)</th>
-        <th>ETD</th>
-        <th>Statut retard</th>
-        <th>Statut cde</th>
+        <th title="Quantité commandée.">Qté · nb</th>
+        <th title="Prix unitaire, en USD.">Prix unit. · USD</th>
+        <th title="Acompte versé au fournisseur, en USD.">Acompte · USD</th>
+        <th title="ETD confirmé : date de départ prévue depuis la Chine.">ETD confirmé</th>
+        <th title="Axe LOGISTIQUE : EN RETARD (ETD dépassé, pas livré) / DANS LES DÉLAIS / CLÔTURÉE. Différent du statut de la commande.">Statut retard</th>
+        <th title="Axe COMMANDE : état du cycle de vie de la commande (En cours, En production, En cours de livraison, Livrée, Payée, Annulée).">Statut cde</th>
         <th>Raison retard</th>
-        <th>Dernier évènement</th>
+        <th title="Date du dernier évènement métier : annotation manuelle sinon date de changement de statut. Ce n'est pas la date du run ETL.">Dernier évènement</th>
         <th>Action</th>
       </tr></thead>
       <tbody>
