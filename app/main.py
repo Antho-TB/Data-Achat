@@ -284,10 +284,15 @@ def get_commandes(
                 FROM (
                     SELECT
                         c.po_number, c.code_article, c.fournisseur, c.designation,
-                        c.prix_unitaire, c.quantite, c.statut,
+                        c.prix_unitaire, c.quantite, c.statut, c.n_conteneur,
                         {SQL_ETD_EFF}              AS date_etd,
                         c.eta, c.date_livraison,
                         {SQL_STATUT_RETARD}        AS statut_retard,
+                        -- Axes metier ORTHOGONAUX (issus de v_previsionnel) : paiement,
+                        -- logistique, inspection. Permettent le cross-tab et l'OTD cote UI
+                        -- sans reconflater le statut unique.
+                        v.est_a_payer, v.est_a_payer_en_retard,
+                        v.est_parti, v.est_livre, v.est_en_retard, v.est_en_inspection,
                         a.commentaire,
                         ac.montant_acompte AS acompte,
                         -- Dernier evenement METIER : annotation ERP sinon date du statut
@@ -297,6 +302,7 @@ def get_commandes(
                     LEFT JOIN {SCHEMA}.commande_annotation a
                         ON a.po_number = c.po_number AND a.code_article = c.code_article
                     LEFT JOIN {SCHEMA}.acompte ac ON ac.po_number = c.po_number
+                    LEFT JOIN {SCHEMA}.v_previsionnel v ON v.id = c.id
                 ) q
                 {where}
             """
