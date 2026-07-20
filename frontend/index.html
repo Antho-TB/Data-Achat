@@ -1029,13 +1029,13 @@ function renderQualite(rows, warning) {
 }
 
 const PREV_PHASES = {
-  achete:        { lbl: 'Acheté',        color: 'var(--blue-light)' },
-  a_payer:       { lbl: 'À payer',       color: 'var(--orange)' },
-  a_payer_en_retard: { lbl: 'À payer EN RETARD', color: 'var(--red,#c0392b)' },
-  en_inspection: { lbl: 'En inspection', color: 'var(--blue-light)' },
-  parti:         { lbl: 'Parti',         color: 'var(--blue-light)' },
-  en_retard:     { lbl: 'En retard',     color: 'var(--red,#c0392b)' },
-  livre:         { lbl: 'Livré',         color: 'var(--green)' },
+  achete:        { lbl: 'Acheté',        color: 'var(--blue-light)', def: 'Lignes commandées (hors annulées). Montant = prix unitaire x quantité, en USD.' },
+  a_payer:       { lbl: 'À payer',       color: 'var(--orange)',     def: 'Lignes non encore payées (hors annulées). Montant restant dû, en USD.' },
+  a_payer_en_retard: { lbl: 'À payer EN RETARD', color: 'var(--red,#c0392b)', def: 'Retard de PAIEMENT : lignes non payées dont l ETD est dépassé. Le paiement se déclenche au BL.' },
+  en_inspection: { lbl: 'En inspection', color: 'var(--blue-light)', def: 'Lignes en cours d inspection qualité (non encore livrées).' },
+  parti:         { lbl: 'Parti',         color: 'var(--blue-light)', def: 'Lignes dont la marchandise est partie (ETD atteint), pas encore livrées.' },
+  en_retard:     { lbl: 'En retard',     color: 'var(--red,#c0392b)', def: 'Retard de LIVRAISON : ETD dépassé et pas encore livré.' },
+  livre:         { lbl: 'Livré',         color: 'var(--green)',      def: 'Lignes livrées sur site.' },
 };
 
 function fmtEur(n){ n=Number(n)||0; if(n>=1e6) return (n/1e6).toFixed(2)+' M'; if(n>=1e3) return Math.round(n/1e3)+' k'; return Math.round(n).toString(); }
@@ -1050,16 +1050,16 @@ async function loadPrevisionnelMesures() {
       return;
     }
     document.getElementById('prev-mesures').innerHTML = (r.mesures||[]).map(m => {
-      const meta = PREV_PHASES[m.phase] || { lbl: m.phase, color: 'var(--muted)' };
-      return `<div class="artwork-stat">
-        <div class="num" style="color:${meta.color}">${m.count}</div>
+      const meta = PREV_PHASES[m.phase] || { lbl: m.phase, color: 'var(--muted)', def: '' };
+      return `<div class="artwork-stat" title="${esc(meta.def || '')}">
+        <div class="num" style="color:${meta.color}">${m.count} <span style="font-size:12px;color:var(--muted);font-weight:normal">lignes</span></div>
         <div class="lbl">${meta.lbl}<br><small style="color:var(--muted)">${fmtEur(m.montant)} USD</small></div>
       </div>`;
     }).join('');
     const frs = r.par_fournisseur || [];
     document.getElementById('prev-frs').innerHTML = frs.length ? `<div class="table-wrap"><table>
-      <thead><tr><th>Fournisseur</th><th>À payer</th><th>Inspection</th><th>Parti</th>
-      <th>En retard</th><th>Montant retard</th></tr></thead>
+      <thead><tr><th>Fournisseur</th><th title="Nombre de lignes à payer.">À payer · nb</th><th title="Nombre de lignes en inspection qualité.">Inspection · nb</th><th title="Nombre de lignes parties (ETD atteint), pas livrées.">Parti · nb</th>
+      <th title="Nombre de lignes en retard de livraison (ETD dépassé, pas livré).">En retard · nb</th><th title="Montant des lignes en retard, en USD.">Montant retard · USD</th></tr></thead>
       <tbody>${frs.map(f => `<tr>
         <td>${esc(f.fournisseur)||'-'}</td>
         <td class="mono">${f.a_payer??0}</td>
