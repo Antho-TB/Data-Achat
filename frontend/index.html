@@ -752,7 +752,7 @@ async function loadCommandes() {
   document.getElementById('table-commandes').innerHTML =
     '<div class="loader"><span class="spinner"></span>Chargement…</div>';
   try {
-    const r = await apiFetch('/api/commandes?limit=500');
+    const r = await apiFetch('/api/commandes?limit=1000');
     _commandes = r.data;
     _commandesTotal = r.total;
     renderCommandes(_commandes);
@@ -785,8 +785,9 @@ const _LOGI_ORDER = ['Pas parti', 'En transit', 'Livré'];
 
 function renderCommandesCharts(rows) {
   const box = document.getElementById('cmd-charts');
-  // Hors annulees : elles ne portent aucune action.
-  const data = (rows || []).filter(x => x.statut !== 'Annulée');
+  // Focus actionnable : hors annulees ET hors lignes soldees (livrees ET payees),
+  // qui ecrasaient les graphes sans porter d'action.
+  const data = (rows || []).filter(x => x.statut !== 'Annulée' && !(x.est_livre && !x.est_a_payer));
   if (!data.length) { box.style.display = 'none'; return; }
   box.style.display = 'flex';
 
