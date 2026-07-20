@@ -29,10 +29,29 @@ C'est la dernière brique de l'ETL Gmail avant la deadline du 31/07 (départ d'A
 6. [ ] Cowork ouvert, connecteur **Gmail** sur `achat.import@tb-groupe.fr`.
 7. [ ] `python run_api.py` → `http://127.0.0.1:5050/api/health` = `write_enabled:true` + DWH connecté.
    - Port 5050 occupé ? `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'run_api|spawn_main' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`
+8. [ ] **Pré-vol automatique** : `python -m src.scripts.gmail.preflight_gmail` → contrôle en 10 s le token Gmail, Tesseract, Poppler, la synchro git et le DWH. Vert partout = go.
+
+> ⚠️ **OCR (Tesseract + Poppler)** : à installer en tout début de session (Marlène absente aujourd'hui, ça n'a pas pu être fait). C'est le seul prérequis que `git pull` ne règle pas. Le preflight le signalera en rouge tant que ce n'est pas fait.
 
 ---
 
 ## 1. Pipeline Gmail (PJ → ot_transport) — le cœur de la session
+
+### 1.0 Capter d'abord les expéditeurs fournisseurs (on ne les connaît pas encore)
+
+La liste des domaines fournisseurs n'est PAS connue d'avance : il faut la déduire de la boîte
+`achat.import` elle-même. Deux façons :
+
+- Dans Gmail (poste Marlène), rechercher `has:attachment filename:pdf newer_than:6m` et relever les expéditeurs récurrents (transitaire, fournisseurs Chine, DEKRA, labo).
+- Ou lancer un fetch large en dry-run puis affiner :
+  ```powershell
+  python -m src.scripts.gmail.fetch_attachments --query "has:attachment filename:pdf newer_than:6m" --dry-run
+  ```
+  → le dry-run liste les mails/PJ trouvés avec leur expéditeur, sans rien télécharger. On note les domaines, on construit la `--query` ciblée, on la **fige ici** pour les prochaines sessions.
+
+> Connu à ce stade : `from:qualitairsea.com` (transitaire QUALITAIR). À compléter : TB China, fournisseurs, `dekra.com`.
+
+### 1.1 Pipeline (une fois la `--query` établie)
 
 ```powershell
 # 1. Lister les PJ sans rien télécharger (re-consent si token expiré, une fois)
@@ -49,8 +68,7 @@ python -m src.scripts.gmail.load_ot_gmail --file data/PJ/_parsed.json --dry-run
 python -m src.scripts.gmail.load_ot_gmail --file data/PJ/_parsed.json
 ```
 
-**`<REQUETE EXPEDITEURS>` à figer avec Antho** (le filtre par label NE marche pas, il faut cibler par expéditeur, sinon un mail non couvert est ignoré en silence). Base connue :
-`from:qualitairsea.com OR from:dekra.com` → **à compléter** : TB China, principaux fournisseurs.
+⚠️ Le filtre par label Gmail NE marche pas, cibler par expéditeur (sinon un mail non couvert est ignoré en silence).
 
 Nommage des PJ : suivre les règles du **sondage rempli par Andréa** (`Sondage_Organisation_PJ_FUSEAU.docx`, PJ du mail du 30/06) — conventions par type de doc (PO, PI, PS, BL, PL, CI, ARTWORK, rapports inspection/analyse).
 
