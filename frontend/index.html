@@ -308,6 +308,7 @@ button { cursor: pointer; }
   <button class="tab-btn" onclick="switchTab('fournisseurs')">Fournisseurs</button>
   <button class="tab-btn" onclick="switchTab('artwork')">Artwork</button>
   <button class="tab-btn" onclick="switchTab('previsionnel')">Prévisionnel</button>
+  <button class="tab-btn" onclick="switchTab('conteneurs')">Conteneurs</button>
   <button class="tab-btn" onclick="switchTab('qualite')">Qualité</button>
 </div>
 
@@ -417,17 +418,26 @@ button { cursor: pointer; }
     <div id="prev-frs"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
 
     <div class="section-header">
-      <span class="section-title">Regroupé par conteneur (en transit)</span>
-    </div>
-    <div id="planning-grid" class="planning-grid"></div>
-
-    <div class="section-header">
       <span class="section-title">Prochaines arrivées (ETA/ETD → J+30, retards inclus)</span>
       <button class="btn btn-ghost btn-sm" onclick="loadPrevisionnel()">&#8635; Actualiser</button>
     </div>
     <div id="table-previsionnel">
       <div class="loader"><span class="spinner"></span>Chargement…</div>
     </div>
+  </div>
+
+  <!-- CONTENEURS -->
+  <div id="tab-conteneurs" class="tab-panel">
+    <div id="conteneurs-kpis" class="kpi-grid" style="margin-bottom:14px;"></div>
+    <div class="section-header">
+      <span class="section-title">Prévisionnel des arrivées (mois courant → M+3)</span>
+      <button class="btn btn-ghost btn-sm" onclick="loadConteneurs()">&#8635; Actualiser</button>
+    </div>
+    <div style="height:220px;margin-bottom:16px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:12px;">
+      <canvas id="chart-conteneurs-m3"></canvas>
+    </div>
+    <div class="section-header"><span class="section-title">Conteneurs (arrivée la plus récente en tête)</span></div>
+    <div id="table-conteneurs"><div class="loader"><span class="spinner"></span>Chargement…</div></div>
   </div>
 
   <!-- QUALITE -->
@@ -551,6 +561,7 @@ const loaders = {
   fournisseurs: loadFournisseurs,
   artwork:      loadArtwork,
   previsionnel: loadPrevisionnel,
+  conteneurs:   loadConteneurs,
   qualite:      loadQualite,
 };
 const loaded = new Set();
@@ -1312,7 +1323,6 @@ async function loadPrevisionnel() {
     '<div class="loader"><span class="spinner"></span>Chargement…</div>';
   try {
     const r = await apiFetch('/api/previsionnel');
-    renderPlanningGrid(r.par_conteneur);
     renderPrevisionnel(r.prochaines_arrivees);
     loadPrevisionnelMesures();
   } catch (e) {
@@ -1322,10 +1332,64 @@ async function loadPrevisionnel() {
   }
 }
 
-function renderPlanningGrid(rows) {
-  const el = document.getElementById('planning-grid');
+// ════════════════════════════════════════════════════════════════════════════
+// CONTENEURS (suivi logistique)
+// ════════════════════════════════════════════════════════════════════════════
+let chartConteneursM3 = null;
+
+async function loadConteneurs() {
+  const t = document.getElementById('table-conteneurs');
+  t.innerHTML = '<div class="loader"><span class="spinner"></span>Chargement…</div>';
+  try {
+    const r = await apiFetch('/api/conteneurs');
+    renderConteneursKpis(r.liste || []);
+    renderConteneursM3(r.previsionnel_m3 || []);
+    renderConteneursTable(r.liste || []);
+  } catch (e) {
+    t.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div>${esc(e.message)}</div>`;
+    toast(e.message, true);
+  }
+}
+
+function renderConteneursKpis(liste) {
+  const today = new Date().toISOString().slice(0, 10);
+  const in30 = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+  const enTransit = liste.filter(c => !c.date_livraison);
+  const val = enTransit.reduce((s, c) => s + Number(c.valeur || 0), 0);
+  const arr30 = liste.filter(c => c.eta && c.eta.slice(0, 10) >= today && c.eta.slice(0, 10) <= in30).length;
+  document.getElementById('conteneurs-kpis').innerHTML = `
+    <div class="kpi-card" title="Nombre total de conteneurs suivis."><div class="kpi-value">${liste.length}</div><div class="kpi-label">Conteneurs · nb</div></div>
+    <div class="kpi-card orange" title="Conteneurs sans date de livraison sur site (encore en mer / en cours)."><div class="kpi-value">${enTransit.length}</div><div class="kpi-label">En transit · nb</div></div>
+    <div class="kpi-card" title="Valeur des lignes des conteneurs en transit, en USD."><div class="kpi-value">${fmt(val, 'money')}</div><div class="kpi-label">Valeur en transit · USD</div></div>
+    <div class="kpi-card ok" title="Conteneurs dont l'ETA tombe dans les 30 prochains jours."><div class="kpi-value">${arr30}</div><div class="kpi-label">Arrivées ≤ 30j · nb</div></div>`;
+}
+
+function renderConteneursM3(rows) {
+  const ctx = document.getElementById('chart-conteneurs-m3');
+  if (chartConteneursM3) chartConteneursM3.destroy();
+  chartConteneursM3 = new Chart(ctx, {
+    data: {
+      labels: rows.map(r => r.mois),
+      datasets: [
+        { type: 'bar', label: 'Valeur à recevoir (USD)', data: rows.map(r => Number(r.valeur || 0)), backgroundColor: '#2563ebcc', yAxisID: 'y', borderRadius: 3 },
+        { type: 'line', label: 'Conteneurs (nb)', data: rows.map(r => Number(r.nb_conteneurs || 0)), borderColor: '#f59e0b', backgroundColor: '#f59e0b', yAxisID: 'y1', tension: 0.3 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+      scales: {
+        y:  { position: 'left',  beginAtZero: true, title: { display: true, text: 'USD' } },
+        y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: 'nb' }, ticks: { stepSize: 1 } },
+      }
+    }
+  });
+}
+
+function renderConteneursTable(rows) {
+  const el = document.getElementById('table-conteneurs');
   if (!rows || !rows.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">📦</div>Aucun conteneur en transit</div>';
+    el.innerHTML = '<div class="empty"><div class="empty-icon">📦</div>Aucun conteneur</div>';
     return;
   }
   el.innerHTML = `<div class="table-wrap"><table>
