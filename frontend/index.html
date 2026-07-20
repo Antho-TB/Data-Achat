@@ -418,7 +418,14 @@ button { cursor: pointer; }
     <div id="prev-frs"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
 
     <div class="section-header">
-      <span class="section-title">Prochaines arrivées (ETA/ETD → J+30, retards inclus)</span>
+      <span class="section-title">Échéancier de paiement (à payer, USD) — échéance = ETD du BL + 15 j</span>
+    </div>
+    <div style="height:200px;margin-bottom:16px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:12px;">
+      <canvas id="chart-cash"></canvas>
+    </div>
+
+    <div class="section-header">
+      <span class="section-title">Prochaines arrivées (ETA → J+30, retards inclus)</span>
       <button class="btn btn-ghost btn-sm" onclick="loadPrevisionnel()">&#8635; Actualiser</button>
     </div>
     <div id="table-previsionnel">
@@ -1329,6 +1336,7 @@ async function loadPrevisionnel() {
     '<div class="loader"><span class="spinner"></span>Chargement…</div>';
   try {
     const r = await apiFetch('/api/previsionnel');
+    renderCash(r.cash_echeances || []);
     renderPrevisionnel(r.prochaines_arrivees);
     loadPrevisionnelMesures();
   } catch (e) {
@@ -1423,6 +1431,26 @@ function renderConteneursTable(rows) {
     </tr>`).join('')}</tbody></table></div>`;
 }
 
+let chartCash = null;
+function renderCash(rows) {
+  const ctx = document.getElementById('chart-cash');
+  if (chartCash) chartCash.destroy();
+  // Tranche "En retard" en rouge, le reste en bleu.
+  const colors = rows.map(r => (r.tranche || '').startsWith('1.') ? '#dc2626' : '#2563ebcc');
+  chartCash = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => (r.tranche || '').replace(/^\d+\.\s*/, '')),
+      datasets: [{ label: 'À payer (USD)', data: rows.map(r => Number(r.montant || 0)), backgroundColor: colors, borderRadius: 3 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => fmt(c.raw, 'money') } } },
+      scales: { y: { beginAtZero: true, title: { display: true, text: 'USD' } } }
+    }
+  });
+}
+
 function renderPrevisionnel(rows) {
   if (!rows.length) {
     document.getElementById('table-previsionnel').innerHTML =
@@ -1436,8 +1464,8 @@ function renderPrevisionnel(rows) {
     <div class="table-wrap">
     <table>
       <thead><tr>
-        <th>ETD</th><th>PO#</th><th>Article</th><th>Fournisseur</th>
-        <th>Qté</th><th>Valeur</th><th>Statut</th>
+        <th title="Date d'arrivée estimée à Fos (ETA), sinon ETD effectif.">Arrivée (ETA)</th><th>PO#</th><th>Article</th><th>Fournisseur</th>
+        <th>Qté · nb</th><th>Valeur · USD</th><th>Statut</th>
       </tr></thead>
       <tbody>
         ${rows.map(r => {

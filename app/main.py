@@ -595,10 +595,39 @@ def get_previsionnel():
             """))
             par_conteneur = rows_to_dicts(r3)
 
+            # Echeancier de paiement (financier / achat de dollar).
+            # Regle metier 07/07 : le paiement se declenche au BL, avec 15 j de
+            # tolerance -> date d'echeance = ETD reel (BL) sinon ETD confirme, + 15 j.
+            # On ventile le RESTANT DU (lignes non payees, hors annulees) par tranche.
+            cash = rows_to_dicts(conn.execute(text(f"""
+                SELECT tranche,
+                       ROUND(SUM(montant), 2) AS montant,
+                       COUNT(*)               AS nb
+                FROM (
+                    SELECT
+                        CASE WHEN c.code_article IS NULL THEN COALESCE(c.total_prix, 0)
+                             ELSE COALESCE(c.prix_unitaire * c.quantite, 0) END AS montant,
+                        CASE
+                            WHEN (COALESCE(ot.etd_reel, c.etd_confirme) + 15) <  CURRENT_DATE      THEN '1. En retard'
+                            WHEN (COALESCE(ot.etd_reel, c.etd_confirme) + 15) <= CURRENT_DATE + 30 THEN '2. <= 30 j'
+                            WHEN (COALESCE(ot.etd_reel, c.etd_confirme) + 15) <= CURRENT_DATE + 60 THEN '3. 31-60 j'
+                            WHEN (COALESCE(ot.etd_reel, c.etd_confirme) + 15) <= CURRENT_DATE + 90 THEN '4. 61-90 j'
+                            ELSE '5. > 90 j'
+                        END AS tranche
+                    FROM {SCHEMA}.commande c
+                    LEFT JOIN {SCHEMA}.ot_transport ot ON ot.n_conteneur = c.n_conteneur
+                    WHERE c.statut <> 'Annulée' AND c.date_paiement IS NULL
+                      AND COALESCE(ot.etd_reel, c.etd_confirme) IS NOT NULL
+                ) t
+                GROUP BY tranche
+                ORDER BY tranche
+            """)))
+
             return {
                 "planning_mensuel": planning,
                 "prochaines_arrivees": prochaines,
                 "par_conteneur": par_conteneur,
+                "cash_echeances": cash,
             }
         except Exception as e:
             raise internal_error(e)
