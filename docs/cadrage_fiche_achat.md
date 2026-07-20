@@ -48,8 +48,13 @@ Fiche récapitulative et détaillée d'un produit, base d'échange **avec le fou
 - Workflow collaboratif 5 services (cf. Circuit A) : à terme, chaque service remplit son bloc.
 - Clé pivot = **code_article** (créé par Emmanuelle dès la commande fournisseur), avec le code provisoire `JJMMAAHHMM` avant attribution.
 
-## 4. À capter avec Andréa avant le 31/07
-- Où sont **toutes** les fiches existantes (serveur `Service_Achat` ? Drive « Purchasing department » ? les deux ?) → source de vérité à figer.
+## 4. Source de vérité (tranché 20/07) + à capter avec Andréa avant le 31/07
+
+**Source de vérité = le SERVEUR** (confirmé Antho). Chemin :
+`\\Srv-files-pom\partage\ADA\METIER\SUIVI CDES IMPORT\<année>\COMMANDES ET FICHES ACHATS\<PO>-<désignation>-<fournisseur>\PS-*.pdf`
+→ déjà couvert par le **grant AD du ticket** (lecture récursive sur `SUIVI CDES IMPORT\`). Le crawler Phase A tournera donc sur l'hôte LAN sous le compte de service (comme les autres ETL) ; non atteignable depuis le sandbox.
+
+Reste à caler avec Andréa :
 - Le **workflow réel** de remplissage (qui remplit quel bloc, dans quel ordre, à quel moment du Circuit A).
 - Les 2 variantes (Produits uniques vs Ménagère/sets) : mêmes blocs ? différences ?
 - Ce qui doit être **modifiable dans le temps** (les lignes bougent pendant la négo : qté, prix).
