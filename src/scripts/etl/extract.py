@@ -14,6 +14,7 @@ Les trois sources couvrent le catalogue produit (Matrice), le suivi commandes
 (IMPORT) et les dimensions logistiques (Base article).
 """
 import logging
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -58,14 +59,16 @@ def extract_matrice(file_path: str | Path) -> pd.DataFrame:
 
 def extract_import(file_path: str | Path) -> pd.DataFrame:
     """
-    Lit IMPORT 2026.xlsx, onglet 'IMPORT 2025'.
+    Lit le suivi commandes de IMPORT 2026.xlsx (onglet 'IMPORT <annee>').
 
     Structure particulière : les 3 premières lignes sont des en-têtes
     administratifs (EORI, SIREN, etc.). Le vrai header est à la ligne 3 (index 3).
 
-    Junior Tip : Les fichiers douaniers placent souvent les numéros EORI/SIREN
-    en haut du tableur pour les déclarations officielles. header=3 permet de
-    sauter ces 3 lignes administratives et d'atteindre le vrai tableau de données.
+    Junior Tip : le nom de l'onglet porte l'année de campagne et change chaque
+    année (IMPORT 2025 devient IMPORT 2026 quand Andréa fait le rollover). Coder
+    le nom en dur casse le pipeline au changement d'année ; on lit donc les noms
+    d'onglets réels et on retient le plus récent qui matche 'IMPORT <annee>'.
+    header=3 saute les 3 lignes administratives (EORI/SIREN des déclarations douanières).
 
     Args:
         file_path: Chemin vers IMPORT 2026.xlsx
@@ -73,15 +76,24 @@ def extract_import(file_path: str | Path) -> pd.DataFrame:
         DataFrame avec les colonnes du suivi de commandes.
     """
     path = Path(file_path)
-    logger.info("[INFO] Extraction IMPORT 2026 : %s", path.name)
+    logger.info("[INFO] Extraction IMPORT : %s", path.name)
 
-    df = pd.read_excel(path, sheet_name="IMPORT 2025", header=3)
+    xls = pd.ExcelFile(path)
+    feuilles = [s for s in xls.sheet_names if re.fullmatch(r"IMPORT \d{4}", str(s).strip())]
+    if not feuilles:
+        raise ValueError(
+            f"Aucun onglet 'IMPORT <annee>' dans {path.name} (onglets : {xls.sheet_names})"
+        )
+    sheet = sorted(feuilles)[-1]  # année la plus récente si plusieurs
+    logger.info("[INFO] Onglet retenu : %s", sheet)
 
-    # Supprimer les lignes sans PO# -- ce sont soit des lignes vides,
+    df = pd.read_excel(xls, sheet_name=sheet, header=3)
+
+    # Supprimer les lignes sans PO#, ce sont soit des lignes vides,
     # soit des sous-totaux Excel qui n'ont pas de numéro de commande
     df = df.dropna(subset=["PO#"])
 
-    logger.info("[SUCCÈS] Import extrait : %d commandes", len(df))
+    logger.info("[SUCCÈS] Import extrait : %d commandes (onglet %s)", len(df), sheet)
     return df
 
 
