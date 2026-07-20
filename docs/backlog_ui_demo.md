@@ -70,6 +70,18 @@ C'est une fiche récapitulative et détaillée d'un produit, base d'échange ave
 
 - ⬜ **HITL (Human-in-the-loop)** : ajouter un point de validation humaine quand il y a **conflit entre deux vérités possibles** (ex. date mail vs date Sylob, prix négocié qui bouge).
 
+## 9bis. Transverse — Enrichir la DataViz
+
+L'appli est très « cartes + tableaux », peu de graphiques (seul le Dashboard en a 2). **Chart.js est déjà chargé** (aucune nouvelle dépendance). Idées concrètes par onglet :
+
+- **Prévisionnel (financier)** : courbe/barres de la **valeur à payer par mois** (horizon 2-3 mois, pour l'achat de dollar) ; funnel des phases (Acheté → À payer → Parti → Livré) ; barres **montant retard par fournisseur**.
+- **Fournisseurs** : barres **retard moyen (jours) par fournisseur** ; CA 3 ans par fournisseur ; nb lignes en retard.
+- **Suivi des conteneurs** (futur) : **timeline ETD → ETA → livraison** par conteneur ; répartition par destinataire (Pommier/GDD).
+- **Qualité** : **taux de conformité**, nb FAIL par fournisseur, volume d'analyses par stade.
+- **Dashboard** : tendance (commandes/valeur dans le temps) en plus des 2 graphes actuels.
+
+Principe : chaque graphique respecte la règle de lisibilité (§9) — titre, unité, légende claire.
+
 ## 9. Transverse — Lisibilité des KPI (règle systématique)
 
 Principe : **aucun chiffre affiché sans unité ni définition.** À appliquer à tous les onglets, pas au cas par cas.
