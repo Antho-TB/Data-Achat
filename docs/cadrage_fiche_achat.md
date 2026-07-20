@@ -16,9 +16,11 @@ Fiche récapitulative et détaillée d'un produit, base d'échange **avec le fou
 - `PO-…pdf` — commande
 - sous-dossiers `Modifiable/` (xlsx source) et `Signé/`
 
-## 2. Blocs du template (→ services contributeurs, Circuit A)
+## 2. Blocs du template (→ où Andréa pêche l'info en interne)
 
-| Bloc template | Contenu | Service |
+> La colonne de droite = **à qui/où Andréa va chercher l'info** (elle consolide seule). C'est la cartographie à capturer avant son départ.
+
+| Bloc template | Contenu | Source interne (Andréa demande à) |
 |---|---|---|
 | DESCRIPTION PRODUCT / SUPPLIER | Fournisseur, références + noms produits | Achats / Sourcing (Julia) |
 | TRANSPORT | Forwarder, type, port destination (Fos), ETD | Achats / Logistique |
@@ -33,7 +35,7 @@ Fiche récapitulative et détaillée d'un produit, base d'échange **avec le fou
 | MORE INFORMATION — EAN | Item = EAN13, Inner = EAN14 SPCB, Master = EAN14 PCB, N° lot en code-barres | Logistique (Emmanuelle) |
 | FRENCH TRANSLATION | N° item + désignation FR | Produit (Jonatan) |
 
-➜ La Fiche Achat est donc le **document pivot du Circuit A** (nouveau produit), alimenté par 5 services. Elle recoupe des données déjà dans FUSEAU : nomenclature (`article_nomenclature`), packaging/dimensions (Sylob V25), EAN, fournisseur.
+➜ La Fiche Achat est le **document pivot du Circuit A** (nouveau produit), **consolidé par Andréa seule** auprès de ces services. Elle recoupe des données déjà dans FUSEAU : nomenclature (`article_nomenclature`), packaging/dimensions (Sylob V25), EAN, fournisseur — d'où le fort potentiel de pré-remplissage.
 
 ## 3. Approche proposée (2 phases)
 
@@ -42,11 +44,14 @@ Fiche récapitulative et détaillée d'un produit, base d'échange **avec le fou
 - Table **`achat.fiche_achat_doc`** (index) : `po_number, code_article, designation, fournisseur, chemin/URL, date_maj`. Même pattern que `qualite_doc`.
 - **Onglet / vue FUSEAU** : rechercher une fiche par code article ou PO, lien pour ouvrir le PDF. Colonne « Fiche achat » dans Suivi commande (clic → ouvre le PS).
 
-### Phase B — Création (chantier lourd, après cadrage avec Andréa)
-- **Formulaire par bloc** (les 12 blocs ci-dessus), pré-rempli depuis les données FUSEAU déjà connues (nomenclature, dimensions Sylob, EAN, fournisseur) → l'utilisateur complète le reste.
-- Génération : soit remplir le **template xlsx** (`FOR-ACH-03-12`) puis export PDF, soit stocker en base (`achat.fiche_achat` + lignes) et générer le PDF à la demande.
-- Workflow collaboratif 5 services (cf. Circuit A) : à terme, chaque service remplit son bloc.
-- Clé pivot = **code_article** (créé par Emmanuelle dès la commande fournisseur), avec le code provisoire `JJMMAAHHMM` avant attribution.
+### Phase B — Création (chantier lourd)
+
+⚠️ **Correction de modèle (20/07)** : la fiche est remplie par **Andréa SEULE**, qui va « à la pêche aux infos » en interne auprès des services. Ce n'est **pas** un formulaire collaboratif multi-services. Conséquences :
+
+- **Un seul formulaire, un seul utilisateur** (Andréa, puis Marlène/successeur). Pas de workflow d'assignation par service.
+- **La valeur = réduire la pêche** : pré-remplir un maximum (les ~60% déjà dans FUSEAU/Sylob, cf. §4b) et, pour les champs restants, **indiquer où/à qui aller chercher l'info** (colonne « source interne » ci-dessous). Cela **capture le savoir tacite d'Andréa** (qui sait à qui demander quoi) avant son départ le 31/07 — c'est le vrai enjeu de pérennité.
+- Génération : remplir le **template xlsx** (`FOR-ACH-03-12`) puis export PDF, ou stocker en base (`achat.fiche_achat` + lignes) et générer le PDF (gabarit = PS-00182725).
+- Clé pivot = **code_article** (créé par Emmanuelle dès la commande fournisseur), code provisoire `JJMMAAHHMM` avant attribution.
 
 ## 4. Source de vérité (tranché 20/07) + à capter avec Andréa avant le 31/07
 
@@ -54,8 +59,8 @@ Fiche récapitulative et détaillée d'un produit, base d'échange **avec le fou
 `\\Srv-files-pom\partage\ADA\METIER\SUIVI CDES IMPORT\<année>\COMMANDES ET FICHES ACHATS\<PO>-<désignation>-<fournisseur>\PS-*.pdf`
 → déjà couvert par le **grant AD du ticket** (lecture récursive sur `SUIVI CDES IMPORT\`). Le crawler Phase A tournera donc sur l'hôte LAN sous le compte de service (comme les autres ETL) ; non atteignable depuis le sandbox.
 
-Reste à caler avec Andréa :
-- Le **workflow réel** de remplissage (qui remplit quel bloc, dans quel ordre, à quel moment du Circuit A).
+Workflow **tranché (20/07)** : Andréa remplit **seule**, en pêchant l'info en interne. Reste à capter avant le 31/07 :
+- La **carte de sourcing interne** : pour chaque champ non pré-rempli, à qui elle demande (compléter la colonne « source interne » du §2) — c'est son savoir tacite à sauvegarder.
 - Les 2 variantes (Produits uniques vs Ménagère/sets) : mêmes blocs ? différences ?
 - Ce qui doit être **modifiable dans le temps** (les lignes bougent pendant la négo : qté, prix).
 
