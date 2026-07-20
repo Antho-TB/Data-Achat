@@ -1,8 +1,22 @@
 # Plan d'action -- Système Data-Achat TB Groupe
 
 > Issu de la réunion de cadrage · 2026-06-01  
-> Mis à jour : **2026-06-30** (session FUSEAU : contrainte UNIQUE vérifiée prod + fix lignes de frais ; voir État 30/06). Précédent : 23/06 (onglets Qualité + Prévisionnel enrichi).  
+> Mis à jour : **2026-07-20** (session FUSEAU : correction retard déployée, suivi maritime chargé en prod, archi compte de service tranchée, board Point IT recalé ; voir Session 20/07 ci-dessous). Précédent : 30/06 (contrainte UNIQUE + fix lignes de frais).  
 > Périmètre : Achats Import · Utilisateurs finaux : Andréa, Marlène, Olivier, Eric, Charles, David, Jonatan, Julia, Emmanuelle
+
+---
+
+## Session 20/07 — récap
+
+- **Correction calcul retard déployée en prod** : `sql/20260720_fix_calcul_retard.sql` joué (3 vues : `v_retard_expedition` figé grain ligne, `v_retard_fournisseur` moyenne 12 mois glissants, `v_retard_article` corrigée) + `app/main.py` repointé. Définition métier 07/07 : `retard = ETD réel − ETD confirmé`, avances planchées à 0, deux axes séparés (KPI figé vs flag opérationnel). ⚠️ **KPI à investiguer** : sortie suspecte (quasi 100% des lignes « en retard », WANXIN 182j) → creuser ce que représente `etd_confirme` vs `etd_reel` dans la donnée + effet du grain PO×article.
+- **Suivi maritime chargé en prod** : `SUIVI MARITIME TARRERIAS 2026.xlsx` (fichier transitaire QUALITAIR, Drive, frais 17/07) → `transform_maritime` (46 conteneurs) → `load_ot_gmail` COMMIT. `achat.ot_transport` : 87 → 90. **Bug rollover corrigé** dans `transform_maritime.py` (garde-fou : si ETD réel > ETA, recule d'un an — cas cellules datetime ISO à année absolue erronée).
+- **Archi pérennisation tranchée** (bus factor / départ Andréa 31/07) : pipeline sur infra + comptes non-nominatifs, jamais un poste/compte humain.
+  - **Compte de service AD** `svc-dataachat` (nom à valider Sam) : lecture récursive `\\Srv-files-pom\partage\ADA\METIER\SUIVI CDES IMPORT\` (couvre `2026\` IMPORT/TRANSITAIRE/ANALYSES ET INSPECTIONS + `PRODUITS\` Matrice/dimensions) + « log on as batch job » sur hôte LAN (candidat n8n `192.168.102.36`). **Ticket GLPI envoyé le 20/07.**
+  - **PostgreSQL** : login de service `dtpf_sylob_dataachat_prod` (modèle `dtpf_sylob_myreport_prod`) membre de `platform_team` ; **basculer l'ownership de tous les objets `achat.*`** (17 tables/6 vues/7 séquences, aujourd'hui owned par le login perso `dtpf_sylob_anthony_bezille_prod`) vers `platform_team`. ⚠️ Le login perso n'est PAS membre de `platform_team` (membre de `group_dtpf_sylob_admin_prod` seulement) → REASSIGN à faire avec l'identité admin Entra/`azure_pg_admin`.
+  - Secrets via Key Vault `kv-dtpf-prod` (`psql-prod-sylob-dataachat-login`/`-password`) ; SP `sp-client-id` pour le mode secretless.
+- **Cartographie sources verrouillée** (mail Andréa 25/06 + Zoom 07/05) : SMB = tout sous `SUIVI CDES IMPORT\` (IMPORT, TRANSITAIRE, ANALYSES ET INSPECTIONS\4.INSPECTIONS, PRODUITS) ; Drive/Sheets API = Artwork (`LIS-CON-28`), Suivi analyses (`SUIVI DES ANALYSES`), qualité crawl (`DRIVE_QUALITE_ROOT_ID`). Direction actée : **API Google Sheets pour les gsheets natives, zéro doublon** (à implémenter : scope `spreadsheets.readonly` + `src/utils/gsheets.py`).
+- **Board Point IT recalé** (data table Zoom) : parent Data-Achat 65→80%, ETL Gmail 60→70%, FUSEAU 80→85% ; 5 sous-lignes ajoutées (Démo 07/07 Done, Captation Excel Done, Correction retard Done, Branchement sources Andréa OnGoing 40%, Pérennisation infra OnGoing 20%).
+- **Correction mémoire** : rôles inversés — **Marlène MONTBRIZON = Responsable Achats** (reste), **Andréa JAMET = Assistante Achats** (part le 31/07).
 
 ---
 
@@ -391,6 +405,7 @@ Emmanuelle crée le CODE ARTICLE dans Sylob  →  PK définitive
   → **Action [QW/UI]** : retravailler l'affichage (pas juste un `<small>` à côté du badge).
 - **⚠️ Calcul du retard à corriger.** Définition validée : `retard = ETD réel − ETD confirmé`, moyenne **par fournisseur, par an, sur 12 mois glissants**, **figée à l'ETD** (pas recalculée en continu). Ce n'est PAS `date_livraison − ETD` comme documenté précédemment.
   → **Action [M] prioritaire** : auditer et corriger `v_retard_article` (et toute vue/requête dérivée) pour appliquer cette définition exacte avant la prochaine démo.
+  → ✅ **CODÉ 20/07** — migration `sql/20260720_fix_calcul_retard.sql` (3 vues : `v_retard_expedition` figé grain ligne + `v_retard_fournisseur` moyenne 12 mois glissants + `v_retard_article` corrigée) + `app/main.py` repointé sur `v_retard_fournisseur`. **Reste : jouer le SQL sous VPN + relancer l'API** (cf. `TASKS.md`). Décisions 20/07 : deux axes séparés (KPI figé vs flag opérationnel), avances planchées à 0.
 - Édition du commentaire retard : **aucune restriction de rôle** à implémenter (tous les comptes authentifiés).
 
 ### Code article / prototype (Circuit A)

@@ -1,7 +1,25 @@
 # TASKS — FUSEAU / Data-Achat
 
-> Suivi déploiement poste Marlène + branchement Gmail + sources Andréa. Maj 2026-06-30.
+> Suivi déploiement poste Marlène + branchement Gmail + sources Andréa. Maj 2026-07-20.
 > Runbook : `docs/20260629_FUSEAU_DeploiementPosteMarlene_Cowork_v1.md`
+
+## 🔧 Correction calcul de retard — CODÉ 20/07, à déployer (VPN)
+
+> Suite décision démo 07/07 (cf. `docs/20260707_questionnaire_demo.md` Q8) : l'ancien
+> `jours_retard = CURRENT_DATE − ETD` croissait indéfiniment (biais Excel =AUJOURDHUI).
+
+- [x] Migration `sql/20260720_fix_calcul_retard.sql` (syntaxe validée sqlglot) :
+      - `v_retard_expedition` (grain PO×article, `ETD réel − ETD confirmé` **figé**, avance planchée à 0)
+      - `v_retard_fournisseur` (moyenne fournisseur, **12 mois glissants**, source du KPI retard moyen)
+      - `v_retard_article` corrigée (colonnes inchangées ; `jours_retard` figé ; `statut_retard` opérationnel **borné**)
+- [x] `app/main.py` `/api/fournisseurs.retard_moyen_jours` repointé sur `v_retard_fournisseur` (fin de l'AVG biaisé filtré EN RETARD). `py_compile` OK.
+- [ ] **Jouer le SQL sous VPN** : `psql … -f sql/20260720_fix_calcul_retard.sql`
+- [ ] Relancer l'API + vérifier l'onglet Fournisseurs (retard moyen figé)
+- [ ] Commit **depuis Windows** (jamais sandbox)
+- [ ] À valider métier avant démo : fenêtre = rolling 12 mois (pas année calendaire) ; seuil `EN RETARD` basé sur **ETD confirmé** (date promise), pas ETD effectif
+
+> Décisions actées 20/07 : (A) deux axes séparés — KPI d'expédition figé (moyenne fournisseur)
+> + flag opérationnel EN RETARD conservé ; (B) avances (ETD réel < confirmé) **planchées à 0**.
 
 ## Déploiement poste Marlène ✅ TERMINÉ (29/06)
 
