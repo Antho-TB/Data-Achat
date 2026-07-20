@@ -560,7 +560,40 @@ def get_previsionnel():
             """))
             prochaines = rows_to_dicts(r2)
 
-            return {"planning_mensuel": planning, "prochaines_arrivees": prochaines}
+            # Regroupement par CONTENEUR (unite reelle d'expedition et de paiement).
+            # Grain = commande.n_conteneur (porte les lignes article + la valeur),
+            # enrichi par ot_transport (ETD reel / ETA / navire / transitaire / BL /
+            # destinataire, source maritime). On ne garde que les conteneurs encore
+            # en transit (au moins une ligne non livree/annulee).
+            r3 = conn.execute(text(f"""
+                SELECT
+                    c.n_conteneur,
+                    MAX(ot.n_bl)                             AS n_bl,
+                    MAX(ot.transport)                        AS navire,
+                    MAX(ot.transitaire)                      AS transitaire,
+                    MAX(ot.lieu_livraison)                   AS destinataire,
+                    MAX(COALESCE(ot.etd_reel, c.etd_confirme)) AS etd,
+                    MAX(ot.eta)                              AS eta,
+                    MAX(ot.date_livraison)                   AS date_livraison,
+                    COUNT(DISTINCT c.po_number)              AS nb_po,
+                    COUNT(*)                                 AS nb_articles,
+                    ROUND(SUM(CASE WHEN c.code_article IS NULL THEN COALESCE(c.total_prix, 0)
+                                   ELSE COALESCE(c.prix_unitaire * c.quantite, 0) END), 2) AS valeur
+                FROM {SCHEMA}.commande c
+                LEFT JOIN {SCHEMA}.ot_transport ot ON ot.n_conteneur = c.n_conteneur
+                WHERE c.n_conteneur IS NOT NULL AND c.n_conteneur <> ''
+                  AND c.statut <> 'Annulée'
+                GROUP BY c.n_conteneur
+                HAVING BOOL_OR(c.statut NOT IN ('Livrée', 'Annulée'))
+                ORDER BY MAX(COALESCE(ot.eta, ot.etd_reel, c.etd_confirme)) ASC NULLS LAST
+            """))
+            par_conteneur = rows_to_dicts(r3)
+
+            return {
+                "planning_mensuel": planning,
+                "prochaines_arrivees": prochaines,
+                "par_conteneur": par_conteneur,
+            }
         except Exception as e:
             raise internal_error(e)
 
