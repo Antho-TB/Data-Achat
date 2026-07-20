@@ -413,7 +413,7 @@ button { cursor: pointer; }
     <div id="prev-frs"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
 
     <div class="section-header">
-      <span class="section-title">Planning par mois</span>
+      <span class="section-title">Regroupé par conteneur (en transit)</span>
     </div>
     <div id="planning-grid" class="planning-grid"></div>
 
@@ -645,14 +645,13 @@ function renderCharts(k) {
   chartStatuts = new Chart(statutsCtx, {
     type: 'doughnut',
     data: {
-      labels: ['En retard', 'Dans les délais', 'Autres (livré / clôturé)'],
+      labels: ['En retard', 'Dans les délais'],
       datasets: [{
         data: [
           k.lignes_en_retard,
-          k.lignes_dans_delais,
-          k.total_lignes - k.lignes_en_retard - k.lignes_dans_delais
+          k.lignes_dans_delais
         ],
-        backgroundColor: ['#dc2626', '#16a34a', '#94a3b8'],
+        backgroundColor: ['#dc2626', '#16a34a'],
         borderWidth: 2,
       }]
     },
@@ -705,9 +704,10 @@ function renderCommandesCharts(rows) {
   box.style.display = 'flex';
 
   // Statut retard (axe logistique) sur les lignes affichees
-  const rOrder  = ['EN RETARD', 'DANS LES DELAIS', 'CLOTUREE', 'INCONNU'];
-  const rLabels = ['En retard', 'Dans les délais', 'Clôturée', 'Inconnu'];
-  const rColors = ['#dc2626', '#16a34a', '#94a3b8', '#f59e0b'];
+  // On exclut CLOTUREE des visuels : ces lignes livrees/soldees noient l actionnable.
+  const rOrder  = ['EN RETARD', 'DANS LES DELAIS', 'INCONNU'];
+  const rLabels = ['En retard', 'Dans les délais', 'Inconnu'];
+  const rColors = ['#dc2626', '#16a34a', '#f59e0b'];
   const rCounts = rOrder.map(s => rows.filter(x => (x.statut_retard || 'INCONNU') === s).length);
   if (chartCmdRetard) chartCmdRetard.destroy();
   chartCmdRetard = new Chart(document.getElementById('chart-cmd-retard'), {
@@ -1242,7 +1242,7 @@ async function loadPrevisionnel() {
     '<div class="loader"><span class="spinner"></span>Chargement…</div>';
   try {
     const r = await apiFetch('/api/previsionnel');
-    renderPlanningGrid(r.planning_mensuel);
+    renderPlanningGrid(r.par_conteneur);
     renderPrevisionnel(r.prochaines_arrivees);
     loadPrevisionnelMesures();
   } catch (e) {
@@ -1253,33 +1253,34 @@ async function loadPrevisionnel() {
 }
 
 function renderPlanningGrid(rows) {
-  const byMois = {};
-  rows.forEach(r => {
-    if (!byMois[r.mois]) byMois[r.mois] = [];
-    byMois[r.mois].push(r);
-  });
-
-  if (!Object.keys(byMois).length) {
-    document.getElementById('planning-grid').innerHTML =
-      '<div class="empty"><div class="empty-icon">📅</div>Aucun planning disponible</div>';
+  const el = document.getElementById('planning-grid');
+  if (!rows || !rows.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">📦</div>Aucun conteneur en transit</div>';
     return;
   }
-
-  document.getElementById('planning-grid').innerHTML = Object.entries(byMois)
-    .sort(([a],[b]) => a.localeCompare(b))
-    .map(([mois, items]) => {
-      const totalPO = items.reduce((s,r) => s + Number(r.nb_po||0), 0);
-      const totalVal = items.reduce((s,r) => s + Number(r.valeur||0), 0);
-      return `
-        <div class="planning-month">
-          <h4>${mois} — ${totalPO} PO · ${fmt(totalVal,'money')}</h4>
-          ${items.map(r => `
-            <div class="planning-row">
-              <span class="frs">${esc(r.fournisseur)}</span>
-              <span class="nb">${r.nb_po} PO / ${r.nb_articles} art.</span>
-            </div>`).join('')}
-        </div>`;
-    }).join('');
+  el.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr>
+      <th>N° conteneur</th><th>Navire</th><th>N° BL</th><th>Destinataire</th><th>Transitaire</th>
+      <th title="Date de départ de Chine (ETD).">ETD</th>
+      <th title="Date d'arrivée estimée à Fos (ETA).">ETA</th>
+      <th title="Date de livraison sur site (Pommier / GDD).">Livraison</th>
+      <th title="Nombre de PO regroupés dans le conteneur.">PO · nb</th>
+      <th title="Nombre de lignes article.">Art. · nb</th>
+      <th title="Valeur des lignes du conteneur, en USD.">Valeur · USD</th>
+    </tr></thead>
+    <tbody>${rows.map(r => `<tr>
+      <td class="mono">${esc(r.n_conteneur) || '—'}</td>
+      <td>${esc(r.navire) || '—'}</td>
+      <td class="mono">${esc(r.n_bl) || '—'}</td>
+      <td>${esc(r.destinataire) || '—'}</td>
+      <td>${esc(r.transitaire) || '—'}</td>
+      <td>${fmt(r.etd, 'date')}</td>
+      <td>${fmt(r.eta, 'date')}</td>
+      <td>${fmt(r.date_livraison, 'date')}</td>
+      <td style="text-align:right">${r.nb_po ?? 0}</td>
+      <td style="text-align:right">${r.nb_articles ?? 0}</td>
+      <td style="text-align:right">${fmt(r.valeur, 'money')}</td>
+    </tr>`).join('')}</tbody></table></div>`;
 }
 
 function renderPrevisionnel(rows) {
