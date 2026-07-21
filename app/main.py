@@ -147,7 +147,8 @@ def get_kpis():
         return {
             "db_offline": True,
             "total_lignes": 0, "total_po": 0, "nb_fournisseurs": 0,
-            "lignes_en_retard": 0, "lignes_dans_delais": 0, "valeur_totale": 0,
+            "lignes_en_retard": 0, "lignes_dans_delais": 0, "lignes_inconnu": 0,
+            "lignes_livrees": 0, "valeur_totale": 0,
             "top_retards_fournisseurs": [],
         }
 
@@ -174,6 +175,14 @@ def get_kpis():
                     COUNT(*) FILTER (
                         WHERE statut NOT IN ('Livrée','Annulée')
                           AND etd_eff >= CURRENT_DATE)                AS lignes_dans_delais,
+                    -- Lignes ni closes ni datees (ETD reel/confirme absents des deux) --
+                    -- avant ce compteur elles disparaissaient silencieusement du dashboard
+                    -- (total_lignes ne recollait pas a en_retard + dans_delais). Retour
+                    -- metier Point Achat : rendre ce statut visible plutot qu'implicite.
+                    COUNT(*) FILTER (
+                        WHERE statut NOT IN ('Livrée','Annulée')
+                          AND etd_eff IS NULL)                        AS lignes_inconnu,
+                    COUNT(*) FILTER (WHERE statut = 'Livrée')          AS lignes_livrees,
                     -- total_prix est un SUMIF par PO repete sur chaque ligne Excel :
                     -- on ne le somme JAMAIS ligne a ligne (surcompte massif).
                     -- Valeur ligne = PU*qte ; lignes de frais (article NULL) = total_prix.
@@ -189,14 +198,17 @@ def get_kpis():
                 "nb_fournisseurs":    int(row[2] or 0),
                 "lignes_en_retard":   int(row[3] or 0),
                 "lignes_dans_delais": int(row[4] or 0),
-                "valeur_totale":      float(row[5] or 0),
+                "lignes_inconnu":     int(row[5] or 0),
+                "lignes_livrees":     int(row[6] or 0),
+                "valeur_totale":      float(row[7] or 0),
             })
         except Exception as e:
             conn.rollback()  # purge la transaction avortee avant le bloc suivant
             logger.warning("[ATTENTION] KPI commande indisponible : %s", e)
             kpis.update({
                 "total_lignes": 0, "total_po": 0, "nb_fournisseurs": 0,
-                "lignes_en_retard": 0, "lignes_dans_delais": 0, "valeur_totale": 0,
+                "lignes_en_retard": 0, "lignes_dans_delais": 0, "lignes_inconnu": 0,
+                "lignes_livrees": 0, "valeur_totale": 0,
             })
 
         try:

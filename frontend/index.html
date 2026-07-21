@@ -819,6 +819,10 @@ function renderKpis(k) {
       <div class="kpi-value">${k.lignes_en_retard}</div><div class="kpi-label">Articles en retard · nb</div></div>
     <div class="kpi-card ok" title="Lignes en cours dont l'ETD confirmé n'est pas dépassé (hors livrées).">
       <div class="kpi-value">${k.lignes_dans_delais}</div><div class="kpi-label">Dans les délais · nb</div></div>
+    <div class="kpi-card warn" title="Lignes ni livrées/annulées ni datées (ETD réel et confirmé tous deux absents) — donnée à compléter, invisible des deux compteurs précédents.">
+      <div class="kpi-value">${k.lignes_inconnu}</div><div class="kpi-label">Statut inconnu · nb</div></div>
+    <div class="kpi-card" title="Lignes dont le statut ERP est Livrée.">
+      <div class="kpi-value">${k.lignes_livrees}</div><div class="kpi-label">Déjà livré · nb</div></div>
     <div class="kpi-card" title="Nombre de fournisseurs distincts sur les commandes en cours.">
       <div class="kpi-value">${k.nb_fournisseurs}</div><div class="kpi-label">Fournisseurs actifs · nb</div></div>
     <div class="kpi-card orange" title="Somme (prix unitaire x quantité) hors commandes annulées. Devise : USD.">
@@ -859,13 +863,15 @@ function renderCharts(k) {
   chartStatuts = new Chart(statutsCtx, {
     type: 'doughnut',
     data: {
-      labels: ['En retard', 'Dans les délais'],
+      labels: ['En retard', 'Dans les délais', 'Statut inconnu', 'Déjà livré'],
       datasets: [{
         data: [
           k.lignes_en_retard,
-          k.lignes_dans_delais
+          k.lignes_dans_delais,
+          k.lignes_inconnu,
+          k.lignes_livrees
         ],
-        backgroundColor: [TB.red, TB.green],
+        backgroundColor: [TB.red, TB.green, '#9aa5b1', TB.blue],
         borderWidth: 2,
       }]
     },
