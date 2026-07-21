@@ -488,7 +488,7 @@ button { cursor: pointer; }
     </div>
     <div class="charts-row">
       <div class="chart-card">
-        <h3>Retards par fournisseur</h3>
+        <h3 title="Retard maxi constaté (jours) = pire écart ETD réel - ETD confirmé observé chez ce fournisseur, figé (pas recalculé contre la date du jour). Survole une barre pour le détail.">Retards par fournisseur <span style="cursor:help;font-size:11px;color:var(--muted);">ⓘ</span></h3>
         <div class="chart-wrap"><canvas id="chart-retards"></canvas></div>
       </div>
       <div class="chart-card">
@@ -501,6 +501,8 @@ button { cursor: pointer; }
   <!-- ═══ COMMANDES ══════════════════════════════════════════════════════════ -->
   <div id="tab-commandes" class="tab-panel">
     <div class="toolbar">
+      <input id="f-po" type="text" placeholder="N° commande (PO)…" oninput="filterCommandes()">
+      <input id="f-designation" type="text" placeholder="Désignation…" oninput="filterCommandes()">
       <input id="f-fournisseur" type="text" placeholder="Fournisseur…" oninput="filterCommandes()">
       <input id="f-article" type="text" placeholder="Code article…" oninput="filterCommandes()">
       <select id="f-statut" onchange="filterCommandes()">
@@ -558,6 +560,7 @@ button { cursor: pointer; }
       <select id="f-art-statut" onchange="filterArtwork()">
         <option value="">Tous les statuts</option>
         <option>À traiter</option>
+        <option>Nouveau</option>
         <option>A envoyer</option>
         <option>Envoyé</option>
         <option>Attente Clarisse</option>
@@ -1296,16 +1299,31 @@ function renderCharts(k) {
     data: {
       labels: top.map(r => r.fournisseur || '—'),
       datasets: [{
-        label: 'Articles en retard',
-        data: top.map(r => r.retards),
+        label: 'Retard maxi constaté (jours)',
+        data: top.map(r => r.retard_max_jours),
         backgroundColor: TB.orange,
         borderRadius: 4,
       }]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const row = top[ctx.dataIndex] || {};
+              return [
+                `Retard maxi : ${ctx.parsed.y} jour(s)`,
+                `Articles actuellement EN RETARD : ${row.nb_articles_en_retard ?? '—'}`,
+              ];
+            }
+          }
+        }
+      },
+      scales: {
+        y: { beginAtZero: true, ticks: { stepSize: 1 }, title: { display: true, text: 'jours' } }
+      }
     }
   });
 
@@ -1365,7 +1383,8 @@ async function loadCommandes() {
     const stat = document.getElementById('f-statut').value;
     const elStatCde = document.getElementById('f-statut-cde');
     const statCde = elStatCde ? elStatCde.value : '';
-    const acompte = document.getElementById('f-acompte').value;
+    const elAcompte = document.getElementById('f-acompte');
+    const acompte = elAcompte ? elAcompte.value : '';
     const elPaiement = document.getElementById('f-paiement');
     const paiement = elPaiement ? elPaiement.value : '';
 
@@ -1478,7 +1497,7 @@ function renderCommandes(rows) {
           <td>${esc(r.designation) || '-'}</td>
           <td>${esc(r.fournisseur) || '—'}</td>
           <td style="text-align:right">${fmt(r.quantite, 'num')}</td>
-          <td style="text-align:right">${r.prix_unitaire != null ? Number(r.prix_unitaire).toFixed(2) + ' $' : '—'}</td>
+          <td style="text-align:right">${r.prix_unitaire != null ? Number(r.prix_unitaire).toFixed(3) + ' $' : '—'}</td>
           <td style="text-align:right">${r.acompte != null ? Number(r.acompte).toLocaleString('fr-FR') + ' $' : '-'}</td>
           <td class="editable-cell">
             <span class="view-mode" onclick="editCell(this, 'date')">${fmt(r.date_etd, 'date')}</span>
@@ -1508,7 +1527,7 @@ function renderCommandes(rows) {
               onclick="openCommentaire('${esc(r.po_number)}', '${esc(r.code_article)}', '${esc(r.commentaire)}')">
             ${r.commentaire ? esc(r.commentaire) : '<span style="color:var(--muted)">—</span>'}
           </td>
-          <td style="font-size:11px;color:var(--muted)">${fmt(r.derniere_maj, 'date')}</td>
+          <td style="font-size:11px;color:var(--muted)" title="${esc(r.type_dernier_evt) || ''}">${fmt(r.derniere_maj, 'date')}${r.type_dernier_evt ? ` <span style="cursor:help;">${r.type_dernier_evt.startsWith('Modifie') ? '✍️' : '⚙️'}</span>` : ''}</td>
           <td>
             <button class="btn btn-ghost btn-sm"
               onclick="openCommentaire('${esc(r.po_number)}', '${esc(r.code_article)}', '${esc(r.commentaire)}')">
@@ -1617,8 +1636,8 @@ function renderFournisseurs(rows) {
         <th>PO actifs</th>
         <th>Articles</th>
         <th title="Chiffre d'Affaires facturé sur les 3 dernières années">CA 3 ans ($)</th>
-        <th>Retards</th>
-        <th title="Moyenne des retards figés au moment de l'embarquement (supprime l'effet glissant)">Retard moy. (j)</th>
+        <th title="Nombre d'ARTICLES actuellement en retard opérationnel : ETD confirmé dépassé, pas livré, pas annulé (à relancer). Pas un cumul historique.">Retards (nb articles)</th>
+        <th title="Retard d'expédition figé : ETD réel - ETD confirmé, plancher à 0 (une avance ne compte pas en négatif). Moyenne calculée sur les expéditions des 12 derniers mois glissants, une fois chaque retard figé au départ (pas recalculé contre la date du jour).">Retard moy. (j)</th>
         <th>Dernière activité</th>
         <th>Détail</th>
       </tr></thead>
@@ -1630,8 +1649,8 @@ function renderFournisseurs(rows) {
           <td style="text-align:right">${r.ca_3ans != null ? Number(r.ca_3ans).toLocaleString('fr-FR') + ' $' : '-'}</td>
           <td style="text-align:center">
             ${r.nb_retards > 0
-              ? `<span class="badge badge-red">${r.nb_retards}</span>`
-              : `<span class="badge badge-green">0</span>`}
+              ? `<span class="badge badge-red">${r.nb_retards} art.</span>`
+              : `<span class="badge badge-green">0 art.</span>`}
           </td>
           <td style="text-align:center">${r.retard_moyen_jours != null ? Math.round(r.retard_moyen_jours) + 'j' : '—'}</td>
           <td style="font-size:11px;color:var(--muted)">${fmt(r.derniere_activite, 'date')}</td>
@@ -1652,14 +1671,16 @@ let _frsDetailRows = [];
 
 function renderFrsDetailRows() {
   const q = (document.getElementById('frs-art') ? document.getElementById('frs-art').value : '').toLowerCase();
-  const rows = _frsDetailRows.filter(r => !q || (r.code_article || '').toLowerCase().includes(q));
+  const rows = _frsDetailRows.filter(r => !q
+    || (r.code_article || '').toLowerCase().includes(q)
+    || (r.designation || '').toLowerCase().includes(q));
   document.getElementById('frs-detail-table').innerHTML = rows.length ? `<div class="table-wrap"><table>
     <thead><tr><th>PO#</th><th>Article</th><th>Désignation</th><th>Prix</th><th>Date</th></tr></thead>
     <tbody>${rows.map(r => `<tr>
       <td class="mono">${esc(r.po_number) || '-'}</td>
       <td class="mono">${esc(r.code_article) || '-'}</td>
       <td>${esc(r.designation) || '-'}</td>
-      <td style="text-align:right">${r.prix != null ? Number(r.prix).toFixed(2) + ' $' : '-'}</td>
+      <td style="text-align:right">${r.prix != null ? Number(r.prix).toFixed(3) + ' $' : '-'}</td>
       <td>${fmt(r.date_mail, 'date')}</td>
     </tr>`).join('')}</tbody></table></div>` : '<div class="empty">Aucun resultat</div>';
 }
@@ -1686,7 +1707,7 @@ async function loadFrsDetail(frs) {
     _frsDetailRows = rows;
     document.getElementById('frs-detail-content').innerHTML = `
       <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Historique prix - 3 dernieres commandes par article - Source : ${src}</p>
-      <input id="frs-art" type="text" placeholder="Filtrer par article..." oninput="renderFrsDetailRows()" style="margin-bottom:8px;width:220px;">
+      <input id="frs-art" type="text" placeholder="Filtrer par article ou désignation..." oninput="renderFrsDetailRows()" style="margin-bottom:8px;width:260px;">
       <div id="frs-detail-table"></div>`;
     renderFrsDetailRows();
   } catch (e) {
@@ -1724,20 +1745,20 @@ async function loadArticle() {
           <tbody>${histRows.map(r => `<tr>
             <td class="mono">${esc(r.po_number)||'-'}</td>
             <td>${esc(r.fournisseur)||'-'}</td>
-            <td class="mono">$${Number(r.prix||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:3})}</td>
+            <td class="mono">$${Number(r.prix||0).toLocaleString('fr-FR',{minimumFractionDigits:3,maximumFractionDigits:3})}</td>
             <td>${esc(r.date_mail)||'-'}</td>
           </tr>`).join('')}</tbody></table></div>`
       : '<div class="empty">Aucun historique de prix pour cet article</div>';
 
     const cmdTable = enCours.length
       ? `<div class="table-wrap"><table>
-          <thead><tr><th>PO#</th><th>Fournisseur</th><th>Statut</th><th>Qt�</th><th>Prix</th></tr></thead>
+          <thead><tr><th>PO#</th><th>Fournisseur</th><th>Statut</th><th>Qté</th><th>Prix</th></tr></thead>
           <tbody>${enCours.map(r => `<tr>
             <td class="mono">${esc(r.po_number)||'-'}</td>
             <td>${esc(r.fournisseur)||'-'}</td>
             <td>${badge(r.statut_retard)}</td>
             <td class="mono">${r.quantite??'-'}</td>
-            <td class="mono">$${Number(r.prix_unitaire||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:3})}</td>
+            <td class="mono">$${Number(r.prix_unitaire||0).toLocaleString('fr-FR',{minimumFractionDigits:3,maximumFractionDigits:3})}</td>
           </tr>`).join('')}</tbody></table></div>`
       : '<div class="empty">Aucune commande en cours pour cet article</div>';
 
@@ -1925,7 +1946,7 @@ function filterArtwork() {
 function renderArtworkStats(rows) {
   const counts = {};
   rows.forEach(r => { counts[r.statut_artwork] = (counts[r.statut_artwork] || 0) + 1; });
-  const statuts = ['Aucun','A envoyer','Envoyé','Attente Clarisse','Attente Carrefour','Validé'];
+  const statuts = ['Aucun','Nouveau','A envoyer','Envoyé','Attente Clarisse','Attente Carrefour','Validé'];
   document.getElementById('artwork-stats').innerHTML = [
     { lbl: 'Total', num: rows.length, color: 'var(--blue-light)' },
     ...statuts.map(s => ({ lbl: s, num: counts[s] || 0, color: s === 'Validé' ? 'var(--green)' : s === 'Aucun' ? 'var(--muted)' : 'var(--orange)' }))
@@ -1959,7 +1980,7 @@ function renderArtwork(rows) {
             <span class="view-mode" onclick="editCell(this,'select')">${badge(r.statut_artwork)}</span>
             <span class="edit-mode">
               <select>
-                ${['Aucun','A envoyer','Envoyé','Attente Clarisse','Attente Carrefour','Validé','Archivé'].map(s =>
+                ${['Aucun','Nouveau','A envoyer','Envoyé','Attente Clarisse','Attente Carrefour','Validé','Archivé'].map(s =>
                   `<option ${r.statut_artwork===s?'selected':''}>${s}</option>`).join('')}
               </select>
               <button class="save-btn" onclick="saveArtworkStatut(${r.id}, this)">✓</button>
@@ -1967,8 +1988,8 @@ function renderArtwork(rows) {
             </span>
           </td>
           <td>${esc(r.responsable) || '—'}</td>
-          <td style="font-size:12px;color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-            ${esc(r.commentaire)}
+          <td style="font-size:12px;color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:help" title="${esc(r.commentaire) || ''}">
+            ${esc(r.commentaire) || '—'}
           </td>
           <td style="font-size:11px;color:var(--muted)">${fmt(r.updated_at,'date')}</td>
           <td>
