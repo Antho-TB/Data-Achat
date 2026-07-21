@@ -1294,8 +1294,15 @@ function renderQualite(rows, warning) {
   if (warning) { el.innerHTML = `<div style="color:var(--yellow);font-size:13px;padding:8px;">${esc(warning)}</div>`; return; }
   if (!rows || !rows.length) { el.innerHTML = '<div class="empty">Aucun suivi qualité</div>'; return; }
   el.innerHTML = `<div class="table-wrap"><table>
-    <thead><tr><th>PO#</th><th>Article</th><th>Fournisseur</th><th>MAT</th><th>SP</th>
-    <th>Échant.</th><th>BAT</th><th>Inspection</th><th>N° insp.</th><th title="Conformité de l'analyse labo (chrome/dureté), depuis achat.qualite_analyse.">Conformité</th><th>Récep.</th><th>NCR</th></tr></thead>
+    <thead><tr><th>PO#</th><th>Article</th><th>Fournisseur</th>
+    <th title="Matière déclarée pour l'article.">MAT</th>
+    <th title="Statut de la production semi-finie (semi_production).">SP</th>
+    <th title="Conformité de l'échantillon de pré-série.">Échant.</th>
+    <th title="Conformité du BAT (Bon À Tirer) production.">BAT</th>
+    <th title="Résultat de l'inspection qualité (OK/FAIL) et sa date (achat.qualite.date_inspection).">Inspection</th>
+    <th>N° insp.</th><th title="Conformité de l'analyse labo (chrome/dureté), depuis achat.qualite_analyse.">Conformité</th>
+    <th title="Statut de la réception (conforme / non conforme).">Récep.</th>
+    <th title="Numéro de non-conformité (NCR) le cas échéant.">NCR</th></tr></thead>
     <tbody>${rows.map(r => `<tr>
       <td class="mono">${esc(r.po_number)||'-'}</td>
       <td class="mono">${esc(r.code_article)||'-'}</td>
