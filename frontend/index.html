@@ -482,6 +482,7 @@ button { cursor: pointer; }
     <div class="section-header"><span class="section-title">Suivi qualité par produit</span></div>
     <div class="toolbar">
       <input id="f-qual-frs" type="text" placeholder="Fournisseur..." oninput="filterQualite()">
+      <input id="f-qual-art" type="text" placeholder="Référence article..." oninput="filterQualite()">
       <select id="f-qual-res" onchange="filterQualite()">
         <option value="">Toutes inspections</option>
         <option>OK</option>
@@ -1246,10 +1247,12 @@ async function loadQualite() {
 
 function filterQualite() {
   const frs = document.getElementById('f-qual-frs').value.toLowerCase();
+  const art = document.getElementById('f-qual-art').value.toLowerCase();
   const res = document.getElementById('f-qual-res').value;
   const bat = document.getElementById('f-qual-bat').value.toLowerCase();
   renderQualite(_qualite.filter(r =>
     (!frs || (r.fournisseur||'').toLowerCase().includes(frs)) &&
+    (!art || (r.code_article||'').toLowerCase().includes(art)) &&
     (!res || r.resultat_inspection === res) &&
     (!bat || (r.production_bat||'').toLowerCase().includes(bat))
   ));
