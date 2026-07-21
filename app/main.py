@@ -313,9 +313,11 @@ def get_commandes(
                         v.est_parti, v.est_livre, v.est_en_retard, v.est_en_inspection,
                         a.commentaire,
                         ac.montant_acompte AS acompte,
+                          c.op_client_appro,
                         -- Dernier evenement METIER : annotation ERP sinon date du statut
                         -- (c.updated_at = date du run ETL full-refresh, sans valeur metier)
-                        COALESCE(a.updated_at::date, c.date_statut) AS derniere_maj
+                        COALESCE(a.updated_at::date, c.date_statut) AS derniere_maj,
+                          CASE WHEN a.updated_at IS NOT NULL THEN 'Modification manuelle (statut, commentaire ou ETD)' ELSE 'Mise a jour automatique du statut logistique' END AS type_dernier_evt
                     FROM {SCHEMA}.commande c
                     LEFT JOIN {SCHEMA}.commande_annotation a
                         ON a.po_number = c.po_number AND a.code_article = c.code_article
@@ -421,13 +423,18 @@ def get_fournisseurs():
 def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
     """Historique des prix : table dediee si presente, sinon fallback achat.commande."""
     engine = get_engine()
-    params: dict[str, Any] = {"fournisseur": fournisseur}
-    article_filter = ""
-    article_filter_h = ""
+    params: dict[str, Any] = {}
+    
     if code_article:
-        article_filter = "AND code_article = :code_article"
-        article_filter_h = "AND h.code_article = :code_article"
+        # Recherche globale par article, tous fournisseurs confondus (retour metier 07/07)
+        where_clause_h = "WHERE h.code_article = :code_article"
+        where_clause = "WHERE code_article = :code_article"
         params["code_article"] = code_article
+    else:
+        # Recherche limitee au fournisseur
+        where_clause_h = "WHERE h.fournisseur = :fournisseur"
+        where_clause = "WHERE fournisseur = :fournisseur"
+        params["fournisseur"] = fournisseur
 
     with engine.connect() as conn:
         try:
@@ -437,17 +444,14 @@ def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
                 SELECT h.po_number, h.code_article, COALESCE(p.designation_fr, p.designation_en) AS designation, h.fournisseur, h.prix, h.date_mail
                 FROM {SCHEMA}.historique_prix h
                 LEFT JOIN {SCHEMA}.produit p ON p.code_article = h.code_article
-                WHERE h.fournisseur = :fournisseur {article_filter_h}
+                {where_clause_h}
                 ORDER BY h.date_mail DESC
                 LIMIT 100
             """), params)
             return {"source": "historique_prix", "data": rows_to_dicts(r)}
         except Exception as e:
-            # rollback OBLIGATOIRE : une requete echouee avorte la transaction
-            # de la connexion, le fallback echouerait en InFailedSqlTransaction
             conn.rollback()
-            logger.info("[INFO] historique_prix indisponible -- fallback commande (%s)",
-                        str(e).splitlines()[0])
+            logger.info("[INFO] historique_prix indisponible -- fallback commande (%s)", str(e).splitlines()[0])
 
         try:
             # 3 dernieres commandes PAR ARTICLE (besoin metier : evolution recente du prix).
@@ -461,7 +465,7 @@ def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
                            ROW_NUMBER() OVER (PARTITION BY code_article
                                               ORDER BY date_commande DESC NULLS LAST) AS rn
                     FROM {SCHEMA}.commande
-                    WHERE fournisseur = :fournisseur {article_filter}
+                    {where_clause}
                       AND prix_unitaire IS NOT NULL
                 ) t
                 LEFT JOIN {SCHEMA}.produit p ON p.code_article = t.code_article
@@ -472,19 +476,15 @@ def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
         except Exception as e:
             raise internal_error(e)
 
-
-# ==============================================================================
-# Artwork
-# ==============================================================================
 @app.get("/api/artwork")
-def get_artwork(statut: Optional[str] = None, code_article: Optional[str] = None):
+def get_artwork(fournisseur: Optional[str] = None, code_article: Optional[str] = None):
     engine = get_engine()
     filters = []
     params: dict[str, Any] = {}
 
-    if statut:
-        filters.append("statut_artwork = :statut")
-        params["statut"] = statut
+    if fournisseur:
+        filters.append("LOWER(fournisseur) LIKE :fournisseur")
+        params["fournisseur"] = f"%{fournisseur.lower()}%"
     if code_article:
         filters.append("LOWER(code_article) LIKE :code_article")
         params["code_article"] = f"%{code_article.lower()}%"
