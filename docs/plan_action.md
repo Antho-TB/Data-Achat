@@ -54,6 +54,43 @@
 
 ---
 
+## Retours démo 21/07 14h — tâches à faire
+
+> Récupérés en direct pendant/après la démo métier. Détail complet et argumenté : `docs/20260721_FUSEAU_RetoursDemo14h_v1.md`. Légende : [QW] quick win · [M] touche modèle/intégration · [DEC] décision métier requise.
+
+### ✅ Déjà traité en session (21/07 après-midi)
+- [x] [QW] Suivi commande — filtre cassé (`f-po`/`f-designation` absents du DOM, cassait TOUS les filtres).
+- [x] [QW] Historique de prix — recherche par désignation (Fournisseurs > Détail + onglet Article).
+- [x] [QW] Précision des prix : 2 → 3 décimales partout.
+- [x] [M] KPI Retards : graphique + tableau fournisseurs passés en **retard maxi constaté (jours)** au lieu du nb d'articles, avec unité et tooltip méthodo.
+- [x] [QW] Suivi commande — tooltip "Dernier évènement" avec le détail réel (champ modifié ou statut logistique atteint).
+- [x] [QW] Artwork — tooltip natif sur la cellule Commentaire tronquée.
+- [x] [M] Artwork — écart `artwork_en_attente` (KPI=1 vs 8-9 lignes gsheet) corrigé : code provisoire `NOUVEAU-<slug>` pour les lignes "PAS DE REF" + ligne fantôme `achat.artwork` pour les rendre visibles dans `v_artwork`. Effet de bord positif : ~153 articles jamais commandés redevenus visibles (`artwork_total` 792→951).
+
+### 🔬 Anomalie à vérifier (pas encore corrigée)
+- [ ] **WANXIN : retard maxi = 444 jours** — chiffre hors norme, probablement une donnée ETD confirmé mal saisie plutôt qu'un vrai retard. `nb_articles_en_retard` = 0 (pas un cas actif) mais à vérifier avant de le citer en démo.
+
+### 🟡 Décisions métier requises avant dev (deadline Andréa 31/07)
+- [ ] [DEC] **Statut "Livrée"** : rapprocher avec Sylob (réceptionné/entrée en stock) + afficher la Conformité/Non-conformité Qualité à réception. Reste à identifier : quelle table Sylob porte la date de réception réelle par PO/article ?
+- [ ] [DEC][M] **Raison du retard** : à extraire du corps des mails (parsing), pas de saisie structurée existante — rejoint le chantier "non-conformité par mail" déjà identifié.
+- [ ] [DEC] **Doublons fournisseurs — revirement** : GUANGWEI/DIAMOND TRACK et SMART IRON/JIT GLOBAL signalés aujourd'hui comme de vrais doublons à corriger via l'ID Sylob `frn_code` (pas le nom texte) — **contredit la décision actée le 25/06** ("comportement correct, rien à corriger"). À auditer (`enrich_ca.py`/`enrich_from_sylob.py`) et retrancher avec le métier avant de coder.
+- [ ] [DEC] **Qualité — code article absent des rapports d'inspection** : proposition = le service Qualité nomme désormais les PDF avec le code article dedans. Pas un dev FUSEAU, une évolution de process côté Qualité à valider avec eux.
+- [ ] [DEC] **Promo/Opé — filtre trop large** : ne garder que ce qui commence par **OP** ou **NOUVEAU** + champ **PRIORITAIRE (Oui/Non)** séparé du filtre texte. Nécessite un point avec Andréa/Marlène sur la définition de "prioritaire".
+- [ ] [DEC] **Fiche Achat / Article — sources de vérité à retrancher** : EAN/PCB → Sylob source de vérité ; le reste (marquage, matière, packaging détaillé) → fiche achat existante tant qu'elle n'est pas remplacée. Onglet Article = vue 360° (Sylob + Matrice + Fiche Achat), pas juste l'historique prix. Onglet Fiche Achat = **consultation des fiches existantes + génération PDF + mise à jour**, pas la création ex nihilo cadrée initialement. → change le périmètre des deux onglets tels que conçus aujourd'hui.
+
+### ⬜ Chantiers à planifier (scope clair, pas encore démarrés)
+- [ ] Suivi commande : différencier **statut de paiement** (payé/non payé) de l'**état de la commande** (conflaté aujourd'hui dans `statut`).
+- [ ] Prévisionnel : vue prioritaire **par livraison/conteneur/mois** ; B/L en attente ou bloqués groupés par conteneur puis fournisseur ; vue "déjà payé" par fournisseur ET conteneur/BL ; alertes changement ETA remontées au Dashboard (mise en forme progressive orange→rouge→violet selon nb de changements).
+- [ ] Qualité : brancher le parsing numéro de rapport → code article une fois la convention actée avec le service Qualité (cf. [DEC] ci-dessus).
+- [ ] Article : colonne **"Artwork (Oui/Non)"** (jointure `achat.v_artwork`).
+- [ ] Fiche Achat (aperçu live construit cette session) : emplacement du marquage (zone produit), bloc légal AGEC intégral, N° commande + N° lot, HO Code (optionnel, distributeurs type Carrefour), clarifier Name (Sylob EN) vs Désignation FR, vrai logo Design System (asset au lieu du bloc texte "TB").
+- [ ] Artwork : coller aux noms de colonnes/formats de date du gsheet source `LIS-CON-28-0` ; permettre l'ajout de nouvelles lignes depuis FUSEAU (écrire dans `artwork_statut`, pas juste consulter) ; aperçu + lien cliquable vers le document Drive par ligne.
+- [ ] Transverse : extractions régulières (gsheet/Excel/PDF) au lieu d'exports manuels ponctuels ; passe de vérification systématique Sylob (article/fournisseur/EAN) au-delà du ponctuel du 02/07.
+
+**Priorité suggérée** : trancher les 6 points 🟡 avec Andréa/Marlène avant le 31/07 — en particulier doublons fournisseurs et sources de vérité Fiche Achat/Article, qui changent le périmètre de ce qui est déjà construit. Les chantiers ⬜ sont non bloquants pour le 31/07.
+
+---
+
 ## 🔗 Démarrage rapide & liens utiles
 
 **Lancer l'ERP FUSEAU (local) :**
