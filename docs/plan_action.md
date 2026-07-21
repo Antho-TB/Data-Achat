@@ -1,8 +1,24 @@
 # Plan d'action -- Système Data-Achat TB Groupe
 
 > Issu de la réunion de cadrage · 2026-06-01  
-> Mis à jour : **2026-07-20** (session FUSEAU : correction retard déployée, suivi maritime chargé en prod, archi compte de service tranchée, board Point IT recalé ; voir Session 20/07 ci-dessous). Précédent : 30/06 (contrainte UNIQUE + fix lignes de frais).  
+> Mis à jour : **2026-07-21** (session FUSEAU : Design System TB applique, bug artwork "Valide=0" corrige definitivement, bug ETD/ETA retire, polish Dashboard/Qualite/Suivi commande ; voir Session 21/07 ci-dessous). Precedent : 20/07 (correction retard deployee, suivi maritime charge en prod).  
 > Périmètre : Achats Import · Utilisateurs finaux : Andréa, Marlène, Olivier, Eric, Charles, David, Jonatan, Julia, Emmanuelle
+
+---
+
+## Points a eclaircir avec l'equipe metier -- demo 21/07 14h
+
+> A trancher en direct, sinon reportes (deadline depart Andrea 31/07). Detail complet : `docs/20260721_FUSEAU_Audit_RetoursMetier_v1.md`.
+
+1. **Semantique KPI retard / ETD confirme** : le "retard" mesure aujourd'hui reflete surtout un delai de **consolidation conteneur** (plusieurs PO regroupes, meme date de depart) plutot qu'une tardivete fournisseur (ex. WANXIN 102j). Qui decide du groupage des PO dans un conteneur ? `etd_confirme` = date de depart ferme ou ETD initiale de commande ?
+2. **"Dans les delais" et codes couleurs du Suivi commande** : aucune spec ecrite existante -- a definir avec Andrea avant son depart.
+3. **Packing list comme declencheur de paiement** : `n_bl`/`n_facture` existent en base mais aucune colonne packing list nulle part, et le paiement ne verifie meme pas BL/facture aujourd'hui (seulement l'absence de date de paiement). D'ou viendrait cette donnee (parsing mail, saisie manuelle) ? Qui la fournirait ?
+4. **Statut de reception "actif" jusqu'a fin controle qualite** (quarantaine) : change le modele `commande`/`qualite_suivi` -- a cadrer avant d'implementer.
+5. **Alertes imprevu majeur** (greve, incident logistique) : aucune source de donnee identifiee aujourd'hui -- alerte manuelle, flux transitaire, ou API tierce ?
+6. **Chemin critique sur le suivi de commande** : qu'est-ce qui rend un PO "critique" (delai, valeur, conteneur bloquant) ?
+7. **Code article / prototype (Circuit A)** : relation plusieurs-a-plusieurs prototype<->code non resolue -- piste "code affaire" GDD a valider avec Olivier. Q11 (donnees circulant avant le code article) toujours sans reponse.
+8. **Acces Gmail boite Andrea** avant le 31/07 -- reste LE point bloquant deadline, a confirmer.
+9. **Acces Drive qualite (crawl complet)** : le pilote manuel (8 fichiers/2 PO) est en place, mais le crawl a l'echelle necessite un **consentement OAuth Drive interactif** (navigateur, compte Marlene) -- a planifier qui/quand fait ce clic, ce n'est pas automatisable a distance (cf. section OAuth dans la passation Antigravity).
 
 ---
 
@@ -17,6 +33,24 @@
 - **Cartographie sources verrouillée** (mail Andréa 25/06 + Zoom 07/05) : SMB = tout sous `SUIVI CDES IMPORT\` (IMPORT, TRANSITAIRE, ANALYSES ET INSPECTIONS\4.INSPECTIONS, PRODUITS) ; Drive/Sheets API = Artwork (`LIS-CON-28`), Suivi analyses (`SUIVI DES ANALYSES`), qualité crawl (`DRIVE_QUALITE_ROOT_ID`). Direction actée : **API Google Sheets pour les gsheets natives, zéro doublon** (à implémenter : scope `spreadsheets.readonly` + `src/utils/gsheets.py`).
 - **Board Point IT recalé** (data table Zoom) : parent Data-Achat 65→80%, ETL Gmail 60→70%, FUSEAU 80→85% ; 5 sous-lignes ajoutées (Démo 07/07 Done, Captation Excel Done, Correction retard Done, Branchement sources Andréa OnGoing 40%, Pérennisation infra OnGoing 20%).
 - **Correction mémoire** : rôles inversés — **Marlène MONTBRIZON = Responsable Achats** (reste), **Andréa JAMET = Assistante Achats** (part le 31/07).
+
+---
+
+## Session 21/07 -- récap
+
+- **Design System TB applique** (`ffaf7de`) : tokens couleur/typo remappes dans `frontend/index.html` (monochrome + rouge signal + bleu profond, Archivo/Roboto/Roboto Mono, radius 0). Reste : teintes tertiaires en dur (badges, zebra table, header).
+- **Bug artwork "Valide = 0/792" corrige definitivement** (`aed9ab5`, `feec5b5`) : 3 bugs empiles, pas un seul.
+  1. `parse_fr_date()` ne gerait pas le format ISO pandas/openpyxl (cellules Excel typees date).
+  2. `_read_rows()` ne lisait que le 1er onglet du gsheet source (le fichier a 2 onglets distincts, pas 2 blocs empiles dans une seule feuille) -- le 2e onglet ("Liste artworks", 465 lignes, la quasi-totalite des articles reels) etait ignore en silence.
+  3. `/api/artwork` et le KPI Dashboard lisaient la table brute `achat.artwork` (jamais au courant du statut de validation design) au lieu de la vue `achat.v_artwork` qui fusionne `achat.artwork_statut` -- la vue existait deja mais rien ne l'utilisait.
+  Backfill complet relance (gsheet recupere via connecteur Drive) : `achat.artwork_statut` = 384 lignes (380 Valide, 4 Nouveau). `artwork_valides` API : 284 -> 374/792 (chiffre reel).
+- **Bug ETD/ETA "Prochaines arrivees" retire** (`aa37b21`) : code mort backend (la vue avait deja ete remplacee par l'onglet Conteneurs, qui distingue correctement ETD/ETA/Livraison).
+- **Qualite** (`1ee472a`, `b8afdc6`, `2d293e0`) : lien Drive + conformite labo sur N° inspection, filtre par reference article, infobulles sur toutes les colonnes.
+- **Dashboard** (`17b3605`) : statut "Inconnu" et "Deja livre" rendus visibles (2 KPI + camembert 4 tranches) -- avant, ces lignes disparaissaient silencieusement des compteurs En retard/Dans les delais.
+- **Suivi commande** (`19207c3`) : badge parti/pas-parti (rouge/bleu) au lieu d'un texte discret.
+- **Audit retours metier reorganise** en 4 blocs (semantique a arbitrer, donnees manquantes a la source, constructions substantielles non demarrees, a revalider a l'ecran) -- `docs/20260721_FUSEAU_Audit_RetoursMetier_v1.md`.
+- **Passation Antigravity mise a jour** (`bbf1ac2`) -- `docs/20260721_Passation_Antigravity_v1.md`, inclut l'etat exact de l'OAuth Drive (prerequis restants, qui doit faire quoi).
+- Tout est commite et pousse sur `main` jusqu'a `bbf1ac2`.
 
 ---
 
