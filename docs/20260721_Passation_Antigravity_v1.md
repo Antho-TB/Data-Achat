@@ -34,4 +34,4 @@ Repartir de zéro est plus propre que reprendre mes lots SQL manuels (fichiers `
 Statut de réception "actif" jusqu'à fin contrôle qualité (quarantaine, impacte le modèle `commande`/`qualite_suivi`), alertes imprévu majeur (aucune source de donnée identifiée), chemin critique (notion à définir avec le métier), sémantique `etd_confirme`/consolidation conteneur, code article/prototype Circuit A.
 
 ## Référence
-Audit complet : `docs/20260721_FUSEAU_Audit_RetoursMetier_v1.md`. État du code : `C:\Users\abezille\dev\claude\.ai_memory\architecture\12_fuseau_etat_implementation.md`. Standards de dev (Python, commits FR pédagogiques) : skill `standards-dev-antho-tb`.
+Audit complet : `docs/20260721_FUSEAU_Audit_RetoursMetier_v1.md`. Plan d'action global du projet (jalons, priorites, arbitrages) : `docs/plan_action.md` -- a consulter pour situer le backfill artwork et le polissage UI dans la trajectoire d'ensemble. État du code : `C:\Users\abezille\dev\claude\.ai_memory\architecture\12_fuseau_etat_implementation.md`. Standards de dev (Python, commits FR pédagogiques) : skill `standards-dev-antho-tb`.
