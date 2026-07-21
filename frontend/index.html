@@ -1015,7 +1015,7 @@ function renderCommandes(rows) {
             </span>
           </td>
           <td class="editable-cell">
-            <span class="view-mode" onclick="editCell(this, 'select')">${badge(r.statut_retard)}${r.statut_retard==='EN RETARD' ? (r.statut==='En cours de livraison' ? ' <small>(parti)</small>' : ' <small style="color:var(--red,#c0392b)">(pas parti)</small>') : ''}</span>
+            <span class="view-mode" onclick="editCell(this, 'select')">${badge(r.statut_retard)}${r.statut_retard==='EN RETARD' ? (r.statut==='En cours de livraison' ? ` <span class="badge badge-blue" title="La marchandise a quitté la Chine mais arrive après l'ETD prévu.">parti</span>` : ` <span class="badge badge-red" title="ETD dépassé et la marchandise n'a pas encore quitté la Chine -- à relancer en priorité.">pas parti</span>`) : ''}</span>
             <span class="edit-mode">
               <select>
                 <option ${r.statut_retard==='EN RETARD' ?'selected':''}>EN RETARD</option>
