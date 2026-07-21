@@ -962,6 +962,7 @@ function renderCommandes(rows) {
         <th title="ETD confirmé : date de départ prévue depuis la Chine.">ETD confirmé</th>
         <th title="Axe LOGISTIQUE : EN RETARD (ETD dépassé, pas livré) / DANS LES DÉLAIS / CLÔTURÉE. Différent du statut de la commande.">Statut retard</th>
         <th title="Axe COMMANDE : état du cycle de vie de la commande (En cours, En production, En cours de livraison, Livrée, Payée, Annulée).">Statut cde</th>
+        <th title="N° du conteneur (si rattaché). Cliquer pour l'ouvrir dans l'onglet Suivi des conteneurs.">N° conteneur</th>
         <th>Raison retard</th>
         <th title="Date du dernier évènement métier : annotation manuelle sinon date de changement de statut. Ce n'est pas la date du run ETL.">Dernier évènement</th>
         <th>Action</th>
@@ -997,6 +998,7 @@ function renderCommandes(rows) {
             </span>
           </td>
           <td>${badge(r.statut)}</td>
+          <td class="mono">${r.n_conteneur ? '<a href="#" title="Voir dans Suivi des conteneurs" onclick="focusConteneur(\'' + esc(r.n_conteneur) + '\');return false;">' + esc(r.n_conteneur) + '</a>' : '<span style="color:var(--muted)">—</span>'}</td>
           <td style="font-size:12px;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer"
               title="${esc(r.commentaire) || ''}"
               onclick="openCommentaire('${esc(r.po_number)}', '${esc(r.code_article)}', '${esc(r.commentaire)}')">
@@ -1513,6 +1515,29 @@ function renderConteneursM3(rows) {
   });
 }
 
+// Navigation depuis le tableau Suivi commande : ouvre l'onglet Conteneurs et
+// met le conteneur cible en surbrillance (rendu asynchrone -> focus differe).
+let _pendingConteneurFocus = null;
+function focusConteneur(n) {
+  if (!n) return;
+  _pendingConteneurFocus = n;
+  switchTab('conteneurs');
+  if (loaded.has('conteneurs')) applyConteneurFocus();
+}
+function applyConteneurFocus() {
+  const n = _pendingConteneurFocus;
+  if (!n) return;
+  document.querySelectorAll('#table-conteneurs tbody tr').forEach(tr => {
+    const cell = tr.querySelector('td');
+    if (cell && cell.textContent.trim() === n) {
+      tr.style.background = 'var(--sand, #FFF6E5)';
+      tr.style.outline = '2px solid var(--red, #E2001A)';
+      tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  });
+  _pendingConteneurFocus = null;
+}
+
 function renderConteneursTable(rows) {
   const el = document.getElementById('table-conteneurs');
   if (!rows || !rows.length) {
@@ -1542,6 +1567,7 @@ function renderConteneursTable(rows) {
       <td style="text-align:right">${r.nb_articles ?? 0}</td>
       <td style="text-align:right">${fmt(r.valeur, 'money')}</td>
     </tr>`).join('')}</tbody></table></div>`;
+  if (_pendingConteneurFocus) setTimeout(applyConteneurFocus, 60);
 }
 
 let chartCash = null;
