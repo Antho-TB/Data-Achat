@@ -227,6 +227,10 @@ def get_kpis():
             kpis["top_retards_fournisseurs"] = []
 
         try:
+            # v_artwork (pas artwork brut) : fusionne le statut reel Clarisse
+            # (achat.artwork_statut, cf. bug "Valide = 0" corrige le 21/07 --
+            # le pipeline mail seul ne connait jamais le statut de validation
+            # design, toujours a 'A traiter'/'Envoye' par defaut).
             r = conn.execute(text(f"""
                 SELECT
                     COUNT(*)                                                      AS total_artwork,
@@ -234,7 +238,7 @@ def get_kpis():
                     COUNT(*) FILTER (WHERE statut_artwork IN
                         ('A envoyer','Attente Clarisse','Attente Carrefour'))     AS en_attente,
                     COUNT(*) FILTER (WHERE statut_artwork = 'A envoyer')          AS a_envoyer
-                FROM {SCHEMA}.artwork
+                FROM {SCHEMA}.v_artwork
             """))
             row = r.fetchone()
             kpis.update({
@@ -490,7 +494,7 @@ def get_artwork(statut: Optional[str] = None, code_article: Optional[str] = None
     with engine.connect() as conn:
         try:
             r = conn.execute(text(f"""
-                SELECT * FROM {SCHEMA}.artwork
+                SELECT * FROM {SCHEMA}.v_artwork
                 {where}
                 ORDER BY updated_at DESC
                 LIMIT 1000

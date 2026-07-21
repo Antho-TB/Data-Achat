@@ -140,7 +140,10 @@ def transform_rows(rows: list[list[str]], source_fichier: str = "suivi_artworks"
         if not hmap:
             continue
         ref = _get(row, hmap.get("ref"))
-        if not ref or _norm(ref) in {"pas de ref", "pas de reference"}:
+        # Titre de bloc ("LISTE DES ARTWORKS", ligne seule au-dessus du vrai
+        # en-tete du 2e onglet) faussement capte comme ref tant que hmap n'est
+        # pas reinitialise -- un vrai code_article ne contient jamais d'espace.
+        if not ref or _norm(ref) in {"pas de ref", "pas de reference"} or " " in ref.strip():
             n_skip += 1
             continue
         version_raw = _get(row, hmap.get("version"))
@@ -168,11 +171,22 @@ def transform_rows(rows: list[list[str]], source_fichier: str = "suivi_artworks"
 
 
 def _read_rows(path: str) -> list[list[str]]:
+    """Lit TOUTES les feuilles d'un xlsx (le gsheet source a 2 onglets --
+    'Artworks en attente' et 'Liste artworks' -- pas 2 blocs empiles dans UNE
+    feuille comme le nom de la fonction transform_rows le suggere). Bug corrige
+    le 21/07 : pd.read_excel() sans sheet_name ne lisait que le 1er onglet
+    (53 lignes, presque toutes 'PAS DE REF'), en ignorant silencieusement
+    'Liste artworks' (465 lignes, la quasi-totalite des articles reels avec
+    leur statut de validation) -> c'est ce qui produisait 0/quelques Valide.
+    """
     import pandas as pd
     if path.lower().endswith((".xlsx", ".xls", ".xlsm")):
-        df = pd.read_excel(path, header=None, dtype=str)
-    else:
-        df = pd.read_csv(path, header=None, dtype=str)
+        sheets = pd.read_excel(path, sheet_name=None, header=None, dtype=str)
+        rows: list[list[str]] = []
+        for _, df in sheets.items():
+            rows.extend(df.fillna("").astype(str).values.tolist())
+        return rows
+    df = pd.read_csv(path, header=None, dtype=str)
     return df.fillna("").astype(str).values.tolist()
 
 
