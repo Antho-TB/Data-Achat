@@ -724,8 +724,22 @@ def get_qualite(
     where = ("WHERE " + " AND ".join(filters)) if filters else ""
     with engine.connect() as conn:
         try:
+            # LEFT JOIN qualite_doc (lien Drive du rapport, via ref_rapport) et
+            # qualite_analyse (conformite labo -- chrome/durete) -- retour metier
+            # 23/06 : cliquer sur un FAIL doit ouvrir le rapport Drive correspondant.
             r = conn.execute(text(f"""
-                SELECT * FROM {SCHEMA}.qualite
+                SELECT q.*, doc.drive_url, an.conformite
+                FROM {SCHEMA}.qualite q
+                LEFT JOIN LATERAL (
+                    SELECT d.drive_url FROM {SCHEMA}.qualite_doc d
+                    WHERE d.ref_rapport = q.ref_rapport AND d.drive_url IS NOT NULL
+                    LIMIT 1
+                ) doc ON true
+                LEFT JOIN LATERAL (
+                    SELECT STRING_AGG(DISTINCT a.conformite, ', ') AS conformite
+                    FROM {SCHEMA}.qualite_analyse a
+                    WHERE a.ref_rapport = q.ref_rapport
+                ) an ON true
                 {where}
                 ORDER BY date_inspection DESC NULLS LAST
                 LIMIT 1000

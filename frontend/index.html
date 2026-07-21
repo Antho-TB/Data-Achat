@@ -1286,7 +1286,7 @@ function renderQualite(rows, warning) {
   if (!rows || !rows.length) { el.innerHTML = '<div class="empty">Aucun suivi qualité</div>'; return; }
   el.innerHTML = `<div class="table-wrap"><table>
     <thead><tr><th>PO#</th><th>Article</th><th>Fournisseur</th><th>MAT</th><th>SP</th>
-    <th>Échant.</th><th>BAT</th><th>Inspection</th><th>N° insp.</th><th>Récep.</th><th>NCR</th></tr></thead>
+    <th>Échant.</th><th>BAT</th><th>Inspection</th><th>N° insp.</th><th title="Conformité de l'analyse labo (chrome/dureté), depuis achat.qualite_analyse.">Conformité</th><th>Récep.</th><th>NCR</th></tr></thead>
     <tbody>${rows.map(r => `<tr>
       <td class="mono">${esc(r.po_number)||'-'}</td>
       <td class="mono">${esc(r.code_article)||'-'}</td>
@@ -1296,7 +1296,8 @@ function renderQualite(rows, warning) {
       <td>${esc(r.echantillon_conformite)||'-'}</td>
       <td>${esc(r.production_bat)||'-'}</td>
       <td>${inspBadge(r.resultat_inspection)} <small>${esc(r.date_inspection)||''}</small></td>
-      <td class="mono">${esc(r.ref_rapport)||'-'}</td>
+      <td class="mono">${r.ref_rapport ? (r.drive_url ? `<a href="${esc(r.drive_url)}" target="_blank" rel="noopener" title="Ouvrir le rapport dans Drive">${esc(r.ref_rapport)} 📎</a>` : esc(r.ref_rapport)) : '-'}</td>
+      <td>${esc(r.conformite)||'-'}</td>
       <td>${esc(r.reception)||'-'}</td>
       <td class="mono">${esc(r.ncr)||'-'}</td>
     </tr>`).join('')}</tbody></table></div>`;
