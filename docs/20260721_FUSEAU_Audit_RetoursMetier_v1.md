@@ -3,7 +3,7 @@
 > Croisement des prises de notes de démo (questionnaire 07/07 + relecture 20/07 + note Calendar 23/06 réintégrée le 21/07)
 > avec l'état **réel du code** (vérifié le 21/07, pas le statut auto-déclaré).
 > Sources : `docs/20260707_questionnaire_demo.md`, `docs/backlog_ui_demo.md`, note Google Agenda « Point Service Achat » du 23/06.
-> Mise à jour 21/07 après-midi : lot de correctifs/polish (bug ETD/ETA, filtre Qualité, KPI Dashboard, badges Suivi commande, infobulles Qualité) livré et poussé sur `main`.
+> Mise à jour 21/07 après-midi : lot de correctifs/polish (bug ETD/ETA, filtre Qualité, KPI Dashboard, badges Suivi commande, infobulles Qualité) + correctif définitif du bug artwork Validé=0 (2 bugs empilés : lecture xlsx incomplète + API ne lisant jamais la vue fusionnée) livrés et poussés sur `main`.
 > Légende : ✅ fait & vérifié · 🟡 partiel · ⬜ à faire · 🔬 métier/recherche (pas du dev).
 >
 > ⚠️ Les occurrences du **14/07** et du **21/07** de « Point Service Achat » n'ont **aucune note enregistrée** dans l'événement Calendar — à vérifier que la démo a bien eu lieu / que les retours n'ont pas été pris ailleurs.
