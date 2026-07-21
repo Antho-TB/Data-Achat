@@ -56,6 +56,10 @@ def parse_fr_date(raw: Optional[str]) -> Optional[str]:
     s = str(raw).strip()
     if _strip_accents(s).lower() in NULL_LITERALS:
         return None
+    m = re.match(r"(\d{4})-(\d{1,2})-(\d{1,2})", s)                    # ISO pandas/openpyxl (cellule Excel typee date -> "2024-06-06 00:00:00")
+    if m:
+        y, mo, d = (int(x) for x in m.groups())
+        return _safe(y, mo, d)
     m = re.match(r"(\d{1,2})[/.](\d{1,2})[/.](\d{2,4})$", s)          # 26/03/2024
     if m:
         d, mo, y = (int(x) for x in m.groups())
