@@ -548,25 +548,10 @@ def get_previsionnel():
             """))
             planning = rows_to_dicts(r)
 
-            # Prochaines arrivees = lignes NON livrees/annulees attendues d'ici J+30.
-            # Date d'arrivee estimee = ETA (arrivee port) si connue, sinon ETD effectif.
-            # Les lignes EN RETARD restent visibles (un retard non livre va arriver) --
-            # borne basse large (J-120) pour ecarter seulement les tres vieux dossiers.
-            r2 = conn.execute(text(f"""
-                SELECT c.po_number, c.code_article, c.fournisseur,
-                       COALESCE(c.eta, {SQL_ETD_EFF}) AS date_etd,
-                       c.eta, c.quantite, c.prix_unitaire,
-                       {SQL_STATUT_RETARD} AS statut
-                FROM {SCHEMA}.commande c
-                LEFT JOIN {SCHEMA}.commande_annotation a
-                    ON a.po_number = c.po_number AND a.code_article = c.code_article
-                WHERE c.statut NOT IN ('Livrée', 'Annulée')
-                  AND COALESCE(c.eta, {SQL_ETD_EFF})
-                      BETWEEN CURRENT_DATE - 120 AND CURRENT_DATE + 30
-                ORDER BY 4 ASC
-                LIMIT 100
-            """))
-            prochaines = rows_to_dicts(r2)
+            # NOTE 21/07 : l'ancien bloc 'prochaines_arrivees' (bug ETD/ETA -- la colonne
+            # affichait ETA sous le libelle ETD) a ete retire. La logistique d'arrivee
+            # vit desormais dans l'onglet Conteneurs (voir /api/conteneurs, grain reel
+            # ETD/ETA/livraison sans ambiguite).
 
             # Regroupement par CONTENEUR (unite reelle d'expedition et de paiement).
             # Grain = commande.n_conteneur (porte les lignes article + la valeur),
@@ -627,7 +612,6 @@ def get_previsionnel():
 
             return {
                 "planning_mensuel": planning,
-                "prochaines_arrivees": prochaines,
                 "par_conteneur": par_conteneur,
                 "cash_echeances": cash,
             }
