@@ -212,12 +212,22 @@ def get_kpis():
             })
 
         try:
+            # Retour metier 21/07 : le nb d'articles EN RETARD n'est pas parlant
+            # (77 articles ne dit rien du niveau de gravite). On classe plutot par
+            # retard MAXI constate a la commande (v_retard_expedition, figue,
+            # grain PO x article) -- "quel est le pire retard vu chez ce fournisseur ?".
+            # nb_articles_en_retard conserve en info secondaire (tooltip).
             r = conn.execute(text(f"""
-                SELECT fournisseur, COUNT(*) AS retards
-                FROM {SCHEMA}.v_retard_article
-                WHERE statut_retard = 'EN RETARD' AND fournisseur IS NOT NULL
-                GROUP BY fournisseur
-                ORDER BY retards DESC
+                SELECT
+                    e.fournisseur,
+                    MAX(e.jours_retard)                                   AS retard_max_jours,
+                    COUNT(*) FILTER (WHERE a.statut_retard = 'EN RETARD')  AS nb_articles_en_retard
+                FROM {SCHEMA}.v_retard_expedition e
+                LEFT JOIN {SCHEMA}.v_retard_article a
+                    ON a.code_article = e.code_article AND a.fournisseur = e.fournisseur
+                WHERE e.fournisseur IS NOT NULL
+                GROUP BY e.fournisseur
+                ORDER BY retard_max_jours DESC
                 LIMIT 5
             """))
             kpis["top_retards_fournisseurs"] = rows_to_dicts(r)
@@ -236,7 +246,7 @@ def get_kpis():
                     COUNT(*)                                                      AS total_artwork,
                     COUNT(*) FILTER (WHERE statut_artwork IN ('Envoyé','Validé')) AS valides,
                     COUNT(*) FILTER (WHERE statut_artwork IN
-                        ('A envoyer','Attente Clarisse','Attente Carrefour'))     AS en_attente,
+                        ('A envoyer','Attente Clarisse','Attente Carrefour','Nouveau')) AS en_attente,
                     COUNT(*) FILTER (WHERE statut_artwork = 'A envoyer')          AS a_envoyer
                 FROM {SCHEMA}.v_artwork
             """))
@@ -317,7 +327,20 @@ def get_commandes(
                         -- Dernier evenement METIER : annotation ERP sinon date du statut
                         -- (c.updated_at = date du run ETL full-refresh, sans valeur metier)
                         COALESCE(a.updated_at::date, c.date_statut) AS derniere_maj,
-                          CASE WHEN a.updated_at IS NOT NULL THEN 'Modification manuelle (statut, commentaire ou ETD)' ELSE 'Mise a jour automatique du statut logistique' END AS type_dernier_evt
+                        CASE
+                            WHEN a.updated_at IS NOT NULL THEN
+                                'Modifie manuellement'
+                                || COALESCE(' par ' || a.updated_by, '')
+                                || CASE WHEN a.statut_retard IS NOT NULL
+                                        THEN ' : statut retard force a "' || a.statut_retard || '"' ELSE '' END
+                                || CASE WHEN a.date_etd IS NOT NULL
+                                        THEN ' : ETD forcee au ' || to_char(a.date_etd, 'DD/MM/YYYY') ELSE '' END
+                                || CASE WHEN a.commentaire IS NOT NULL
+                                        THEN ' : commentaire "' || a.commentaire || '"' ELSE '' END
+                            WHEN c.statut IS NOT NULL THEN
+                                'Statut logistique passe a "' || c.statut || '" (mise a jour automatique ETL)'
+                            ELSE 'Mise a jour automatique du statut logistique'
+                        END AS type_dernier_evt
                     FROM {SCHEMA}.commande c
                     LEFT JOIN {SCHEMA}.commande_annotation a
                         ON a.po_number = c.po_number AND a.code_article = c.code_article
