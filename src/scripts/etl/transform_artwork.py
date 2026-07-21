@@ -13,8 +13,14 @@ Voir docs/profil_artworks.md (2 tableaux empilés, 8 gotchas).
 
 Gérés : 2 blocs empilés (en-têtes/colonnes différents), mapping PAR NOM d'en-tête
 (robuste aux décalages), dates FR hétérogènes + littéraux (NOUVEAU, /, #N/A) -> NULL,
-filtrage « PAS DE REF » / lignes vides, dédoublonnage par code_article (garde la
-dernière occurrence).
+filtrage des lignes vides / titres de bloc parasites, dédoublonnage par
+code_article (garde la dernière occurrence).
+
+Les lignes « PAS DE REF » (onglet « Artworks en attente », produits pas encore
+commandés donc sans code Sylob attribué) ne sont plus jetées (corrigé le 21/07,
+cf. écart KPI artwork_en_attente) : elles reçoivent un code provisoire
+NOUVEAU-<slug designation>, meme principe que FRAIS-<slug> deja utilise pour
+les lignes de frais sans code_article dans achat.commande.
 
 ⚠️ statut_artwork dérivé (pas de colonne native). À ajuster avec le métier.
 
@@ -85,6 +91,15 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", _strip_accents(str(s)).strip().lower())
 
 
+def _slug(s: str) -> str:
+    """Code synthetique stable a partir d'une designation (meme pattern que
+    FRAIS-<slug> deja utilise pour les lignes de frais sans code_article dans
+    achat.commande, cf. TASKS.md 30/06)."""
+    s = _strip_accents(str(s)).upper()
+    s = re.sub(r"[^A-Z0-9]+", "-", s).strip("-")
+    return s[:60] or "SANS-DESIGNATION"
+
+
 def _header_map(row: list[str]) -> dict[str, int]:
     """Construit nom_normalisé -> index pour un en-tête (mapping robuste)."""
     m: dict[str, int] = {}
@@ -140,12 +155,22 @@ def transform_rows(rows: list[list[str]], source_fichier: str = "suivi_artworks"
         if not hmap:
             continue
         ref = _get(row, hmap.get("ref"))
+        designation = _get(row, hmap.get("designation"))
+        sans_code = bool(ref) and _norm(ref) in {"pas de ref", "pas de reference"}
         # Titre de bloc ("LISTE DES ARTWORKS", ligne seule au-dessus du vrai
         # en-tete du 2e onglet) faussement capte comme ref tant que hmap n'est
         # pas reinitialise -- un vrai code_article ne contient jamais d'espace.
-        if not ref or _norm(ref) in {"pas de ref", "pas de reference"} or " " in ref.strip():
+        # "PAS DE REF" (onglet "Artworks en attente", produits pas encore
+        # commandes donc sans code Sylob) n'est PAS filtre : on synthetise un
+        # code provisoire pour que ces lignes restent visibles (cf. bug KPI
+        # artwork_en_attente du 21/07, ecart avec le gsheet source).
+        if not ref or (not sans_code and " " in ref.strip()):
             n_skip += 1
             continue
+        if sans_code and not designation:
+            n_skip += 1
+            continue
+        code = f"NOUVEAU-{_slug(designation)}" if sans_code else ref
         version_raw = _get(row, hmap.get("version"))
         validation_raw = _get(row, hmap.get("validation"))
         date_validation = parse_fr_date(validation_raw)
@@ -153,9 +178,9 @@ def transform_rows(rows: list[list[str]], source_fichier: str = "suivi_artworks"
             c for c in (_get(row, i) for i in (hmap.get("commentaires") or [])) if c
         ) or None
         prio = _get(row, hmap.get("priorite"))
-        by_ref[ref] = {
-            "code_article": ref,
-            "designation": _get(row, hmap.get("designation")),
+        by_ref[code] = {
+            "code_article": code,
+            "designation": designation,
             "statut_artwork": _statut(version_raw, validation_raw, date_validation),
             "date_demande": parse_fr_date(_get(row, hmap.get("demande"))),
             "date_validation": date_validation,

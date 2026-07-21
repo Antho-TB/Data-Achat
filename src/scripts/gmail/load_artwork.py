@@ -62,6 +62,21 @@ ON CONFLICT (code_article) DO UPDATE SET
     charge_le        = NOW()
 """
 
+# achat.v_artwork part de achat.artwork (LEFT JOIN artwork_statut sur code_article) :
+# un article jamais commande (code provisoire NOUVEAU-<slug>, cf. transform_artwork.py
+# 21/07, ecart KPI artwork_en_attente) n'a par definition AUCUNE ligne achat.artwork
+# (alimentee par le pipeline mail/PO). Sans ligne fantome, il reste invisible dans la
+# vue meme apres l'upsert ci-dessus. Le NOT EXISTS evite de dupliquer les ~390 articles
+# qui ont deja une vraie ligne (avec PO) issue du pipeline mail.
+GHOST_ARTWORK_SQL = """
+INSERT INTO achat.artwork (po_number, code_article, designation, statut_artwork, updated_at)
+SELECT 'SANS-PO', :code_article, :designation, :statut_artwork, NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM achat.artwork WHERE code_article = :code_article
+)
+ON CONFLICT (po_number, code_article) DO NOTHING
+"""
+
 
 def check() -> int:
     engine = get_engine()
@@ -97,6 +112,11 @@ def load(records: list[dict], dry_run: bool) -> int:
             if not params:
                 continue
             conn.execute(text(UPSERT_SQL), params)
+            conn.execute(text(GHOST_ARTWORK_SQL), {
+                "code_article": params["code_article"],
+                "designation": params.get("designation"),
+                "statut_artwork": params.get("statut_artwork"),
+            })
             logger.info("article %s %s | statut=%s valideur=%s",
                         params["code_article"],
                         "(simule)" if dry_run else "upsert",
