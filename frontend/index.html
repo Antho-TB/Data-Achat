@@ -420,18 +420,13 @@ button { cursor: pointer; }
 
     <div class="section-header">
       <span class="section-title">Échéancier de paiement (à payer, USD) — échéance = ETD du BL + 15 j</span>
+      <button class="btn btn-ghost btn-sm" onclick="loadPrevisionnel()">&#8635; Actualiser</button>
     </div>
     <div style="height:200px;margin-bottom:16px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:12px;">
       <canvas id="chart-cash"></canvas>
     </div>
-
-    <div class="section-header">
-      <span class="section-title">Prochaines arrivées (ETA → J+30, retards inclus)</span>
-      <button class="btn btn-ghost btn-sm" onclick="loadPrevisionnel()">&#8635; Actualiser</button>
-    </div>
-    <div id="table-previsionnel">
-      <div class="loader"><span class="spinner"></span>Chargement…</div>
-    </div>
+    <!-- Previsionnel des arrivees (logistique) deplace vers l'onglet Conteneurs (decision 21/07) :
+         le Previsionnel ne porte plus que le financier (quoi payer, quand, en USD). -->
   </div>
 
   <!-- CONTENEURS -->
@@ -1447,16 +1442,11 @@ async function openArtworkCommentaire(id, current) {
 // PRÉVISIONNEL
 // ════════════════════════════════════════════════════════════════════════════
 async function loadPrevisionnel() {
-  document.getElementById('table-previsionnel').innerHTML =
-    '<div class="loader"><span class="spinner"></span>Chargement…</div>';
   try {
     const r = await apiFetch('/api/previsionnel');
     renderCash(r.cash_echeances || []);
-    renderPrevisionnel(r.prochaines_arrivees);
     loadPrevisionnelMesures();
   } catch (e) {
-    document.getElementById('table-previsionnel').innerHTML =
-      `<div class="empty"><div class="empty-icon">⚠️</div>${esc(e.message)}</div>`;
     toast(e.message, true);
   }
 }
@@ -1590,43 +1580,9 @@ function renderCash(rows) {
   });
 }
 
-function renderPrevisionnel(rows) {
-  if (!rows.length) {
-    document.getElementById('table-previsionnel').innerHTML =
-      '<div class="empty"><div class="empty-icon">📦</div>Aucune arrivée attendue d\'ici J+30 (retards inclus)</div>';
-    return;
-  }
-
-  const today = new Date().toISOString().slice(0,10);
-
-  document.getElementById('table-previsionnel').innerHTML = `
-    <div class="table-wrap">
-    <table>
-      <thead><tr>
-        <th title="Date d'arrivée estimée à Fos (ETA), sinon ETD effectif.">Arrivée (ETA)</th><th>PO#</th><th>Article</th><th>Fournisseur</th>
-        <th>Qté · nb</th><th>Valeur · USD</th><th>Statut</th>
-      </tr></thead>
-      <tbody>
-        ${rows.map(r => {
-          const past = r.date_etd && r.date_etd.slice(0,10) < today;
-          return `<tr style="${past ? 'background:#fef2f2' : ''}">
-            <td><strong>${fmt(r.date_etd,'date')}</strong></td>
-            <td class="mono">${esc(r.po_number) || '—'}</td>
-            <td class="mono">${esc(r.code_article) || '—'}</td>
-            <td>${esc(r.fournisseur) || '—'}</td>
-            <td style="text-align:right">${fmt(r.quantite,'num')}</td>
-            <td style="text-align:right">
-              ${r.prix_unitaire && r.quantite
-                ? fmt(Number(r.prix_unitaire) * Number(r.quantite), 'money')
-                : '—'}
-            </td>
-            <td>${badge(r.statut)}</td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>
-    </div>`;
-}
+// renderPrevisionnel (Prochaines arrivees) retire le 21/07 : la logistique des
+// arrivees est desormais dans l'onglet Conteneurs (grain conteneur, sans doublon
+// article). Le Previsionnel ne porte plus que le financier (renderCash + mesures).
 
 // ════════════════════════════════════════════════════════════════════════════
 // Init
