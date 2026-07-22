@@ -1,7 +1,38 @@
 # TASKS — FUSEAU / Data-Achat
 
-> Suivi déploiement poste Marlène + branchement Gmail + sources Andréa. Maj 2026-07-20.
+> Suivi déploiement poste Marlène + branchement Gmail + sources Andréa. **Recalé 2026-07-22**
+> sur `docs/plan_action.md` (source de vérité, MàJ 21/07) + passation Antigravity.
 > Runbook : `docs/20260629_FUSEAU_DeploiementPosteMarlene_Cowork_v1.md`
+> ⚠️ **Deadline dure : 31/07/2026** (départ Andréa JAMET, Assistante Achats). Rôles : Marlène = Responsable Achats (reste).
+> Règle git/DB : PowerShell Windows local uniquement, jamais le sandbox Linux (CRLF/LF).
+> Repo : poste Marlène **resynchronisé sur `origin/main` = `a3f7a63` le 22/07** (working tree propre).
+
+## 🔴 URGENT (22/07) — Mettre l'ETL Gmail en prod depuis la boîte de Marlène
+
+> Priorité n°1 du jour (Anthony) : capter **corps de mails + PJ** de `achat.import@tb-groupe.fr`
+> → parser → alimenter le DWH. La boîte de Marlène couvre ~90% des mails d'Andréa, donc l'accès
+> à la boîte d'Andréa n'est PAS bloquant. Runbook opératoire : **`TASKS_POSTE_MARLENE.md`**.
+
+- [ ] Pré-vol (`preflight_gmail`) : VPN, token Gmail, Tesseract+Poppler (OCR), synchro git, DWH.
+- [ ] Établir et figer la `--query` expéditeurs fournisseurs (déduite de la boîte).
+- [ ] Pipeline PJ : `fetch_attachments` → `parse_bl` → `load_ot_gmail` (dry-run puis COMMIT).
+- [ ] Vérifier la remontée ETD/ETA dans FUSEAU (onglet Prévisionnel/Retards).
+
+## 🟡 Chemin critique métier — à trancher avant le 31/07 (démo 21/07)
+
+> Détail : `docs/20260721_FUSEAU_Audit_RetoursMetier_v1.md` + `docs/20260721_FUSEAU_RetoursDemo14h_v1.md`.
+> Accès Gmail boîte Andréa : **non bloquant** (Marlène reçoit ~90% en CC) — délégation optionnelle, pas prioritaire.
+
+**6 décisions métier [DEC] à trancher avec Andréa/Marlène (changent le périmètre de l'existant) :**
+- [ ] **Statut "Livrée"** : rapprocher avec Sylob (réception/entrée stock) + conformité qualité. Identifier la table Sylob portant la date de réception réelle par PO/article.
+- [ ] **Raison du retard** : à extraire du corps des mails (parsing), pas de saisie structurée.
+- [ ] **Doublons fournisseurs — revirement vs 25/06** : GUANGWEI/DIAMOND TRACK et SMART IRON/JIT GLOBAL signalés comme vrais doublons à corriger via l'ID Sylob `frn_code`. Auditer `enrich_ca.py`/`enrich_from_sylob.py` avant de coder. (Contredit la décision 07/07 §499 "rien à corriger" → à retrancher.)
+- [ ] **Qualité — code article dans les rapports d'inspection** : évolution process côté service Qualité (nommer les PDF avec le code), pas un dev FUSEAU. À valider avec eux.
+- [ ] **Filtre Promo/Opé trop large** : ne garder que OP/NOUVEAU + champ PRIORITAIRE (Oui/Non) séparé. Définir "prioritaire".
+- [ ] **Sources de vérité Fiche Achat/Article** : EAN/PCB → Sylob ; marquage/matière/packaging → fiche achat. Onglet Article = vue 360° ; Fiche Achat = consultation + génération PDF + MàJ (pas création ex nihilo). Change le périmètre des 2 onglets.
+
+**Anomalie à vérifier :**
+- [ ] **WANXIN : retard maxi = 444 jours** — probablement une donnée ETD confirmé mal saisie. `nb_articles_en_retard` = 0 (pas actif) mais à vérifier avant de le citer.
 
 ## 🔧 Correction calcul de retard — CODÉ 20/07, à déployer (VPN)
 
