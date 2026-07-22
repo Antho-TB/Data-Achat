@@ -417,6 +417,9 @@ button { cursor: pointer; }
 .fiche-chkgroup label { width: auto; display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text); }
 .fiche-imgdrop { flex: 1; }
 .fiche-imgdrop img { max-width: 100%; max-height: 90px; display: block; margin-top: 4px; border: 1px solid var(--border); }
+.fiche-item { border: 1px dashed var(--border); border-radius: 4px; padding: 10px; margin-bottom: 10px; background: #FAFAF8; }
+.fiche-item .fiche-item-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.fiche-item .fiche-item-head b { font-size: 12px; }
 
 /* -- Document PS (rendu fidele FOR-ACH-03-12) -- */
 .ps-doc { background: #fff; border: 1px solid #000; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; }
@@ -832,77 +835,116 @@ const loaders = {
 };
 
 // ── Fiche Achat (Purchase Sheet, gabarit FOR-ACH-03-12) ─────────────────────
-// Formulaire mono-utilisateur (Andréa / successeur) : pre-rempli au max depuis
-// FUSEAU (champs "auto"), le reste = pêche interne. Apercu fidele au PDF reel
-// (Service_Achat/*/PS-*.pdf). Images = session navigateur uniquement, non
-// envoyees au backend (generation PDF/xlsx reelle = Phase B, non faite).
-const FICHE_FIELDS = [
+// Reconstruit le 22/07 a partir des VRAIS gabarits Andrea (extraction openpyxl
+// exhaustive, cellule par cellule) :
+//   Service_Achat/Ménagère et sets - FOR-ACH-03-12 Purchase sheet-Fiche Achat Vierge.xlsx
+//   Service_Achat/00182725.../Modifiable/PS-...-NOSKI.xlsx (exemple rempli reel)
+// Variante "Menagere et sets" retenue car superset de "Produits uniques"
+// (contient en plus le bloc reglementaire ARTWORK). Chaque table du PS reel
+// est indexee par la colonne REFERENCE -> modelisee ici comme une liste
+// d'"items" partagee entre les 7 tableaux (Products/Packaging/Metal/Handle/
+// Stamping dims/Master carton/EAN/French translation), au lieu de 7 tableaux
+// a 1 seule ligne comme dans la version precedente (non fidele au gabarit
+// multi-references reel). En-tete imprimable Excel (oddHeader) recopie a
+// l'identique : "PURCHASE SHEET / FRS <code>" + "N° LOT / Date d'application
+// 15/05/2023 (fige) / Date de commande". Bloc ARTWORK = texte reglementaire
+// AGEC statique (paragraphe + 2 tableaux MOAH/MOSH), non editable, recopie
+// mot pour mot. Sections "PACKAGING ARTWORK"/"Visa Logistique-Achats" de la
+// version precedente retirees : absentes des deux gabarits reels (invention).
+// Images = session navigateur uniquement (generation PDF/xlsx reelle = Phase
+// B, non faite -- decision metier 21/07 : perimetre onglet = consultation/
+// mise a jour des fiches EXISTANTES, pas creation ex nihilo, cf. plan_action.md).
+const FICHE_GLOBAL_FIELDS = [
   ['DESCRIPTION OF THE PRODUCT / SUPPLIER', [
-    { key: 'supplier', label: 'Fournisseur (Supplier)', type: 'text', auto: 1 },
-    { key: 'reference', label: 'Référence article', type: 'text', auto: 1 },
-    { key: 'product_name', label: 'Désignation produit (Name)', type: 'text', auto: 1 },
+    { key: 'supplier', label: 'Supplier', type: 'text', auto: 1 },
+    { key: 'n_lot', label: 'N° LOT', type: 'text', placeholder: '0000000000' },
+    { key: 'po_number', label: 'N° commande (PO)', type: 'text', auto: 1 },
   ]],
   ['TRANSPORT', [
-    { key: 'forwarder', label: 'Transitaire (Forwarder)', type: 'text', auto: 1 },
-    { key: 'transport_type', label: 'Type de transport', type: 'select', options: ['Sea', 'Air', 'Truck'] },
-    { key: 'port', label: 'Port / lieu de destination', type: 'text', auto: 1 },
+    { key: 'forwarder', label: 'Forwarder', type: 'text', auto: 1 },
+    { key: 'transport_type', label: 'Type of transport', type: 'select', options: ['Sea', 'Air', 'Truck'] },
+    { key: 'port', label: 'Port / airport / city of destination', type: 'text', auto: 1 },
     { key: 'etd', label: 'ETD', type: 'text', auto: 1 },
   ]],
   ['PACKAGING INFORMATIONS', [
-    { key: 'pcs_item', label: 'Nb pièces - ITEM', type: 'text' },
-    { key: 'pcs_inner', label: 'Nb pièces - INNER', type: 'text' },
-    { key: 'pcs_master', label: 'Nb pièces - MASTER', type: 'text' },
-    { key: 'packaging_color', label: 'Coloris packaging', type: 'select', options: ['Mixed Color', '1 color / PCB', 'Color sticker on carton'] },
+    { key: 'number_of_pieces_sets', label: 'Number of pieces/sets', type: 'text' },
+    { key: 'in_each_set', label: 'In each set', type: 'text' },
     { key: 'shipping_marks', label: 'Shipping marks', type: 'text', placeholder: 'GW/NW - Item - EAN n° - Designation - Ctn n° - PCB - N° Lot' },
-    { key: 'ean_on_product', label: 'EAN sur produit', type: 'checkbox' },
-    { key: 'nb_ean', label: "Nombre d'EAN", type: 'text' },
-    { key: 'ean_on_pcb', label: 'EAN sur PCB', type: 'checkbox' },
-    { key: 'particular_doc', label: 'Doc particulier exigé', type: 'checkbox' },
-    { key: 'packaging_desc', label: 'Description packaging', type: 'textarea' },
-    { key: 'max_kg_master', label: 'Poids max / master (kg)', type: 'text' },
+    { key: 'ean_on_product', label: 'EAN on product', type: 'checkbox' },
+    { key: 'nb_ean', label: 'Number of EAN', type: 'text' },
+    { key: 'ean_on_pcb', label: 'EAN on PCB', type: 'checkbox' },
+    { key: 'particular_doc', label: 'Particular doc required (ex : Lawful…)', type: 'text' },
   ]],
   ['SAMPLE', [
-    { key: 'testing_samples', label: 'Échantillons de test requis', type: 'checkbox' },
-    { key: 'shipping_paid_by', label: 'Port payé par', type: 'select', options: ['TB', 'Supplier'] },
-    { key: 'sample_types', label: 'Échantillons à envoyer', type: 'checkboxgroup', group: ['Raw material', 'Semi-production sample', 'Compliance sample', 'Production sample', 'Printing sample'] },
-  ]],
-  ['PRODUCT MATERIAL — METAL PART', [
-    { key: 'thickness', label: 'Épaisseur (mm)', type: 'text' },
-    { key: 'length', label: 'Longueur (mm)', type: 'text' },
-    { key: 'quality', label: 'Qualité acier', type: 'text' },
-    { key: 'chrome_pct', label: '% Chrome', type: 'text' },
-    { key: 'heat_treatment', label: 'Traitement thermique', type: 'checkbox' },
-    { key: 'finishing', label: 'Finition', type: 'text' },
-  ]],
-  ['HANDLE INFORMATIONS', [
-    { key: 'handle_material', label: 'Matière manche', type: 'text' },
-    { key: 'pantone', label: 'Pantone', type: 'text' },
+    { key: 'testing_samples', label: 'Testing samples (before launching production)', type: 'checkbox' },
+    { key: 'shipping_paid_by', label: 'Shipping paid by', type: 'select', options: ['TB', 'Supplier'] },
+    { key: 'please_send_us', label: 'Please send us', type: 'checkboxgroup', group: ['Raw material', 'Semi-production sample', 'Compliance sample', 'Production sample', 'Printing sample'] },
   ]],
   ['STAMPING', [
-    { key: 'stamping_text', label: 'Marquage (texte, ou vide = No stamping)', type: 'text' },
-    { key: 'stamping_dim', label: 'Dimensions marquage (mm)', type: 'text' },
-    { key: 'stamping_img', label: 'Image de marquage', type: 'image' },
+    { key: 'blade_stamping', label: 'Blade or product stamping', type: 'text', placeholder: 'Texte du marquage, ou vide = No stamping' },
+    { key: 'stamping_img', label: "Emplacement du marquage (image)", type: 'image' },
   ]],
   ['PICTURE OF PRODUCT', [
     { key: 'product_img', label: 'Photo produit', type: 'image' },
   ]],
-  ['PACKAGING ARTWORK', [
-    { key: 'packaging_img1', label: 'Molded cellulose (facing)', type: 'image' },
-    { key: 'packaging_img2', label: 'Artwork boîte', type: 'image' },
-  ]],
-  ['MORE INFORMATION — EAN', [
-    { key: 'ean13', label: 'ITEM = EAN 13', type: 'text' },
-    { key: 'ean14_inner', label: 'INNER = EAN 14 SPCB', type: 'text' },
-    { key: 'ean14_master', label: 'MASTER = EAN 14 PCB', type: 'text' },
-  ]],
-  ['FRENCH TRANSLATION', [
-    { key: 'fr_designation', label: 'Désignation FR', type: 'textarea' },
-  ]],
 ];
+
+// Colonnes partagees par les 7 tableaux du PS reel (cle commune = REFERENCE).
+const FICHE_ITEM_FIELDS = [
+  { key: 'reference', label: 'Reference', auto: 1 },
+  { key: 'name', label: 'Name', auto: 1 },
+  { key: 'pcs_item', label: 'Item (pcs)' },
+  { key: 'pcs_inner', label: 'Inner (pcs)' },
+  { key: 'pcs_master', label: 'Master (pcs)' },
+  { key: 'packaging_desc', label: 'Packaging' },
+  { key: 'thickness', label: 'Thickness (mm)' },
+  { key: 'length', label: 'Length (mm)' },
+  { key: 'quality', label: 'Quality' },
+  { key: 'chrome_pct', label: 'Chrome %' },
+  { key: 'heat_treatment', label: 'Heat treatment', type: 'checkbox' },
+  { key: 'finishing', label: 'Finishing' },
+  { key: 'handle_material', label: 'Handle — Material' },
+  { key: 'pantone', label: 'Handle — Pantone / Pattern' },
+  { key: 'stamping_dim', label: 'Dimensions of stamping (mm)' },
+  { key: 'carton_l', label: 'Master carton — Length (cm)' },
+  { key: 'carton_w', label: 'Master carton — Width (cm)' },
+  { key: 'carton_h', label: 'Master carton — Height (cm)' },
+  { key: 'ean13', label: 'Item = EAN 13' },
+  { key: 'ean14_inner', label: 'Inner = EAN 14 SPCB' },
+  { key: 'ean14_master', label: 'Master = EAN 14 PCB' },
+  { key: 'french_desc', label: 'French translation (description)' },
+];
+
+// Bloc reglementaire ARTWORK : texte fige (loi AGEC), identique sur les deux
+// gabarits Andrea et sur l'exemple rempli NOSKI -- jamais edite par les
+// utilisateurs, donc rendu tel quel dans l'apercu (pas de champ de saisie).
+const FICHE_ARTWORK_LEGAL = {
+  paragraph: [
+    "In application of the article 112 of the French AGEC Law n°2020-105 of 10 February 2020, the articles R. 543-45-1 and R. 543-213 of",
+    "Decree n°2020-1725 of 29 December 2020, and the Order of 13 April 2022, the manufactured products delivered to Tarrerias-Bonjean",
+    "comply with the requirements below :",
+  ],
+  tables: [
+    { title: 'STARTING FROM JANUARY 1, 2023', rows: [['MOAH* consisting of 1 to 7 aromatic rings', 'Inks', '≤ 1,0%']], footnote: '* Mineral Oil Aromatic Hydrocarbons' },
+    { title: 'STARTING FROM JANUARY 1, 2025', rows: [
+      ['MOAH consisting of 1 to 7 aromatic rings', 'Inks', '≤ 0,1%'],
+      ['MOAH consisting of 3 to 7 aromatic rings', 'Inks', '≤ 1 ppm'],
+      ['MOSH* consisting of 16 to 35 carbon atoms', 'Inks', '≤ 0,1%'],
+    ], footnote: '* Mineral Oil Saturated Hydrocarbons' },
+  ],
+};
 
 let _ficheData = {};
 let _fichePics = {};
-const FICHE_AUTO_KEYS = new Set(['supplier', 'reference', 'product_name', 'forwarder', 'port', 'etd']);
+let _ficheItems = [];
+const FICHE_AUTO_KEYS = new Set(['supplier', 'po_number', 'forwarder', 'port', 'etd']);
+const FICHE_ITEM_AUTO_KEYS = new Set(['reference', 'name']);
+
+function blankFicheItem(seed) {
+  const it = {};
+  FICHE_ITEM_FIELDS.forEach(f => { it[f.key] = f.type === 'checkbox' ? false : ''; });
+  return Object.assign(it, seed || {});
+}
 
 async function loadFiche() {
   const el = document.getElementById('f-fiche-art');
@@ -917,7 +959,8 @@ async function loadFiche() {
       if (row) {
         pre = {
           fournisseur: row.fournisseur, code_article: row.code_article, designation: row.designation,
-          transitaire: row.transitaire, etd: row.date_etd ? String(row.date_etd).slice(0, 10) : '',
+          po_number: row.po_number, transitaire: row.transitaire,
+          etd: row.date_etd ? String(row.date_etd).slice(0, 10) : '',
           port: 'FOS SUR MER (= MARSEILLE)',
         };
         document.getElementById('fiche-hint').textContent = `Pré-rempli depuis PO ${row.po_number || '—'}`;
@@ -936,30 +979,30 @@ function resetFiche() {
   renderFicheForm({});
 }
 
-function renderFicheInput(f, val, isAuto) {
+function renderFicheInput(f, val, isAuto, dataAttr) {
   const lbl = `<label>${esc(f.label)}${isAuto ? ' <span class="auto-tag">● auto</span>' : ''}</label>`;
   let input;
   if (f.type === 'select') {
-    input = `<select data-k="${f.key}"><option value="">--</option>${(f.options || [])
+    input = `<select ${dataAttr}="${f.key}"><option value="">--</option>${(f.options || [])
       .map(o => `<option value="${esc(o)}" ${val === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
   } else if (f.type === 'textarea') {
-    input = `<textarea data-k="${f.key}" placeholder="${f.placeholder ? esc(f.placeholder) : ''}">${esc(val || '')}</textarea>`;
+    input = `<textarea ${dataAttr}="${f.key}" placeholder="${f.placeholder ? esc(f.placeholder) : ''}">${esc(val || '')}</textarea>`;
   } else if (f.type === 'checkbox') {
-    input = `<input type="checkbox" data-k="${f.key}" ${val ? 'checked' : ''} style="flex:0 0 auto;width:auto;">`;
+    input = `<input type="checkbox" ${dataAttr}="${f.key}" ${val ? 'checked' : ''} style="flex:0 0 auto;width:auto;">`;
   } else if (f.type === 'checkboxgroup') {
-    input = `<div class="fiche-chkgroup">${(f.group || []).map(o => `<label><input type="checkbox" data-k="${f.key}" data-val="${esc(o)}" ${Array.isArray(val) && val.includes(o) ? 'checked' : ''}>${esc(o)}</label>`).join('')}</div>`;
+    input = `<div class="fiche-chkgroup">${(f.group || []).map(o => `<label><input type="checkbox" ${dataAttr}="${f.key}" data-val="${esc(o)}" ${Array.isArray(val) && val.includes(o) ? 'checked' : ''}>${esc(o)}</label>`).join('')}</div>`;
   } else if (f.type === 'image') {
     const thumb = _fichePics[f.key] ? `<img src="${_fichePics[f.key]}" alt="">` : '';
     input = `<div class="fiche-imgdrop"><input type="file" accept="image/*" data-imgkey="${f.key}">${thumb}</div>`;
   } else {
-    input = `<input type="text" data-k="${f.key}" value="${esc(val || '')}" placeholder="${f.placeholder ? esc(f.placeholder) : 'à renseigner (pêche interne)'}">`;
+    input = `<input type="text" ${dataAttr}="${f.key}" value="${esc(val || '')}" placeholder="${f.placeholder ? esc(f.placeholder) : 'à renseigner (pêche interne)'}">`;
   }
   return `<div class="fiche-row${isAuto && val ? ' auto-filled' : ''}">${lbl}${input}</div>`;
 }
 
 function collectFicheData() {
   const data = {};
-  document.querySelectorAll('#fiche-form [data-k]').forEach(el => {
+  document.querySelectorAll('#fiche-form-global [data-k]').forEach(el => {
     const k = el.dataset.k;
     if (el.type === 'checkbox') {
       if (el.dataset.val != null) {
@@ -975,9 +1018,46 @@ function collectFicheData() {
   return data;
 }
 
+function collectFicheItems() {
+  return Array.from(document.querySelectorAll('#fiche-items .fiche-item')).map(card => {
+    const item = {};
+    card.querySelectorAll('[data-ik]').forEach(el => {
+      item[el.dataset.ik] = el.type === 'checkbox' ? el.checked : el.value;
+    });
+    return item;
+  });
+}
+
 function updateFichePreview() {
   _ficheData = collectFicheData();
-  renderFichePreview(_ficheData, _fichePics);
+  _ficheItems = collectFicheItems();
+  renderFichePreview(_ficheData, _fichePics, _ficheItems);
+}
+
+function addFicheItem() {
+  _ficheItems = collectFicheItems();
+  _ficheItems.push(blankFicheItem());
+  renderFicheItemsForm();
+  updateFichePreview();
+}
+
+function removeFicheItem(idx) {
+  _ficheItems = collectFicheItems();
+  _ficheItems.splice(idx, 1);
+  if (!_ficheItems.length) _ficheItems.push(blankFicheItem());
+  renderFicheItemsForm();
+  updateFichePreview();
+}
+
+function renderFicheItemsForm() {
+  document.getElementById('fiche-items').innerHTML = _ficheItems.map((item, idx) => `
+    <div class="fiche-item">
+      <div class="fiche-item-head">
+        <b>Référence ${idx + 1}</b>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="removeFicheItem(${idx})" ${_ficheItems.length <= 1 ? 'disabled' : ''}>🗑 Supprimer</button>
+      </div>
+      ${FICHE_ITEM_FIELDS.map(f => renderFicheInput(f, item[f.key], FICHE_ITEM_AUTO_KEYS.has(f.key), 'data-ik')).join('')}
+    </div>`).join('');
 }
 
 function wireFicheLive() {
@@ -1012,26 +1092,39 @@ function renderFicheForm(pre) {
   pre = pre || {};
   _fichePics = {};
   _ficheData = {
-    supplier: pre.fournisseur || '', reference: pre.code_article || '', product_name: pre.designation || '',
+    supplier: pre.fournisseur || '', po_number: pre.po_number || '',
     forwarder: pre.transitaire || '', port: pre.port || '', etd: pre.etd || '',
   };
-  document.getElementById('fiche-form').innerHTML = FICHE_FIELDS.map(([titre, champs]) => `
+  _ficheItems = [blankFicheItem({ reference: pre.code_article || '', name: pre.designation || '' })];
+  document.getElementById('fiche-form').innerHTML = `
+    <div id="fiche-form-global">
+      ${FICHE_GLOBAL_FIELDS.map(([titre, champs]) => `
+        <div class="fiche-field-group">
+          <div class="grp-title">${esc(titre)}</div>
+          ${champs.map(f => renderFicheInput(f, _ficheData[f.key], FICHE_AUTO_KEYS.has(f.key), 'data-k')).join('')}
+        </div>`).join('')}
+    </div>
     <div class="fiche-field-group">
-      <div class="grp-title">${esc(titre)}</div>
-      ${champs.map(f => renderFicheInput(f, _ficheData[f.key], FICHE_AUTO_KEYS.has(f.key))).join('')}
-    </div>`).join('')
-    + '<div style="font-size:11px;color:var(--muted);padding:4px 2px;">🟢 auto = pré-rempli depuis FUSEAU/Sylob. Images conservées en session navigateur uniquement (pas de stockage serveur pour l\'instant). Génération PDF/xlsx réelle = Phase B, non faite.</div>';
+      <div class="grp-title">PRODUCTS / PACKAGING / MATERIAL / EAN — par référence</div>
+      <div id="fiche-items"></div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="addFicheItem()" style="margin-top:6px;">+ Ajouter une référence</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);padding:4px 2px;">🟢 auto = pré-rempli depuis FUSEAU/Sylob. Images conservées en session navigateur uniquement (pas de stockage serveur pour l'instant). Génération PDF/xlsx réelle = Phase B, non faite. Structure reprise à l'identique du gabarit Andréa (Service_Achat/*FOR-ACH-03-12*), bloc ARTWORK réglementaire non modifiable.</div>`;
+  renderFicheItemsForm();
   wireFicheLive();
   updateFichePreview();
 }
 
-function renderFichePreview(data, pics) {
-  data = data || {}; pics = pics || {};
+function renderFichePreview(data, pics, items) {
+  data = data || {}; pics = pics || {}; items = (items && items.length) ? items : [blankFicheItem()];
   const g = k => esc(data[k] || '');
   const chk = (on) => `<span class="ps-chk"><span class="box ${on ? 'on' : ''}"></span></span>`;
   const imgSlot = (key, label) => pics[key]
     ? `<div class="ps-img-slot"><img src="${pics[key]}" alt="${esc(label)}"></div>`
     : `<div class="ps-img-slot">${esc(label)}</div>`;
+  const iv = (it, k) => esc(it[k] || '');
+  const rowsTable = (headers, mapper) => `<table class="ps-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+    <tbody>${items.map(mapper).join('')}</tbody></table>`;
 
   document.getElementById('fiche-preview').innerHTML = `
   <div class="ps-doc">
@@ -1039,17 +1132,17 @@ function renderFichePreview(data, pics) {
       <div class="ps-logo"><div class="ps-logo-box">TB</div></div>
       <div class="ps-title"><b>PURCHASE SHEET</b><div>${g('supplier') ? 'FRS ' + g('supplier') : '&nbsp;'}</div></div>
       <div class="ps-ref">
-        <div><b>Réf. :</b> FOR-ACH-03-12</div>
+        <div><b>N° LOT :</b> ${g('n_lot') || '0000000000'}</div>
         <div><b>Date d'application :</b> 15/05/2023</div>
         <div><b>Date de commande :</b> ${new Date().toLocaleDateString('fr-FR')}</div>
+        ${g('po_number') ? `<div><b>N° commande (PO) :</b> ${g('po_number')}</div>` : ''}
       </div>
     </div>
 
     <div class="ps-section"><div class="ps-bar">DESCRIPTION OF THE PRODUCT / SUPPLIER</div>
     <div class="ps-body">
       <div class="ps-line"><b>SUPPLIER :</b> ${g('supplier')}</div>
-      <table class="ps-table"><thead><tr><th>REFERENCE</th><th>NAME</th></tr></thead>
-        <tbody><tr><td>${g('reference')}</td><td>${g('product_name')}</td></tr></tbody></table>
+      ${rowsTable(['REFERENCE', 'NAME'], it => `<tr><td>${iv(it, 'reference')}</td><td>${iv(it, 'name')}</td></tr>`)}
     </div></div>
 
     <div class="ps-section"><div class="ps-bar">TRANSPORT</div>
@@ -1062,61 +1155,72 @@ function renderFichePreview(data, pics) {
 
     <div class="ps-section"><div class="ps-bar">PACKAGING INFORMATIONS</div>
     <div class="ps-body">
-      <table class="ps-table"><thead><tr><th>REFERENCE</th><th>ITEM</th><th>INNER</th><th>MASTER</th></tr></thead>
-        <tbody><tr><td>${g('reference')}</td><td>${g('pcs_item')}</td><td>${g('pcs_inner')}</td><td>${g('pcs_master')}</td></tr></tbody></table>
-      <div class="ps-line"><b>IN EACH SET :</b> ${['Mixed Color', '1 color / PCB', 'Color sticker on carton'].map(o => `${chk(data.packaging_color === o)} ${o}`).join(' &nbsp; ')}</div>
+      <div class="ps-line"><b>NUMBER OF PIECES/SETS :</b> ${g('number_of_pieces_sets')}</div>
+      ${rowsTable(['REFERENCE', 'ITEM', 'INNER', 'MASTER'], it => `<tr><td>${iv(it, 'reference')}</td><td>${iv(it, 'pcs_item')}</td><td>${iv(it, 'pcs_inner')}</td><td>${iv(it, 'pcs_master')}</td></tr>`)}
+      <div class="ps-line"><b>IN EACH SET :</b> ${g('in_each_set')}</div>
       <div class="ps-line"><b>SHIPPING MARKS :</b> ${g('shipping_marks')}</div>
       <div class="ps-line"><b>EAN ON PRODUCT :</b> ${chk(!!data.ean_on_product)} Yes &nbsp; ${chk(!data.ean_on_product)} No</div>
       <div class="ps-line"><b>NUMBER OF EAN :</b> ${g('nb_ean')}</div>
       <div class="ps-line"><b>EAN ON PCB :</b> ${chk(!!data.ean_on_pcb)} Yes &nbsp; ${chk(!data.ean_on_pcb)} No</div>
-      <div class="ps-line"><b>PARTICULAR DOC REQUIRED :</b> ${chk(!!data.particular_doc)} Yes &nbsp; ${chk(!data.particular_doc)} No</div>
-      <table class="ps-table"><thead><tr><th>ITEM NUMBER</th><th>PACKAGING</th></tr></thead>
-        <tbody><tr><td>${g('reference')}</td><td>${g('packaging_desc') || '&nbsp;'}</td></tr></tbody></table>
-      <div class="ps-line" style="color:#c0392b;font-weight:700;">MAXIMUM ${g('max_kg_master') || '—'} KGS PER MASTER</div>
+      <div class="ps-line"><b>PARTICULAR DOC REQUIRED (EX : LAWFUL…) :</b> ${g('particular_doc')}</div>
+      ${rowsTable(['ITEM NUMBER', 'PACKAGING'], it => `<tr><td>${iv(it, 'reference')}</td><td>${iv(it, 'packaging_desc') || '&nbsp;'}</td></tr>`)}
+      <div class="ps-line" style="color:#c0392b;font-weight:700;">MAXIMUM 15 KGS PER MASTER</div>
     </div></div>
 
     <div class="ps-section"><div class="ps-bar">SAMPLE</div>
     <div class="ps-body">
-      <div class="ps-line"><b>TESTING SAMPLES (BEFORE LAUNCHING PRODUCTION) :</b> ${chk(!!data.testing_samples)} Yes &nbsp; ${chk(!data.testing_samples)} No</div>
+      <div class="ps-line"><b>TESTING SAMPLES (BEFORE LAUCHING PRODUCTION) :</b> ${chk(!!data.testing_samples)} Yes &nbsp; ${chk(!data.testing_samples)} No</div>
       <div class="ps-line"><b>SHIPPING PAID BY :</b> ${['TB', 'Supplier'].map(o => `${chk(data.shipping_paid_by === o)} ${o}`).join(' &nbsp; ')}</div>
-      <div class="ps-line"><b>PLEASE SEND US :</b> ${['Raw material', 'Semi-production sample', 'Compliance sample', 'Production sample', 'Printing sample'].map(o => `${chk(Array.isArray(data.sample_types) && data.sample_types.includes(o))} ${o}`).join(' &nbsp; ')}</div>
+      <div class="ps-line"><b>PLEASE SEND US :</b> ${['Raw material', 'Semi-production sample', 'Compliance sample', 'Production sample', 'Printing sample'].map(o => `${chk(Array.isArray(data.please_send_us) && data.please_send_us.includes(o))} ${o}`).join(' &nbsp; ')}</div>
     </div></div>
 
     <div class="ps-section"><div class="ps-bar">PRODUCT MATERIAL</div>
     <div class="ps-body">
-      <table class="ps-table"><thead><tr><th>REFERENCE</th><th>THICKNESS (mm)</th><th>LENGTH (mm)</th><th>QUALITY</th><th>CHROME %</th><th>HEAT TREATMENT</th><th>FINISHING</th></tr></thead>
-        <tbody><tr><td>${g('reference')}</td><td>${g('thickness')}</td><td>${g('length')}</td><td>${g('quality')}</td><td>${g('chrome_pct')}</td><td>${data.heat_treatment ? 'Yes' : 'No'}</td><td>${g('finishing')}</td></tr></tbody></table>
-      <table class="ps-table"><thead><tr><th>REFERENCE</th><th>MATERIAL (handle)</th><th>PANTONE</th></tr></thead>
-        <tbody><tr><td>${g('reference')}</td><td>${g('handle_material')}</td><td>${g('pantone')}</td></tr></tbody></table>
+      <div class="ps-line" style="font-weight:700;">METAL PART INFORMATIONS</div>
+      ${rowsTable(['REFERENCE', 'THICKNESS (mm)', 'LENGTH (mm)', 'QUALITY', 'CHROME %', 'HEAT TREATMENT', 'FINISHING'], it =>
+        `<tr><td>${iv(it, 'reference')}</td><td>${iv(it, 'thickness')}</td><td>${iv(it, 'length')}</td><td>${iv(it, 'quality')}</td><td>${iv(it, 'chrome_pct')}</td><td>${it.heat_treatment ? 'Yes' : 'No'}</td><td>${iv(it, 'finishing')}</td></tr>`)}
+      <div class="ps-line" style="font-weight:700;margin-top:8px;">HANDLE INFORMATIONS</div>
+      ${rowsTable(['REFERENCE', 'MATERIAL', 'PANTONE / PATTERN'], it => `<tr><td>${iv(it, 'reference')}</td><td>${iv(it, 'handle_material')}</td><td>${iv(it, 'pantone')}</td></tr>`)}
     </div></div>
 
     <div class="ps-section"><div class="ps-bar">STAMPING</div>
     <div class="ps-body">
-      <div class="ps-line"><b>BLADE OR PRODUCT STAMPING :</b> ${g('stamping_text') || 'No stamping'}</div>
-      ${imgSlot('stamping_img', 'Image de marquage')}
-      <table class="ps-table"><thead><tr><th>DIMENSIONS OF STAMPING (mm)</th></tr></thead><tbody><tr><td>${g('stamping_dim')}</td></tr></tbody></table>
+      <div class="ps-line"><b>BLADE OR PRODUCT STAMPING :</b> ${g('blade_stamping') || 'No stamping'}</div>
+      ${imgSlot('stamping_img', "Emplacement du marquage")}
+      ${rowsTable(['REFERENCE', 'DIMENSIONS OF STAMPING (mm)'], it => `<tr><td>${iv(it, 'reference')}</td><td>${iv(it, 'stamping_dim')}</td></tr>`)}
+    </div></div>
+
+    <div class="ps-section"><div class="ps-bar">PRODUCTION/PACKING</div>
+    <div class="ps-body">
+      <div class="ps-line" style="font-weight:700;">DIMENSIONS OF MASTER CARTON</div>
+      ${rowsTable(['REFERENCE', 'LENGTH (cm)', 'WIDTH (cm)', 'HEIGHT (cm)'], it => `<tr><td>${iv(it, 'reference')}</td><td>${iv(it, 'carton_l')}</td><td>${iv(it, 'carton_w')}</td><td>${iv(it, 'carton_h')}</td></tr>`)}
     </div></div>
 
     <div class="ps-section"><div class="ps-bar">PICTURE OF PRODUCT</div>
-    <div class="ps-body">${imgSlot('product_img', 'Photo produit')}</div></div>
+    <div class="ps-body">
+      ${imgSlot('product_img', 'Photo produit')}
+      ${!pics['product_img'] ? `<div class="ps-line" style="font-style:italic;color:var(--muted);">(Photos du produit sinon suppression de la catégorie)</div>` : ''}
+    </div></div>
 
-    <div class="ps-section"><div class="ps-bar">PACKAGING ARTWORK</div>
-    <div class="ps-body" style="display:flex;gap:10px;">
-      <div style="flex:1;">${imgSlot('packaging_img1', 'Molded cellulose (facing)')}</div>
-      <div style="flex:1;">${imgSlot('packaging_img2', 'Artwork boîte')}</div>
+    <div class="ps-section"><div class="ps-bar">ARTWORK</div>
+    <div class="ps-body">
+      ${FICHE_ARTWORK_LEGAL.paragraph.map(l => `<div class="ps-line">${esc(l)}</div>`).join('')}
+      ${FICHE_ARTWORK_LEGAL.tables.map(t => `
+        <div class="ps-line" style="font-weight:700;margin-top:6px;">${esc(t.title)}</div>
+        <table class="ps-table"><thead><tr><th>SUBSTANCE</th><th>SCOPE</th><th>REQUIREMENT</th></tr></thead>
+          <tbody>${t.rows.map(r => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td><td>${esc(r[2])}</td></tr>`).join('')}</tbody></table>
+        <div class="ps-line" style="font-size:10px;color:var(--muted);">${esc(t.footnote)}</div>`).join('')}
     </div></div>
 
     <div class="ps-section"><div class="ps-bar">MORE INFORMATION</div>
     <div class="ps-body">
-      <table class="ps-table"><thead><tr><th>REFERENCE</th><th>ITEM = EAN 13</th><th>INNER = EAN 14 SPCB</th><th>MASTER = EAN 14 PCB</th></tr></thead>
-        <tbody><tr><td>${g('reference')}</td><td>${g('ean13')}</td><td>${g('ean14_inner')}</td><td>${g('ean14_master')}</td></tr></tbody></table>
-      <table class="ps-table"><thead><tr><th>ITEM NUMBER</th><th>DESCRIPTION (FR)</th></tr></thead>
-        <tbody><tr><td>${g('reference')}</td><td>${g('fr_designation')}</td></tr></tbody></table>
+      <div class="ps-line" style="font-weight:700;">EAN FOR BARCODES</div>
+      ${rowsTable(['REFERENCE', 'ITEM = EAN 13', 'INNER = EAN 14 SPCB', 'MASTER = EAN 14 PCB'], it =>
+        `<tr><td>${iv(it, 'reference')}</td><td>${iv(it, 'ean13')}</td><td>${iv(it, 'ean14_inner')}</td><td>${iv(it, 'ean14_master')}</td></tr>`)}
+      <div class="ps-line" style="font-size:10px;color:var(--muted);">N° LOT ON OUTER AND INNER MUST BE WRITTEN AS A BARCODE</div>
+      <div class="ps-line" style="font-weight:700;margin-top:8px;">FRENCH TRANSLATION</div>
+      ${rowsTable(['ITEM NUMBER', 'DESCRIPTION'], it => `<tr><td>${iv(it, 'reference')}</td><td>${iv(it, 'french_desc')}</td></tr>`)}
     </div></div>
-
-    <div class="ps-legal">En application de l'article 112 de la loi AGEC n°2020-105 du 10/02/2020 et du décret n°2020-1725 du 29/12/2020, les produits livrés à Tarrerias-Bonjean respectent les seuils réglementaires MOSH/MOAH (hydrocarbures d'huiles minérales) sur les encres.</div>
-
-    <div class="ps-visa"><div><b>Visa Logistique</b></div><div><b>Visa Achats</b></div></div>
   </div>`;
 }
 const loaded = new Set();
