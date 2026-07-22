@@ -7,9 +7,24 @@
 
 ---
 
-## 📌 Journal d'avancement — 22/07 (session Cowork en cours)
+## 📌 Journal d'avancement — 22/07 (session Cowork terminée)
 
-> Suivi live de la mise en prod de l'ETL Gmail (corps de mails + PJ) depuis la boîte de Marlène.
+> Suivi de la mise en prod de l'ETL Gmail (corps de mails + PJ) depuis la boîte de Marlène.
+
+### 🏁 Synthèse de reprise (fin de session 22/07)
+**Livré et en prod :**
+- Poste resynchronisé sur `origin/main` ; prérequis installés (venv 3.11, OCR eng+fra+chi_sim+chi_tra, token Gmail+Drive) ; FUSEAU tourne (`:5050`).
+- **ETL PJ → `ot_transport`** automatisé : tâche **Windows `FUSEAU_Gmail_ETL`** (2h, 08–18h) — tourne **sans Cowork**, ot_transport 90→127.
+- **Captation corps de mail** : tâche **Cowork `fuseau-gmail-threads-achat`** → écrit dans 4 tables structurées `achat.qualite_decision / transport_evenement / commerce_decision / design_evenement` (loader `load_evenements.py` idempotent).
+- Docs : cartographie flux Gmail, spec dates ETA, modèle sémantique à jour, runbook DDL. Principe acté : `achat.*` = uniquement le non-Sylob.
+
+**⚠️ Pour que la captation des corps continue quand tu reprends le poste :**
+- La tâche **Cowork** (`fuseau-gmail-threads-achat`) ne tourne QUE si l'app Claude reste **ouverte + connectée** (Gmail + VPN). Fais un **« Run now »** une fois (section *Scheduled*) pour pré-approuver les outils. Si le poste change de main / l'app se ferme → cette captation LLM s'arrête (la tâche Windows PJ, elle, continue).
+- Pérennité : à terme, déplacer ces automatisations sur infra (compte de service, n8n) plutôt qu'un poste humain — cf. `plan_action.md` §pérennisation.
+
+**Reste (non bloquant) :**
+- Task #6 : `parse_bl extract_table` (ETD/ETA mal captés, 4/2) — seule vraie faiblesse PJ.
+- Task #10 : audit Sylob niveau colonne (source V25 `192.168.102.41`) = **session avec toi**.
 
 **✅ Fait aujourd'hui**
 - [x] **Resync du poste** : le dossier était figé au 30/06 (74ade51), 104 commits de retard + un `.git/index.lock` bloqué. Lock supprimé, `reset --hard origin/main` → poste aligné sur **`a3f7a63`**, working tree propre.
