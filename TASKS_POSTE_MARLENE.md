@@ -24,7 +24,11 @@
 - [x] **OCR chinois ajouté** : `chi_sim` + `chi_tra` (fournisseurs Chine / TB China). `parse_bl` supporte `--ocr-lang "eng+fra+chi_sim"`.
 - [x] **✅ 1er WRITE PROD** : `load_ot_gmail` COMMIT → 202 conteneurs upsert (COALESCE). `achat.ot_transport` : 90 → **127 conteneurs** (100 avec ETD, 99 avec ETA, préservés du fichier maritime). Write-path Gmail→prod prouvé.
 
+- [x] **✅ AUTOMATISATION PJ** : script `deploy/run_gmail_etl.ps1` (preflight-gated : skip propre si VPN/DWH down) + tâche planifiée Windows `FUSEAU_Gmail_ETL` (toutes les 2h, 08h–18h, jours ouvrés inclus, sous session ouverte, sans admin). Testé de bout en bout (COMMIT 202 conteneurs). **Tourne sans Cowork → le PC peut être rendu.** Logs : `logs/gmail_etl_AAAAMMJJ.log`.
+
 **⏭️ Prochaines étapes**
+- [ ] **CORPS de mail → `achat.commande`** (partie non déterministe) : à trancher — soit **tâche planifiée Cowork** (extraction LLM via `achatanalyser-mail`, nécessite Cowork ouvert/connecté sur le poste), soit **parseur déterministe** à écrire (couverture limitée mais 100% autonome). Non livré aujourd'hui.
+- [ ] Optimiser `parse_bl` : ne parser que les PJ nouvelles (aujourd'hui re-parse tout le dossier ~4 min/run).
 - [ ] **Chantier `parse_bl` extract_table** (cf. `TASKS.md`) : l'ETD/ATD/ETA est dans un tableau que `extract_text()` aplati (en-tête « Chargmt Déchgmt ETD ATD ETA »). Lire via `extract_table`, re-parser (`--ocr-lang eng+fra+chi_sim`), re-run `load_ot_gmail` (COALESCE enrichit).
 - [ ] Élargir aux autres expéditeurs BL/transport une fois QUALITAIR calé.
 - [ ] Commit `TASKS.md` + `TASKS_POSTE_MARLENE.md` recalés (depuis PowerShell Windows).
