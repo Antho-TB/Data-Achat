@@ -105,16 +105,20 @@ class CommandeAnnotation(BaseModel):
 
 class ArtworkUpdate(BaseModel):
     statut_artwork: Optional[str] = None
-    responsable: Optional[str] = None
+    valideur: Optional[str] = None
     commentaire: Optional[str] = None
+    commentaire_andrea: Optional[str] = None
+    commentaire_clarisse_thomas: Optional[str] = None
 
 
 STATUTS_RETARD = ["EN RETARD", "DANS LES DELAIS", "INCONNU", "CLOTUREE"]
-# Statuts natifs du fichier IMPORT (col N) + statuts de cloture ERP
-STATUTS_ARTWORK = [
-    "À traiter", "A envoyer", "Envoyé", "Attente Clarisse", "Attente Carrefour",
-    "Attente Polyflame", "Validé", "Archivé",
-]
+# Decision 22/07 : le statut artwork s'inspire UNIQUEMENT du gsheet Clarisse
+# ("LIS-CON-28-0 Suivi des artworks-import"), qui n'a que 2 onglets = 2 etats.
+# Abandon complet des anciens statuts issus de l'Excel IMPORT (col N) --
+# "A traiter"/"Envoye"/"Attente Clarisse"/"Attente Carrefour"/"Attente
+# Polyflame"/"Archive" ne reflétaient JAMAIS le gsheet, cf.
+# sql/20260722_artwork_gsheet_only.sql.
+STATUTS_ARTWORK = ["En attente", "Validé"]
 
 
 # -- Helper --------------------------------------------------------------------
@@ -237,17 +241,14 @@ def get_kpis():
             kpis["top_retards_fournisseurs"] = []
 
         try:
-            # v_artwork (pas artwork brut) : fusionne le statut reel Clarisse
-            # (achat.artwork_statut, cf. bug "Valide = 0" corrige le 21/07 --
-            # le pipeline mail seul ne connait jamais le statut de validation
-            # design, toujours a 'A traiter'/'Envoye' par defaut).
+            # v_artwork = achat.artwork_statut (miroir du gsheet Clarisse),
+            # decision 22/07 : plus aucun lien avec l'Excel IMPORT, donc plus
+            # que 2 statuts possibles (cf. STATUTS_ARTWORK, sql/20260722_*).
             r = conn.execute(text(f"""
                 SELECT
-                    COUNT(*)                                                      AS total_artwork,
-                    COUNT(*) FILTER (WHERE statut_artwork IN ('Envoyé','Validé')) AS valides,
-                    COUNT(*) FILTER (WHERE statut_artwork IN
-                        ('A envoyer','Attente Clarisse','Attente Carrefour','Nouveau')) AS en_attente,
-                    COUNT(*) FILTER (WHERE statut_artwork = 'A envoyer')          AS a_envoyer
+                    COUNT(*)                                             AS total_artwork,
+                    COUNT(*) FILTER (WHERE statut_artwork = 'Validé')     AS valides,
+                    COUNT(*) FILTER (WHERE statut_artwork = 'En attente') AS en_attente
                 FROM {SCHEMA}.v_artwork
             """))
             row = r.fetchone()
@@ -255,12 +256,11 @@ def get_kpis():
                 "artwork_total":      int(row[0] or 0),
                 "artwork_valides":    int(row[1] or 0),
                 "artwork_en_attente": int(row[2] or 0),
-                "artwork_a_envoyer":  int(row[3] or 0),
             })
         except Exception as e:
             conn.rollback()
             logger.warning("[ATTENTION] KPI artwork indisponible : %s", str(e).splitlines()[0])
-            kpis.update({"artwork_total": 0, "artwork_valides": 0, "artwork_en_attente": 0, "artwork_a_envoyer": 0})
+            kpis.update({"artwork_total": 0, "artwork_valides": 0, "artwork_en_attente": 0})
 
         try:
             r = conn.execute(text(f"SELECT MAX(date_mail) FROM {SCHEMA}.historique_prix"))
@@ -500,14 +500,15 @@ def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
             raise internal_error(e)
 
 @app.get("/api/artwork")
-def get_artwork(fournisseur: Optional[str] = None, code_article: Optional[str] = None):
+def get_artwork(code_article: Optional[str] = None):
+    # Decision 22/07 : v_artwork = achat.artwork_statut (gsheet Clarisse),
+    # cle = code_article. Le filtre "fournisseur" a ete retire : il n'a
+    # jamais eu de sens ici (le gsheet ne connait pas de fournisseur), c'etait
+    # un reliquat de l'ancienne vue basee sur achat.artwork/commande.
     engine = get_engine()
     filters = []
     params: dict[str, Any] = {}
 
-    if fournisseur:
-        filters.append("LOWER(fournisseur) LIKE :fournisseur")
-        params["fournisseur"] = f"%{fournisseur.lower()}%"
     if code_article:
         filters.append("LOWER(code_article) LIKE :code_article")
         params["code_article"] = f"%{code_article.lower()}%"
@@ -525,18 +526,21 @@ def get_artwork(fournisseur: Optional[str] = None, code_article: Optional[str] =
             return {"data": rows_to_dicts(r)}
         except Exception as e:
             if "does not exist" in str(e):
-                return {"data": [], "warning": "Table achat.artwork non encore creee (P5 plan action)"}
+                return {"data": [], "warning": "Table achat.artwork_statut non encore creee"}
             raise internal_error(e)
 
 
-@app.put("/api/artwork/{artwork_id}", dependencies=[Depends(require_api_key)])
-def update_artwork(artwork_id: int, payload: ArtworkUpdate):
+@app.put("/api/artwork/{code_article}", dependencies=[Depends(require_api_key)])
+def update_artwork(code_article: str, payload: ArtworkUpdate):
+    # Cle = code_article (PK reelle de achat.artwork_statut), plus l'id serial
+    # de achat.artwork : depuis le 22/07 ce endpoint edite le miroir du gsheet
+    # Clarisse, pas le pipeline commande/PO.
     if payload.statut_artwork is not None and payload.statut_artwork not in STATUTS_ARTWORK:
         raise HTTPException(status_code=400, detail=f"Statut invalide. Valeurs : {STATUTS_ARTWORK}")
 
     engine = get_engine()
-    updates, params = [], {"id": artwork_id}
-    for field in ("statut_artwork", "responsable", "commentaire"):
+    updates, params = [], {"code_article": code_article}
+    for field in ("statut_artwork", "valideur", "commentaire", "commentaire_andrea", "commentaire_clarisse_thomas"):
         val = getattr(payload, field)
         if val is not None:
             updates.append(f"{field} = :{field}")
@@ -544,11 +548,11 @@ def update_artwork(artwork_id: int, payload: ArtworkUpdate):
     if not updates:
         raise HTTPException(status_code=400, detail="Aucun champ a mettre a jour.")
 
-    set_clause = ", ".join(updates) + ", updated_at = NOW()"
+    set_clause = ", ".join(updates) + ", charge_le = NOW()"
     with engine.begin() as conn:
         try:
             result = conn.execute(text(f"""
-                UPDATE {SCHEMA}.artwork SET {set_clause} WHERE id = :id
+                UPDATE {SCHEMA}.artwork_statut SET {set_clause} WHERE code_article = :code_article
             """), params)
             if result.rowcount == 0:
                 raise HTTPException(status_code=404, detail="Artwork introuvable.")

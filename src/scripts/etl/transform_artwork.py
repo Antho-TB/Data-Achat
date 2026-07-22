@@ -7,22 +7,31 @@ TRANSFORM SUIVI DES ARTWORKS (source #3 Andréa) -> records achat.artwork_statut
 
 Lit le gsheet "LIS-CON-28-0 Suivi des artworks-import" (Clarisse / Design),
 keyé par ARTICLE (Référence, SANS PO), et produit des enregistrements pour
-achat.artwork_statut (PK code_article). La vue achat.v_artwork fusionne ensuite
-avec achat.artwork sur code_article (décision 30/06, pattern A).
-Voir docs/profil_artworks.md (2 tableaux empilés, 8 gotchas).
+achat.artwork_statut (PK code_article). La vue achat.v_artwork EST ce gsheet
+(décision 22/07 : plus de fusion avec achat.artwork/Excel IMPORT, cf.
+sql/20260722_artwork_gsheet_only.sql).
 
-Gérés : 2 blocs empilés (en-têtes/colonnes différents), mapping PAR NOM d'en-tête
-(robuste aux décalages), dates FR hétérogènes + littéraux (NOUVEAU, /, #N/A) -> NULL,
-filtrage des lignes vides / titres de bloc parasites, dédoublonnage par
-code_article (garde la dernière occurrence).
+Le gsheet réel a 2 onglets, SANS colonne "statut" explicite -- le statut est
+l'appartenance à l'onglet lui-même :
+  - "Artworks en attente" (8 lignes réelles)   -> statut_artwork = 'En attente'
+  - "Liste artworks"      (385 lignes réelles) -> statut_artwork = 'Validé'
+⚠️ Avant le 22/07, le statut était déduit d'une heuristique sur les dates
+(litéral "NOUVEAU" ou présence d'une date de validation). Ça misclassait par
+exemple l'article 32030006 : il a de VRAIES dates de version/validation
+passées (26/08/2025) mais reste dans l'onglet "en attente" car une nouvelle
+demande de retouche est en cours -- la date ne suffit pas, seul l'onglet fait
+foi. D'où le passage à un statut dérivé de l'onglet d'origine, pas des dates.
 
 Les lignes « PAS DE REF » (onglet « Artworks en attente », produits pas encore
-commandés donc sans code Sylob attribué) ne sont plus jetées (corrigé le 21/07,
-cf. écart KPI artwork_en_attente) : elles reçoivent un code provisoire
-NOUVEAU-<slug designation>, meme principe que FRAIS-<slug> deja utilise pour
+commandés donc sans code Sylob attribué) reçoivent un code provisoire
+NOUVEAU-<slug designation>, même principe que FRAIS-<slug> déjà utilisé pour
 les lignes de frais sans code_article dans achat.commande.
 
-⚠️ statut_artwork dérivé (pas de colonne native). À ajuster avec le métier.
+Les 2 onglets n'ont pas les mêmes colonnes : "Artworks en attente" a une date
+de demande, une priorité (1->5) et DEUX commentaires distincts (Andréa /
+Clarisse-Thomas) ; "Liste artworks" a un valideur et UN commentaire de
+validation. On ne les fusionne plus dans un seul champ "commentaire" --
+chacun garde sa colonne propre (cf. migration 20260722).
 
 Usage :
     python -m src.scripts.etl.transform_artwork --file artworks.xlsx --out data/_artwork.json
@@ -48,6 +57,11 @@ _FR_MONTHS = [
     ("aout", 8), ("sept", 9), ("sep", 9), ("oct", 10), ("nov", 11),
     ("dec", 12),
 ]
+
+# Statuts UNIQUEMENT derives du gsheet (decision 22/07). Voir STATUTS_ARTWORK
+# dans app/main.py -- doit rester synchronise avec cette liste.
+STATUT_EN_ATTENTE = "En attente"
+STATUT_VALIDE = "Validé"
 
 
 def _strip_accents(s: str) -> str:
@@ -101,7 +115,8 @@ def _slug(s: str) -> str:
 
 
 def _header_map(row: list[str]) -> dict[str, int]:
-    """Construit nom_normalisé -> index pour un en-tête (mapping robuste)."""
+    """Construit nom_normalisé -> index pour un en-tête (mapping robuste aux
+    2 onglets, qui n'ont pas les memes colonnes ni le meme ordre)."""
     m: dict[str, int] = {}
     for i, cell in enumerate(row):
         n = _norm(cell)
@@ -109,9 +124,12 @@ def _header_map(row: list[str]) -> dict[str, int]:
             m["ref"] = i
         elif "designation" in n and "designation" not in m:
             m["designation"] = i
-        elif n.startswith("commentaire"):   # AVANT version/validation : "Commentaire
-            m.setdefault("commentaires", [])  # sur dernière version" contient "derniere version"
-            m["commentaires"].append(i)
+        elif n.startswith("commentaire") and "andrea" in n:
+            m["com_andrea"] = i
+        elif n.startswith("commentaire") and "clarisse" in n:
+            m["com_clarisse_thomas"] = i
+        elif n.startswith("commentaire"):          # "Commentaire sur derniere version" (onglet Liste)
+            m["com_validation"] = i
         elif "demande artwork" in n:
             m["demande"] = i
         elif "derniere version" in n:
@@ -136,19 +154,14 @@ def _get(row: list[str], idx: Optional[int]) -> Optional[str]:
     return v or None
 
 
-def _statut(version_raw, validation_raw, date_validation) -> Optional[str]:
-    for r in (version_raw, validation_raw):
-        if r and _strip_accents(str(r)).strip().lower() == "nouveau":
-            return "Nouveau"
-    return "Validé" if date_validation else None
-
-
-def transform_rows(rows: list[list[str]], source_fichier: str = "suivi_artworks") -> list[dict]:
-    """Source-agnostique : 2 blocs empilés -> records artwork_statut (dédoublonnés)."""
+def transform_rows(tagged_rows: list[tuple[str, list[str]]], source_fichier: str = "suivi_artworks") -> list[dict]:
+    """tagged_rows : liste de (nom_onglet, ligne). Le statut est derive du nom
+    d'onglet (contient "attente" -> En attente, sinon -> Valide), jamais des
+    dates -- cf. cas 32030006 en tete de module."""
     hmap: dict[str, int] = {}
     by_ref: dict[str, dict] = {}   # dédoublonnage : garde la dernière occurrence
     n_skip = 0
-    for row in rows:
+    for sheet_name, row in tagged_rows:
         if _is_header(row):
             hmap = _header_map(row)
             continue
@@ -157,13 +170,8 @@ def transform_rows(rows: list[list[str]], source_fichier: str = "suivi_artworks"
         ref = _get(row, hmap.get("ref"))
         designation = _get(row, hmap.get("designation"))
         sans_code = bool(ref) and _norm(ref) in {"pas de ref", "pas de reference"}
-        # Titre de bloc ("LISTE DES ARTWORKS", ligne seule au-dessus du vrai
-        # en-tete du 2e onglet) faussement capte comme ref tant que hmap n'est
-        # pas reinitialise -- un vrai code_article ne contient jamais d'espace.
-        # "PAS DE REF" (onglet "Artworks en attente", produits pas encore
-        # commandes donc sans code Sylob) n'est PAS filtre : on synthetise un
-        # code provisoire pour que ces lignes restent visibles (cf. bug KPI
-        # artwork_en_attente du 21/07, ecart avec le gsheet source).
+        # Titre de bloc/onglet capte parfois comme ref tant que hmap n'est pas
+        # reinitialise -- un vrai code_article ne contient jamais d'espace.
         if not ref or (not sans_code and " " in ref.strip()):
             n_skip += 1
             continue
@@ -171,23 +179,22 @@ def transform_rows(rows: list[list[str]], source_fichier: str = "suivi_artworks"
             n_skip += 1
             continue
         code = f"NOUVEAU-{_slug(designation)}" if sans_code else ref
+        statut = STATUT_EN_ATTENTE if "attente" in _norm(sheet_name) else STATUT_VALIDE
         version_raw = _get(row, hmap.get("version"))
         validation_raw = _get(row, hmap.get("validation"))
-        date_validation = parse_fr_date(validation_raw)
-        comments = " | ".join(
-            c for c in (_get(row, i) for i in (hmap.get("commentaires") or [])) if c
-        ) or None
         prio = _get(row, hmap.get("priorite"))
         by_ref[code] = {
             "code_article": code,
             "designation": designation,
-            "statut_artwork": _statut(version_raw, validation_raw, date_validation),
+            "statut_artwork": statut,
             "date_demande": parse_fr_date(_get(row, hmap.get("demande"))),
-            "date_validation": date_validation,
+            "date_validation": parse_fr_date(validation_raw),
             "derniere_version": parse_fr_date(version_raw),
             "priorite": int(prio) if (prio and prio.isdigit()) else None,
             "valideur": _get(row, hmap.get("valideur")),
-            "commentaire": comments,
+            "commentaire": _get(row, hmap.get("com_validation")),
+            "commentaire_andrea": _get(row, hmap.get("com_andrea")),
+            "commentaire_clarisse_thomas": _get(row, hmap.get("com_clarisse_thomas")),
             "source_fichier": source_fichier,
         }
     logger.info("[SUCCÈS] Artworks : %d article(s) (dédoublonnés), %d ligne(s) sans réf ignorée(s).",
@@ -195,24 +202,21 @@ def transform_rows(rows: list[list[str]], source_fichier: str = "suivi_artworks"
     return list(by_ref.values())
 
 
-def _read_rows(path: str) -> list[list[str]]:
+def _read_rows(path: str) -> list[tuple[str, list[str]]]:
     """Lit TOUTES les feuilles d'un xlsx (le gsheet source a 2 onglets --
-    'Artworks en attente' et 'Liste artworks' -- pas 2 blocs empiles dans UNE
-    feuille comme le nom de la fonction transform_rows le suggere). Bug corrige
-    le 21/07 : pd.read_excel() sans sheet_name ne lisait que le 1er onglet
-    (53 lignes, presque toutes 'PAS DE REF'), en ignorant silencieusement
-    'Liste artworks' (465 lignes, la quasi-totalite des articles reels avec
-    leur statut de validation) -> c'est ce qui produisait 0/quelques Valide.
+    'Artworks en attente' et 'Liste artworks') et tague chaque ligne avec le
+    nom de son onglet (necessaire pour deriver le statut, cf. transform_rows).
     """
     import pandas as pd
     if path.lower().endswith((".xlsx", ".xls", ".xlsm")):
         sheets = pd.read_excel(path, sheet_name=None, header=None, dtype=str)
-        rows: list[list[str]] = []
-        for _, df in sheets.items():
-            rows.extend(df.fillna("").astype(str).values.tolist())
+        rows: list[tuple[str, list[str]]] = []
+        for sheet_name, df in sheets.items():
+            for r in df.fillna("").astype(str).values.tolist():
+                rows.append((sheet_name, r))
         return rows
     df = pd.read_csv(path, header=None, dtype=str)
-    return df.fillna("").astype(str).values.tolist()
+    return [("csv", r) for r in df.fillna("").astype(str).values.tolist()]
 
 
 def main() -> int:

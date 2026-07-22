@@ -558,18 +558,26 @@ button { cursor: pointer; }
   <!-- ═══ ARTWORK ════════════════════════════════════════════════════════════ -->
   <div id="tab-artwork" class="tab-panel">
     <div class="artwork-stats" id="artwork-stats"></div>
+    <div id="artwork-charts" style="display:none;gap:16px;margin-bottom:14px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:220px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:10px;">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px;" title="Priorité déclarée dans le gsheet Clarisse (1 = urgent, 5 = faible), onglet 'Artworks en attente' uniquement.">Priorité — articles en attente (nb)</div>
+        <div style="height:170px;"><canvas id="chart-art-priorite"></canvas></div>
+      </div>
+      <div style="flex:1;min-width:220px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:10px;">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px;" title="Qui a validé la dernière version (colonne Valideur du gsheet).">Répartition par valideur (nb)</div>
+        <div style="height:170px;"><canvas id="chart-art-valideur"></canvas></div>
+      </div>
+    </div>
     <div class="toolbar">
       <input id="f-art-article" type="text" placeholder="Code article…" oninput="filterArtwork()">
+      <input id="f-art-designation" type="text" placeholder="Désignation…" oninput="filterArtwork()">
       <select id="f-art-statut" onchange="filterArtwork()">
         <option value="">Tous les statuts</option>
-        <option>À traiter</option>
-        <option>Nouveau</option>
-        <option>A envoyer</option>
-        <option>Envoyé</option>
-        <option>Attente Clarisse</option>
-        <option>Attente Carrefour</option>
+        <option>En attente</option>
         <option>Validé</option>
-        <option>Archivé</option>
+      </select>
+      <select id="f-art-valideur" onchange="filterArtwork()">
+        <option value="">Tous les valideurs</option>
       </select>
       <button class="btn btn-ghost btn-sm" onclick="loadArtwork()">&#8635; Actualiser</button>
     </div>
@@ -799,14 +807,9 @@ function badge(statut) {
     'En cours':          'badge-blue',
     'En cours de livraison': 'badge-blue',
     'Demandé':           'badge-orange',
-    'Envoyé':            'badge-green',
-    'A envoyer':         'badge-orange',
-    'Attente Clarisse':  'badge-orange',
-    'Attente Carrefour': 'badge-orange',
+    'En attente':        'badge-orange',
     'Bloquée':           'badge-red',
     'Annulée':           'badge-gray',
-    'À traiter':         'badge-gray',
-    'Archivé':           'badge-gray',
   };
   const cls = map[statut] || 'badge-gray';
   return `<span class="badge ${cls}">${esc(statut) || '—'}</span>`;
@@ -1345,10 +1348,10 @@ async function loadActions(k) {
         txt: `Relancer ${f} (ou TB China) : ${n} ligne(s) en retard, pas encore parties` });
     });
 
-    // 3. Relancer Clarisse : artworks en attente de validation
-    if (k && k.artwork_a_envoyer > 0) {
+    // 3. Relancer Clarisse : artworks en attente (statut = gsheet, decision 22/07)
+    if (k && k.artwork_en_attente > 0) {
       actions.push({ prio: 3, icon: '🎨', tab: 'artwork',
-        txt: `Envoyer ${k.artwork_a_envoyer} artwork(s) à envoyer (Design / Clarisse)` });
+        txt: `${k.artwork_en_attente} artwork(s) en attente (Design / Clarisse)` });
     }
 
     if (!actions.length) {
@@ -2028,6 +2031,8 @@ async function loadArtwork() {
         `<div style="color:var(--yellow);font-size:13px;padding:8px;">⚠️ ${esc(r.warning)}</div>`;
     } else {
       renderArtworkStats(_artwork);
+      renderArtworkCharts(_artwork);
+      wireArtworkValideurSelect(_artwork);
     }
     renderArtwork(_artwork);
   } catch (e) {
@@ -2037,23 +2042,66 @@ async function loadArtwork() {
   }
 }
 
+function wireArtworkValideurSelect(rows) {
+  const sel = document.getElementById('f-art-valideur');
+  const current = sel.value;
+  const valideurs = [...new Set(rows.map(r => r.valideur).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">Tous les valideurs</option>'
+    + valideurs.map(v => `<option ${v === current ? 'selected' : ''}>${esc(v)}</option>`).join('');
+}
+
 function filterArtwork() {
   const art = document.getElementById('f-art-article').value.toLowerCase();
+  const des = document.getElementById('f-art-designation').value.toLowerCase();
   const stat = document.getElementById('f-art-statut').value;
+  const valideur = document.getElementById('f-art-valideur').value;
   const filtered = _artwork.filter(r =>
     (!art  || (r.code_article||'').toLowerCase().includes(art)) &&
-    (!stat || r.statut_artwork === stat)
+    (!des  || (r.designation||'').toLowerCase().includes(des)) &&
+    (!stat || r.statut_artwork === stat) &&
+    (!valideur || r.valideur === valideur)
   );
   renderArtwork(filtered);
 }
 
+let chartArtPriorite = null, chartArtValideur = null;
+function renderArtworkCharts(rows) {
+  const box = document.getElementById('artwork-charts');
+  if (!rows.length) { box.style.display = 'none'; return; }
+  box.style.display = 'flex';
+
+  // Priorite (1->5) des articles EN ATTENTE uniquement (seule population ou
+  // la priorite a un sens, cf. transform_artwork.py).
+  const enAttente = rows.filter(r => r.statut_artwork === 'En attente');
+  const prioCounts = [1, 2, 3, 4, 5].map(p => enAttente.filter(r => r.priorite === p).length);
+  if (chartArtPriorite) chartArtPriorite.destroy();
+  chartArtPriorite = new Chart(document.getElementById('chart-art-priorite'), {
+    type: 'bar',
+    data: { labels: ['1 (urgent)', '2', '3', '4', '5 (faible)'], datasets: [{ data: prioCounts, backgroundColor: TB.red, borderRadius: 3 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+  });
+
+  // Repartition par valideur (Clarisse / Carrefour / ...), toutes lignes.
+  const valideurs = [...new Set(rows.map(r => r.valideur).filter(Boolean))];
+  const valCounts = valideurs.map(v => rows.filter(r => r.valideur === v).length);
+  if (chartArtValideur) chartArtValideur.destroy();
+  chartArtValideur = new Chart(document.getElementById('chart-art-valideur'), {
+    type: 'doughnut',
+    data: { labels: valideurs, datasets: [{ data: valCounts, backgroundColor: [TB.navy, TB.orange, TB.red, '#999'], borderWidth: 2 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } }
+  });
+}
+
+// Decision 22/07 : statut = UNIQUEMENT le gsheet Clarisse (2 etats, plus de
+// "A traiter/Envoye/Attente Carrefour/Archive" herites de l'Excel IMPORT).
 function renderArtworkStats(rows) {
   const counts = {};
   rows.forEach(r => { counts[r.statut_artwork] = (counts[r.statut_artwork] || 0) + 1; });
-  const statuts = ['Aucun','Nouveau','A envoyer','Envoyé','Attente Clarisse','Attente Carrefour','Validé'];
+  const statuts = ['En attente', 'Validé'];
   document.getElementById('artwork-stats').innerHTML = [
     { lbl: 'Total', num: rows.length, color: 'var(--blue-light)' },
-    ...statuts.map(s => ({ lbl: s, num: counts[s] || 0, color: s === 'Validé' ? 'var(--green)' : s === 'Aucun' ? 'var(--muted)' : 'var(--orange)' }))
+    ...statuts.map(s => ({ lbl: s, num: counts[s] || 0, color: s === 'Validé' ? 'var(--green)' : 'var(--orange)' }))
   ].map(({ lbl, num, color }) =>
     `<div class="artwork-stat">
        <div class="num" style="color:${color}">${num}</div>
@@ -2062,55 +2110,71 @@ function renderArtworkStats(rows) {
   ).join('');
 }
 
+// Commentaire contextuel : le gsheet a 2 commentaires distincts sur l'onglet
+// "en attente" (Andrea / Clarisse-Thomas), un seul sur "Liste artworks"
+// (validation) -- jamais fusionnes (cf. transform_artwork.py 22/07).
+function artworkCommentTitle(r) {
+  if (r.statut_artwork === 'En attente') {
+    const parts = [];
+    if (r.commentaire_andrea) parts.push(`Andréa : ${r.commentaire_andrea}`);
+    if (r.commentaire_clarisse_thomas) parts.push(`Clarisse/Thomas : ${r.commentaire_clarisse_thomas}`);
+    return parts.join(' — ');
+  }
+  return r.commentaire || '';
+}
+
 function renderArtwork(rows) {
   if (!rows.length) {
     document.getElementById('table-artwork').innerHTML =
-      '<div class="empty"><div class="empty-icon">🖼️</div>Aucun artwork trouvé<br><small style="color:var(--muted)">Table achat.artwork à créer (P5 plan d\'action)</small></div>';
+      '<div class="empty"><div class="empty-icon">🖼️</div>Aucun artwork trouvé</div>';
     return;
   }
   document.getElementById('table-artwork').innerHTML = `
     <div class="table-wrap">
     <table>
       <thead><tr>
-        <th>PO#</th><th>Article</th><th>Désignation</th><th>Statut</th>
-        <th>Responsable</th><th>Commentaire</th><th>MAJ</th><th>Action</th>
+        <th>Article</th><th>Désignation</th><th title="Onglet source du gsheet Clarisse (LIS-CON-28-0)">Statut</th>
+        <th title="Niveau de priorité du gsheet (1 = urgent -> 5), onglet 'Artworks en attente' uniquement">Prio.</th>
+        <th>Valideur</th><th>Commentaire</th><th title="N° de commande(s) connu(s) pour cet article, info seulement (n'influence jamais le statut)">PO</th>
+        <th>MAJ</th><th>Action</th>
       </tr></thead>
       <tbody>
-        ${rows.map(r => `<tr>
-          <td class="mono">${esc(r.po_number) || '—'}</td>
+        ${rows.map(r => { const comment = artworkCommentTitle(r); return `<tr>
           <td class="mono">${esc(r.code_article) || '—'}</td>
           <td>${esc(r.designation) || '—'}</td>
-          <td class="editable-cell" id="awk-${r.id}">
+          <td class="editable-cell" id="awk-${esc(r.code_article)}">
             <span class="view-mode" onclick="editCell(this,'select')">${badge(r.statut_artwork)}</span>
             <span class="edit-mode">
               <select>
-                ${['Aucun','Nouveau','A envoyer','Envoyé','Attente Clarisse','Attente Carrefour','Validé','Archivé'].map(s =>
+                ${['En attente', 'Validé'].map(s =>
                   `<option ${r.statut_artwork===s?'selected':''}>${s}</option>`).join('')}
               </select>
-              <button class="save-btn" onclick="saveArtworkStatut(${r.id}, this)">✓</button>
+              <button class="save-btn" onclick="saveArtworkStatut('${esc(r.code_article)}', this)">✓</button>
               <button class="cancel-btn" onclick="cancelEdit(this)">✕</button>
             </span>
           </td>
-          <td>${esc(r.responsable) || '—'}</td>
-          <td style="font-size:12px;color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:help" title="${esc(r.commentaire) || ''}">
-            ${esc(r.commentaire) || '—'}
+          <td style="text-align:center">${r.priorite ?? '—'}</td>
+          <td>${esc(r.valideur) || '—'}</td>
+          <td style="font-size:12px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:help" title="${esc(comment)}">
+            ${esc(comment) || '—'}
           </td>
+          <td class="mono" style="font-size:11px;">${esc(r.po_number) || '—'}</td>
           <td style="font-size:11px;color:var(--muted)">${fmt(r.updated_at,'date')}</td>
           <td>
             <button class="btn btn-ghost btn-sm"
-              onclick="openArtworkCommentaire(${Number(r.id)}, '${esc(r.commentaire)}')">✎</button>
+              onclick="openArtworkCommentaire('${esc(r.code_article)}', ${r.statut_artwork==='En attente' ? "'com_clarisse_thomas'" : "'commentaire'"}, '${esc(comment)}')">✎</button>
           </td>
-        </tr>`).join('')}
+        </tr>`; }).join('')}
       </tbody>
     </table>
     </div>`;
 }
 
-async function saveArtworkStatut(id, btn) {
+async function saveArtworkStatut(codeArticle, btn) {
   const cell = btn.closest('.editable-cell');
   const val = cell.querySelector('select').value;
   try {
-    await apiFetch(`/api/artwork/${id}`, {
+    await apiFetch(`/api/artwork/${encodeURIComponent(codeArticle)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ statut_artwork: val }),
@@ -2121,14 +2185,16 @@ async function saveArtworkStatut(id, btn) {
   } catch (e) { toast(e.message, true); }
 }
 
-async function openArtworkCommentaire(id, current) {
-  const val = prompt('Commentaire artwork:', current);
+async function openArtworkCommentaire(codeArticle, field, current) {
+  const label = field === 'com_clarisse_thomas' ? 'Commentaire Clarisse / Thomas' : 'Commentaire (validation)';
+  const val = prompt(`${label} :`, current);
   if (val === null) return;
+  const apiField = field === 'com_clarisse_thomas' ? 'commentaire_clarisse_thomas' : 'commentaire';
   try {
-    await apiFetch(`/api/artwork/${id}`, {
+    await apiFetch(`/api/artwork/${encodeURIComponent(codeArticle)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ commentaire: val }),
+      body: JSON.stringify({ [apiField]: val }),
     });
     toast('Commentaire enregistré ✓');
     loadArtwork();
