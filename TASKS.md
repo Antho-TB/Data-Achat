@@ -18,6 +18,22 @@
 - [ ] Pipeline PJ : `fetch_attachments` → `parse_bl` → `load_ot_gmail` (dry-run puis COMMIT).
 - [ ] Vérifier la remontée ETD/ETA dans FUSEAU (onglet Prévisionnel/Retards).
 
+## 📋 Planifié — session dédiée avec Anthony (poste Antho, accès DWH Sylob + identité owner)
+
+- [ ] **Audit DWH Sylob + registre de gouvernance des données.** Principe directeur : `achat.*` ne
+      stocke QUE le non-Sylob ; tout ce qui existe déjà dans Sylob = lecture directe du DWH Sylob (zéro copie).
+      Pour chaque donnée : source (Gmail corps / PJ / GSheet / Sylob) → « existe dans Sylob ? » → cible
+      (`achat.*` vs lecture directe) → statut. Finalise la colonne « existe dans Sylob ? » de
+      `docs/modele_semantique.md`. **Nécessite l'accès DWH Sylob complet (poste Antho) + l'identité
+      owner/admin pour toute DDL** (platform_team n'a pas de DDL).
+- [ ] **Découpage tables structurées par sujet** (dépend de l'audit ci-dessus) : remplacer le fourre-tout
+      `commande_annotation` par des tables/colonnes attribuées par sujet — proposition à valider :
+      `achat.qualite_decision` (conforme/non-conf Eric T), `achat.transport_evenement` (retards/imprévus/
+      changements ETD-ETA-livraison, absorbe le `ot_transport_date_evenement` de la spec ETA),
+      `achat.commerce_decision` (arbitrages/promo Eric-David), `achat.design_evenement` (Clarisse).
+      Puis rerouter l'extraction des threads (`load_annotations` / tâche `fuseau-gmail-threads-achat`)
+      vers ces tables. Code article/prototype amont (sans PO, N-N) = lot à part.
+
 ## 🟡 Chemin critique métier — à trancher avant le 31/07 (démo 21/07)
 
 > Détail : `docs/20260721_FUSEAU_Audit_RetoursMetier_v1.md` + `docs/20260721_FUSEAU_RetoursDemo14h_v1.md`.
