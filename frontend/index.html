@@ -2049,18 +2049,37 @@ async function loadPrevisionnel() {
 // ════════════════════════════════════════════════════════════════════════════
 let chartConteneursM3 = null;
 
+let _conteneurs = [];
 async function loadConteneurs() {
   const t = document.getElementById('table-conteneurs');
   t.innerHTML = '<div class="loader"><span class="spinner"></span>Chargement…</div>';
   try {
     const r = await apiFetch('/api/conteneurs');
-    renderConteneursKpis(r.liste || []);
+    _conteneurs = r.liste || [];
+    renderConteneursKpis(_conteneurs);
     renderConteneursM3(r.previsionnel_m3 || []);
-    renderConteneursTable(r.liste || []);
+    renderConteneursTable(_conteneurs);
   } catch (e) {
     t.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div>${esc(e.message)}</div>`;
     toast(e.message, true);
   }
+}
+
+// Filtre cassé jusqu'au 22/07 : les 4 inputs appelaient filterConteneurs()
+// mais la fonction n'existait nulle part (ReferenceError silencieux à chaque
+// frappe) -- et rien ne memorisait la liste chargee pour la re-filtrer.
+function filterConteneurs() {
+  const nav = document.getElementById('f-cont-nav').value.toLowerCase();
+  const bl = document.getElementById('f-cont-bl').value.toLowerCase();
+  const trans = document.getElementById('f-cont-trans').value.toLowerCase();
+  const num = document.getElementById('f-cont-num').value.toLowerCase();
+  const filtered = _conteneurs.filter(r =>
+    (!nav   || (r.navire || '').toLowerCase().includes(nav)) &&
+    (!bl    || (r.n_bl || '').toLowerCase().includes(bl)) &&
+    (!trans || (r.transitaire || '').toLowerCase().includes(trans)) &&
+    (!num   || (r.n_conteneur || '').toLowerCase().includes(num))
+  );
+  renderConteneursTable(filtered);
 }
 
 function renderConteneursKpis(liste) {
