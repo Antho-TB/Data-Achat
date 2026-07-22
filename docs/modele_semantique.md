@@ -158,7 +158,11 @@ erDiagram
 | `qualite` | Qualité par commande | po × article | UQ (po_number, code_article) | IMPORT (MAT/SP/conformité) | **partiel-oui** : `Qualite.f_controlequalitereception`/`vue_controle_qualite_reception` couvre le contrôle réception ; `af_article.sup_rapport_dinspection`/`sup_certificat_matiere` = flags Oui/Non (pas de lien fichier) |
 | `qualite_doc` | Index rapports (lien FAIL→fichier) | fichier rapport | drive_file_id | Drive/serveur ANALYSES ET INSPECTIONS | **non** (Sylob n'a que le flag Oui/Non, pas le lien vers le PDF — notre valeur ajoutée reste nécessaire) |
 | `qualite_analyse` | Mesures labo (chrome/dureté/conformité) | fichier rapport | drive_file_id | rapports SPECTRO (PDF) | **non** (mesures labo détaillées absentes de Sylob) |
-| `commande_annotation` | Notes métier (survit full-refresh) | po × article | UQ (po_number, code_article) | saisie FUSEAU | non (custom FUSEAU) |
+| `commande_annotation` | Notes métier divers (survit full-refresh) | po × article | UQ (po_number, code_article) | saisie FUSEAU / threads Gmail (divers non classé) | non (custom FUSEAU) |
+| `qualite_decision` | Décision conforme/non-conforme (email-first, Eric T) | événement | cle_idempotence | threads Gmail (corps) | **non** (email-first ; FNC formel Sylob à réconcilier) |
+| `transport_evenement` | Retards / imprévus / changements ETD-ETA-livraison | événement | cle_idempotence | threads Gmail + transitaire | **non** (transport absent de Sylob) |
+| `commerce_decision` | Arbitrages commerce (prix client, go/no-go, priorité, promo) | événement | cle_idempotence | threads Gmail (Eric/David) | **non** (informel commerce) |
+| `design_evenement` | Validations design (boîte, artwork, marquage, pantone) | événement | cle_idempotence | threads Gmail (Clarisse) | **non** (design absent de Sylob) |
 | `mif_suivi` | Bilan Made In France (lames/couteaux par lot PP × coloris) | gamme × stade × lot_pp × coloris | UQ (gamme, stade, lot_pp, coloris) | IMPORT 2026 / POINT MIF (⚠️ copie figée mars 2026) | non |
 | `article_cycle_vie` | Cycle de vie articles Carrefour (arrêt/en cours) | article | code_article | IMPORT 2026 / STOP REF CARREFOUR (⚠️ copie figée mars 2026) | non |
 | `article_nomenclature_composant` | Détail composant (1..8) pour articles multi-composant | article × position | (code_article, position) | Matrice TB Import / Lot Multiples produits (⚠️ copie figée mars 2026) | non (custom TB) |

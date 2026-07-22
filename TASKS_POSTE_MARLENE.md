@@ -33,6 +33,13 @@
 - [ ] Élargir aux autres expéditeurs BL/transport une fois QUALITAIR calé.
 - [ ] Commit `TASKS.md` + `TASKS_POSTE_MARLENE.md` recalés (depuis PowerShell Windows).
 
+**🔄 Chantier tables structurées par sujet (lancé 22/07 après-midi)**
+- [x] Audit droits : **`platform_team` est OWNER du schéma `achat` + a CREATE → DDL possible depuis ce poste** (l'ancienne contrainte « pas de DDL » visait les tables existantes du login perso Antho, pas les nouvelles).
+- [x] Classement Sylob (base audit 02/07 `modele_semantique.md`) : `transport_evenement`, `commerce_decision`, `design_evenement` = **non-Sylob confirmés** ; `qualite_decision` = décision email-first d'Eric T (hors Sylob ; FNC formel Sylob à réconcilier plus tard, hors périmètre urgence).
+- [x] **Créées** : `achat.qualite_decision` / `transport_evenement` / `commerce_decision` / `design_evenement` (migration `sql/20260722_tables_evenements_metier.sql` appliquée depuis ce poste — platform_team = owner). Runbook Antho gardé au cas où : `docs/20260722_FUSEAU_Runbook_TablesEvenements_ClaudePosteAntho.md`.
+- [x] **Loader routeur** `load_evenements.py` (idempotent, testé dry-run les 4 domaines) + **tâche `fuseau-gmail-threads-achat` rerootée** vers ces tables (`commande_annotation` = divers uniquement).
+- [ ] Audit Sylob complet niveau colonne (source 192.168.102.41) = reste planifié en session Antho.
+
 **⚙️ Config poste (mémo)**
 - venv : `.venv311\Scripts\python.exe`. Tesseract : `%LOCALAPPDATA%\Programs\Tesseract-OCR`. Poppler : `%LOCALAPPDATA%\Programs\poppler\poppler-26.02.0\Library\bin`.
 - Plancher d'ingestion par défaut = `after:2025/09/01` (config) ; borné aujourd'hui via `--since 2025-12-31`.

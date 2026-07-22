@@ -26,13 +26,13 @@
       (`achat.*` vs lecture directe) → statut. Finalise la colonne « existe dans Sylob ? » de
       `docs/modele_semantique.md`. **Nécessite l'accès DWH Sylob complet (poste Antho) + l'identité
       owner/admin pour toute DDL** (platform_team n'a pas de DDL).
-- [ ] **Découpage tables structurées par sujet** (dépend de l'audit ci-dessus) : remplacer le fourre-tout
-      `commande_annotation` par des tables/colonnes attribuées par sujet — proposition à valider :
-      `achat.qualite_decision` (conforme/non-conf Eric T), `achat.transport_evenement` (retards/imprévus/
-      changements ETD-ETA-livraison, absorbe le `ot_transport_date_evenement` de la spec ETA),
-      `achat.commerce_decision` (arbitrages/promo Eric-David), `achat.design_evenement` (Clarisse).
-      Puis rerouter l'extraction des threads (`load_annotations` / tâche `fuseau-gmail-threads-achat`)
-      vers ces tables. Code article/prototype amont (sans PO, N-N) = lot à part.
+- [x] **Découpage tables structurées par sujet — FAIT (22/07)** : `achat.qualite_decision` /
+      `transport_evenement` / `commerce_decision` / `design_evenement` créées (migration
+      `sql/20260722_tables_evenements_metier.sql`, appliquée depuis le poste Marlène — platform_team
+      = owner du schéma achat). Loader routeur `load_evenements.py` (idempotent) + tâche
+      `fuseau-gmail-threads-achat` rerootée vers ces tables. `commande_annotation` = divers uniquement.
+      `transport_evenement` absorbe le `ot_transport_date_evenement` de la spec ETA. Code article/prototype
+      amont (sans PO, N-N) = lot à part. Runbook Antho conservé : `docs/20260722_FUSEAU_Runbook_TablesEvenements_ClaudePosteAntho.md`.
 
 ## 🟡 Chemin critique métier — à trancher avant le 31/07 (démo 21/07)
 
