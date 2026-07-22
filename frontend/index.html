@@ -1830,18 +1830,139 @@ function closeFrsDetail() {
 // ----------------------------------------------------------------------------
 // ARTICLE (fiche transverse par code article - demande Andrea 21/07)
 // ----------------------------------------------------------------------------
+// Fiche article a 360 (decision 22/07) : /api/produit fusionne achat.produit
+// (Sylob V25 + Matrice), achat.article_nomenclature(+composants), v_artwork
+// (statut gsheet), cycle_vie (Carrefour) et l'historique qualite -- tout
+// deja en base, jamais expose avant par aucun onglet.
+function fieldRow(label, val, unit) {
+  if (val === null || val === undefined || val === '') return '';
+  return `<div class="fiche-row" style="margin-bottom:4px;"><label style="width:180px;">${esc(label)}</label><span>${esc(val)}${unit ? ' ' + unit : ''}</span></div>`;
+}
+
+function renderProduitFiche(d) {
+  if (!d) return '';
+  const p = d.produit || {};
+  const n = d.nomenclature || {};
+  const aw = d.artwork;
+  const cv = d.cycle_vie;
+  const qhist = d.qualite || [];
+  const composants = d.composants || [];
+  const g = (obj, k) => obj && obj[k] != null && obj[k] !== '' ? obj[k] : null;
+  const pick = (...vals) => vals.find(v => v !== null && v !== undefined && v !== '');
+
+  const identite = `
+    <div class="section-header"><span class="section-title">Identité</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:0 24px;">
+      ${fieldRow('Désignation FR', pick(g(p,'designation_fr'), g(n,'description_fr')))}
+      ${fieldRow('Désignation EN (Name)', pick(g(p,'designation_en'), g(n,'description_en')))}
+      ${fieldRow('Marque', g(p,'marque'))}
+      ${fieldRow('Gamme', pick(g(p,'gamme'), g(n,'gamme')))}
+      ${fieldRow('Grande famille', g(p,'grande_famille'))}
+      ${fieldRow('Fournisseur', pick(g(p,'fournisseur'), g(n,'fournisseur')))}
+      ${fieldRow('Pays fournisseur', g(p,'pays_fournisseur'))}
+      ${fieldRow('Type de lot', pick(g(p,'type_lot'), g(n,'lot_vrac')))}
+      ${fieldRow('Code provisoire', g(p,'code_provisoire'))}
+    </div>`;
+
+  const logistique = `
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Logistique & EAN</span>
+      ${p.source_dimensions === 'sylob_v25' ? '<span class="badge badge-green" style="margin-left:8px;" title="Dimensions/packaging issus du pull direct Sylob V25 (source de vérité), pas de la Matrice Excel.">Sylob V25</span>' : ''}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:0 24px;">
+      ${fieldRow('EAN13 (ITEM)', pick(g(p,'ean13'), g(n,'ean13')))}
+      ${fieldRow('EAN14 PCB (MASTER)', pick(g(p,'ean14_pcb'), g(n,'ean14_pcb')))}
+      ${fieldRow('EAN14 SPCB (INNER)', pick(g(p,'ean14_spcb'), g(n,'ean14_spcb')))}
+      ${fieldRow('HS Code (douane)', g(n,'hs_code'))}
+      ${fieldRow('PCB', g(p,'pcb'))}
+      ${fieldRow('SPCB', g(p,'spcb'))}
+      ${fieldRow('Qté inner', g(p,'inner_qty'))}
+      ${fieldRow('Qté master', g(p,'master_qty'))}
+      ${fieldRow('Dimensions PCB (L×l×H cm)', [g(p,'longueur_pcb_cm'), g(p,'largeur_pcb_cm'), g(p,'hauteur_pcb_cm')].filter(Boolean).join(' × '))}
+      ${fieldRow('Poids PCB', g(p,'poids_pcb_kg'), 'kg')}
+      ${fieldRow('Volume', g(p,'volume_m3'), 'm³')}
+      ${fieldRow('Poids UVC', g(p,'poids_uvc_g'), 'g')}
+      ${fieldRow('Délai réappro', g(p,'delai_reappro_jours'), 'j')}
+    </div>`;
+
+  const matiere = `
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Matière, marquage & packaging</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:0 24px;">
+      ${fieldRow('Matière lame', pick(g(p,'matiere_lame'), g(n,'matiere_lame')))}
+      ${fieldRow('Chrome %', pick(g(p,'chrome_pct'), g(n,'chrome_pct')))}
+      ${fieldRow('Traitement thermique', g(p,'traitement_thermique'))}
+      ${fieldRow('Finition', pick(g(p,'finition'), g(n,'finition')))}
+      ${fieldRow('Matière manche', pick(g(p,'matiere_manche'), g(n,'matiere_manche')))}
+      ${fieldRow('Pantone manche', g(n,'pantone_manche'))}
+      ${fieldRow('Marquage', pick(g(p,'marquage_libelle'), g(n,'marquage')))}
+      ${fieldRow('Dimensions marquage', g(n,'dim_marquage'))}
+      ${fieldRow('Emplacement marquage', g(n,'emplacement_marquage'))}
+      ${fieldRow('Épaisseur', pick(g(p,'epaisseur_mm'), g(n,'epaisseur_mm')), 'mm')}
+      ${fieldRow('Longueur', pick(g(p,'longueur_mm'), g(n,'longueur_mm')), 'mm')}
+    </div>`;
+
+  const composantsBlock = composants.length ? `
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Composants (lot multiple, ${composants.length})</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>#</th><th>Composant</th><th>Matière</th><th>Chrome %</th><th>Finition</th><th>Manche</th><th>Marquage</th></tr></thead>
+      <tbody>${composants.map(c => `<tr>
+        <td class="mono">${c.position}</td>
+        <td>${esc(c.nom_composant)||'-'}</td>
+        <td>${esc(c.matiere_lame)||'-'}</td>
+        <td class="mono">${c.chrome_pct??'-'}</td>
+        <td>${esc(c.finition)||'-'}</td>
+        <td>${esc(c.matiere_manche)||'-'}</td>
+        <td>${esc(c.marquage)||'-'}</td>
+      </tr>`).join('')}</tbody></table></div>` : '';
+
+  const artworkBlock = aw ? `
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Artwork (design)</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:0 24px;align-items:center;">
+      <div class="fiche-row" style="margin-bottom:4px;"><label style="width:180px;">Statut</label>${badge(aw.statut_artwork)}</div>
+      ${fieldRow('Priorité', aw.priorite)}
+      ${fieldRow('Valideur', aw.valideur)}
+      ${fieldRow('Dernière version', aw.derniere_version)}
+      ${fieldRow('Dernière validation', aw.date_validation)}
+    </div>` : '';
+
+  const cycleBlock = cv ? `
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Cycle de vie (Carrefour)</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:0 24px;">
+      ${fieldRow('Statut', cv.statut)}
+      ${fieldRow('Qté en commande', cv.quantite_en_commande)}
+    </div>` : '';
+
+  const qualiteBlock = qhist.length ? `
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Historique qualité (${qhist.length})</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>PO#</th><th>Fournisseur</th><th>Inspection</th><th>N° rapport</th><th>Réception</th><th>NCR</th></tr></thead>
+      <tbody>${qhist.slice(0,10).map(q => `<tr>
+        <td class="mono">${esc(q.po_number)||'-'}</td>
+        <td>${esc(q.fournisseur)||'-'}</td>
+        <td>${inspBadge(q.resultat_inspection)} <small>${esc(q.date_inspection)||''}</small></td>
+        <td class="mono">${esc(q.ref_rapport)||'-'}</td>
+        <td>${esc(q.reception)||'-'}</td>
+        <td class="mono">${esc(q.ncr)||'-'}</td>
+      </tr>`).join('')}</tbody></table></div>` : '';
+
+  if (!p.code_article && !n.code_article && !aw && !cv && !qhist.length) {
+    return '<div class="empty">Aucune fiche 360° trouvée (ni Sylob/Matrice, ni artwork, ni qualité) pour cet article.</div>';
+  }
+  return identite + logistique + matiere + composantsBlock + artworkBlock + cycleBlock + qualiteBlock;
+}
+
 async function loadArticle() {
   const code = document.getElementById('f-article-code').value.trim();
   const el = document.getElementById('article-content');
   if (!code) {
-    el.innerHTML = '<div class="empty">Saisissez un code article pour voir son historique et ses commandes en cours.</div>';
+    el.innerHTML = '<div class="empty">Saisissez un code article pour voir sa fiche complète.</div>';
     return;
   }
   el.innerHTML = '<div class="loader"><span class="spinner"></span>Chargement...</div>';
   try {
-    const [hist, cmd] = await Promise.all([
+    const [hist, cmd, prod] = await Promise.all([
       apiFetch(`/api/fournisseurs/all/historique-prix?code_article=${encodeURIComponent(code)}`),
       apiFetch(`/api/commandes?code_article=${encodeURIComponent(code)}&limit=200`),
+      apiFetch(`/api/produit/${encodeURIComponent(code)}`),
     ]);
     const histRows = (hist.data || []).slice(0, 3);
     const enCours = (cmd.data || []).filter(r => !r.est_livre);
@@ -1869,9 +1990,12 @@ async function loadArticle() {
           </tr>`).join('')}</tbody></table></div>`
       : '<div class="empty">Aucune commande en cours pour cet article</div>';
 
+    const nomDesignation = prod.data?.produit?.designation_fr || prod.data?.nomenclature?.description_fr || histRows[0]?.designation || '';
+
     el.innerHTML = `
-      <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Article <strong>${esc(code)}</strong> - ${esc(histRows[0]?.designation || '')}</p>
-      <div class="section-header"><span class="section-title">Commandes en cours</span></div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Article <strong>${esc(code)}</strong> - ${esc(nomDesignation)}</p>
+      ${renderProduitFiche(prod.data)}
+      <div class="section-header" style="margin-top:16px;"><span class="section-title">Commandes en cours</span></div>
       ${cmdTable}
       <div class="section-header" style="margin-top:16px;"><span class="section-title">3 derniers prix (tous fournisseurs confondus)</span></div>
       ${histTable}`;

@@ -499,6 +499,56 @@ def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
         except Exception as e:
             raise internal_error(e)
 
+
+@app.get("/api/produit/{code_article}")
+def get_produit(code_article: str):
+    """Fiche article a 360 degres -- decision metier 21/07 (plan_action.md,
+    point 6) : l'onglet Article doit fusionner achat.produit (referentiel
+    enrichi Matrice + Sylob V25, enrich_dimensions.py), achat.article_nomenclature
+    (+ composants si lot multiple, Matrice TB Import), le statut artwork
+    (achat.v_artwork, gsheet Clarisse) et l'historique qualite -- pas juste
+    l'historique prix comme avant. Tout est deja en base, jamais expose par
+    aucun endpoint jusqu'ici (verifie le 22/07)."""
+    engine = get_engine()
+    with engine.connect() as conn:
+        try:
+            produit = rows_to_dicts(conn.execute(
+                text(f"SELECT * FROM {SCHEMA}.produit WHERE code_article = :c"),
+                {"c": code_article}))
+            nomenclature = rows_to_dicts(conn.execute(
+                text(f"SELECT * FROM {SCHEMA}.article_nomenclature WHERE code_article = :c"),
+                {"c": code_article}))
+            composants = rows_to_dicts(conn.execute(text(f"""
+                SELECT * FROM {SCHEMA}.article_nomenclature_composant
+                WHERE code_article = :c ORDER BY position
+            """), {"c": code_article}))
+            artwork = rows_to_dicts(conn.execute(
+                text(f"SELECT * FROM {SCHEMA}.v_artwork WHERE code_article = :c"),
+                {"c": code_article}))
+            cycle_vie = rows_to_dicts(conn.execute(
+                text(f"SELECT * FROM {SCHEMA}.article_cycle_vie WHERE code_article = :c"),
+                {"c": code_article}))
+            qualite = rows_to_dicts(conn.execute(text(f"""
+                SELECT po_number, fournisseur, matiere, semi_production, echantillon_conformite,
+                       production_bat, date_inspection, resultat_inspection, ref_rapport, reception, ncr
+                FROM {SCHEMA}.qualite WHERE code_article = :c
+                ORDER BY date_inspection DESC NULLS LAST
+            """), {"c": code_article}))
+
+            if not (produit or nomenclature or artwork or cycle_vie or qualite):
+                return {"data": None, "warning": "Article introuvable (aucune donnee produit/nomenclature/artwork/qualite)."}
+
+            return {"data": {
+                "produit": produit[0] if produit else None,
+                "nomenclature": nomenclature[0] if nomenclature else None,
+                "composants": composants,
+                "artwork": artwork[0] if artwork else None,
+                "cycle_vie": cycle_vie[0] if cycle_vie else None,
+                "qualite": qualite,
+            }}
+        except Exception as e:
+            raise internal_error(e)
+
 @app.get("/api/artwork")
 def get_artwork(code_article: Optional[str] = None):
     # Decision 22/07 : v_artwork = achat.artwork_statut (gsheet Clarisse),
