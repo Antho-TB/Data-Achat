@@ -1945,7 +1945,9 @@ function renderProduitFiche(d) {
       ${fieldRow('Valideur', aw.valideur)}
       ${fieldRow('Dernière version', aw.derniere_version)}
       ${fieldRow('Dernière validation', aw.date_validation)}
-    </div>` : '';
+    </div>` : `
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Artwork (design)</span></div>
+    <div class="fiche-row"><label style="width:180px;">Artwork</label><span class="badge badge-gray">Non</span></div>`;
 
   const cycleBlock = cv ? `
     <div class="section-header" style="margin-top:14px;"><span class="section-title">Cycle de vie (Carrefour)</span></div>
