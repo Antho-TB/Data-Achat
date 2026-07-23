@@ -1381,6 +1381,24 @@ async function loadActions(k) {
         txt: `${k.artwork_en_attente} artwork(s) en attente (Design / Clarisse)` });
     }
 
+    // 4. Changements d'ETA / livraison a suivre (spec 20260722, mise en forme
+    // progressive 1=orange/2=rouge/3+=violet, jamais remise a zero). Tri par
+    // gravite (nb de changements) puis affiche les conteneurs les plus impactes.
+    try {
+      const rc = await apiFetch('/api/conteneurs');
+      const changes = (rc.liste || []).filter(c => (c.nb_changements_eta || 0) > 0 || (c.nb_changements_livraison || 0) > 0);
+      changes.sort((a, b) => Math.max(b.nb_changements_eta||0, b.nb_changements_livraison||0) - Math.max(a.nb_changements_eta||0, a.nb_changements_livraison||0));
+      changes.slice(0, 5).forEach(c => {
+        const parts = [];
+        if (c.nb_changements_eta > 0) parts.push(`ETA modifiée ${c.nb_changements_eta}×`);
+        if (c.nb_changements_livraison > 0) parts.push(`livraison modifiée ${c.nb_changements_livraison}×`);
+        const prio = Math.max(c.nb_changements_eta||0, c.nb_changements_livraison||0) >= 3 ? 1
+                   : Math.max(c.nb_changements_eta||0, c.nb_changements_livraison||0) === 2 ? 2 : 4;
+        actions.push({ prio, icon: '📅', tab: 'conteneurs',
+          txt: `Conteneur ${c.n_conteneur} : ${parts.join(', ')} — vérifier l'impact planning` });
+      });
+    } catch (e) { /* non bloquant pour le reste des Actions prioritaires */ }
+
     if (!actions.length) {
       el.innerHTML = '<div style="color:var(--muted);font-size:13px;">Aucune action prioritaire détectée. 👍</div>';
       return;
@@ -2477,6 +2495,15 @@ function applyConteneurFocus() {
   _pendingConteneurFocus = null;
 }
 
+// Mise en forme conditionnelle des changements ETA/livraison (spec 20260722,
+// decisions 23/07) : 1 changement=orange, 2=rouge, 3+=violet, jamais remis a zero.
+const _CHGT_COLOR = { orange: '#E8890C', rouge: 'var(--red, #E2001A)', violet: '#7B2D8E' };
+function chgtDot(couleur, nb) {
+  if (!couleur || !nb) return '';
+  const c = _CHGT_COLOR[couleur] || '#9aa5b1';
+  return `<span title="${nb} changement(s) transmis depuis la 1ère annonce" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};margin-left:6px;vertical-align:middle;"></span>`;
+}
+
 function renderConteneursTable(rows) {
   const el = document.getElementById('table-conteneurs');
   if (!rows || !rows.length) {
@@ -2501,8 +2528,8 @@ function renderConteneursTable(rows) {
       <td>${esc(r.destinataire) || '—'}</td>
       <td>${esc(r.transitaire) || '—'}</td>
       <td>${fmt(r.etd, 'date')}</td>
-      <td>${fmt(r.eta, 'date')}</td>
-      <td>${fmt(r.date_livraison, 'date')}</td>
+      <td>${fmt(r.eta, 'date')}${chgtDot(r.couleur_eta, r.nb_changements_eta)}</td>
+      <td>${fmt(r.date_livraison, 'date')}${chgtDot(r.couleur_livraison, r.nb_changements_livraison)}</td>
       <td style="text-align:right">${r.nb_po ?? 0}</td>
       <td style="text-align:right">${r.nb_articles ?? 0}</td>
       <td style="text-align:right">${fmt(r.valeur, 'money')}</td>

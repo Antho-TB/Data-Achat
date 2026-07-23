@@ -30,8 +30,9 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import re
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Optional
 
 logging.basicConfig(level=logging.INFO,
@@ -110,8 +111,16 @@ def _cell(row: list[str], idx: int) -> Optional[str]:
 
 
 def transform_rows(rows: list[list[str]], campaign_year: int = 2026,
-                   source_fichier: str = "suivi_maritime") -> list[dict]:
-    """Coeur source-agnostique : lignes brutes -> records ot_transport."""
+                   source_fichier: str = "suivi_maritime",
+                   date_transmission: Optional[str] = None) -> list[dict]:
+    """Coeur source-agnostique : lignes brutes -> records ot_transport.
+
+    Junior Tip : `date_transmission` est l'horodatage a comparer chronologiquement
+    (spec ETA §4/§7.2) -- decision 23/07 : c'est la date du FICHIER (mtime), pas la
+    date d'ingestion ETL, car le fichier maritime est un snapshot sans date par ligne.
+    Propage sur chaque record pour que load_ot_gmail applique la preseance
+    chronologique et decide si un changement doit etre historise.
+    """
     # 1) localiser l'en-tête réel
     start = next((i for i, r in enumerate(rows)
                   if r and "FOURNISSEUR" in str(r[0]).upper()), None)
@@ -142,6 +151,7 @@ def transform_rows(rows: list[list[str]], campaign_year: int = 2026,
             "lieu_livraison": _cell(row, COL["site"]),
             "po_numbers": clean_pos(_cell(row, COL["commande"])) or None,
             "source_fichier": source_fichier,
+            "date_transmission": date_transmission,
         }
         # Garde-fou rollover : un depart (ETD reel) ne peut pas etre posterieur
         # a l'arrivee (ETA). Cas des cellules datetime ISO portant une annee
@@ -185,7 +195,17 @@ def main() -> int:
     args = ap.parse_args()
 
     rows = _read_rows(args.file)
-    records = transform_rows(rows, args.campaign_year, source_fichier=args.file.split("/")[-1])
+    # Date du fichier (mtime), pas la date d'ingestion -- decision metier 23/07 (spec ETA §7.2).
+    # Suppose que le mtime survit a la copie SMB/Drive depuis la source transitaire ;
+    # a revalider si le fichier est retelecharge d'une maniere qui reinitialise le mtime.
+    try:
+        mtime = os.path.getmtime(args.file)
+        date_transmission = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
+    except OSError:
+        date_transmission = None
+        logger.warning("[ATTENTION] mtime du fichier illisible -- date_transmission absente (pas de preseance chronologique pour ce lot).")
+    records = transform_rows(rows, args.campaign_year, source_fichier=args.file.split("/")[-1],
+                             date_transmission=date_transmission)
     payload = json.dumps(records, ensure_ascii=False, indent=2)
     if args.out:
         from pathlib import Path

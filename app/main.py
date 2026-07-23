@@ -752,9 +752,13 @@ def get_conteneurs():
                        COALESCE(a.valeur, 0) AS valeur,
                        COALESCE(a.nb_a_payer_retard, 0) AS nb_a_payer_retard,
                        COALESCE(a.nb_a_payer, 0)        AS nb_a_payer,
-                       COALESCE(a.nb_paye, 0)           AS nb_paye
+                       COALESCE(a.nb_paye, 0)           AS nb_paye,
+                       COALESCE(s.nb_changements_eta, 0)       AS nb_changements_eta,
+                       COALESCE(s.nb_changements_livraison, 0) AS nb_changements_livraison,
+                       s.couleur_eta, s.couleur_livraison
                 FROM {SCHEMA}.ot_transport ot
                 LEFT JOIN ({agg}) a ON a.n_conteneur = ot.n_conteneur
+                LEFT JOIN {SCHEMA}.v_ot_transport_suivi s ON s.n_conteneur = ot.n_conteneur
                 ORDER BY COALESCE(ot.eta, ot.etd_reel) DESC NULLS LAST
             """)))
 
