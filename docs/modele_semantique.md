@@ -2,13 +2,17 @@
 
 > But : comprendre les données, tables et champs qu'on constitue, et servir de **socle
 > au mapping vers Sylob** (objectif cible : ramener ces données structurées dans l'ERP).
-> Généré à partir de l'introspection du schéma (12 tables + 4 vues au 2026-07-02).
+> Généré à partir de l'introspection du schéma (27 tables + 6 vues au 2026-07-23,
+> cf. `docs/achat_schema.yaml`). Schéma visuel ci-dessous limité aux tables/vues
+> de grain po/article/conteneur (les tables événements du 22/07 ont un grain
+> `evenement` propre, cf. zone dédiée) pour rester lisible.
 > Colonne « Sylob ? » = à auditer contre `tarrerias_production_dwh` (déjà présent oui/non).
 
 ## Zones fonctionnelles
 
 - **Base import** (source IMPORT Excel Andréa, cible Sylob V25) : `commande`, `produit`, `acompte`, `fournisseur_ca`.
 - **Enrichissement découplé (pattern A)** — survit au full-refresh, mergé par les vues : `ot_transport`, `artwork_statut`, `qualite_doc`, `qualite_analyse`, `article_nomenclature`, `commande_annotation`.
+- **Événements métier email-first (22/07)** — `qualite_decision`, `transport_evenement`, `commerce_decision`, `design_evenement` : remplacent le fourre-tout `commande_annotation` pour les threads Gmail par sujet, grain `evenement`, idempotence via `cle_idempotence` (cf. `sql/20260722_tables_evenements_metier.sql`, `docs/20260722_FUSEAU_Runbook_TablesEvenements_ClaudePosteAntho.md`).
 
 ### Sources gsheet #3/#4/#5 (chargées 2026-07-02, accès direct Drive)
 - `ot_transport` : 43 conteneurs (gsheet "SUIVI MARITIME TARRERIAS 2026", source de vérité collaborative transitaire — **ne jamais modifier ces fichiers**, lecture seule). Bug corrigé : `transform_maritime.parse_maritime_date` ne gérait pas le format ISO datetime (`2025-12-28 00:00:00`), seulement l'ancien format texte ("28 December") — 0% de dates avant fix, 100% après. Loader `load_ot_gmail.py` (déjà existant).
@@ -120,6 +124,29 @@ erDiagram
         text commentaire
     }
 
+    %% ===== ZONE EVENEMENTS METIER EMAIL-FIRST (creees 22/07, grain evenement) =====
+    qualite_decision {
+        text cle_idempotence PK
+        text po_number
+        text texte
+    }
+    transport_evenement {
+        text cle_idempotence PK
+        text po_number
+        text n_conteneur
+        text texte
+    }
+    commerce_decision {
+        text cle_idempotence PK
+        text po_number
+        text texte
+    }
+    design_evenement {
+        text cle_idempotence PK
+        text po_number
+        text texte
+    }
+
     %% ===== RELATIONS =====
     commande }o--|| produit : "code_article"
     commande }o--o| ot_transport : "n_conteneur (COALESCE BL-prioritaire)"
@@ -134,6 +161,11 @@ erDiagram
     qualite_doc ||--|| qualite_analyse : "ref_rapport"
     qualite_suivi }o--o| qualite_doc : "ref_rapport (#5 = même CA)"
     qualite_suivi ||--o| qualite_facturation : "ref_rapport"
+    commande ||--o| qualite_decision : "po_number"
+    commande ||--o| commerce_decision : "po_number"
+    commande ||--o| design_evenement : "po_number"
+    commande }o--o| transport_evenement : "po_number / n_conteneur"
+    ot_transport }o--o| transport_evenement : "n_conteneur"
 ```
 
 **Zones** (mêmes couleurs de regroupement que le drawio Sylob de référence) :
@@ -223,6 +255,8 @@ Scripts d'audit : `sql/20260702_audit_sylob_af_article.sql`, `sql/20260702_audit
 | `v_retard_article` | commande + ot_transport | retard figé si livré, sinon `CURRENT_DATE - ETD` |
 | `v_artwork` | artwork + **artwork_statut** | statut design prioritaire (`COALESCE` sur code_article) |
 | `v_qualite_fournisseur` | qualite | évaluation fournisseur |
+| `v_retard_expedition` | commande + ot_transport | retard figé par expédition (grain ligne PO × article), `etd_reel - etd_confirme`, plancher 0 |
+| `v_retard_fournisseur` | v_retard_expedition | retard moyen figé par fournisseur, 12 mois glissants (définition métier 07/07, cf. `sql/20260720_fix_calcul_retard.sql`) |
 
 ## Relations (schéma de jointure)
 

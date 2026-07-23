@@ -160,6 +160,46 @@ TABLE_META: dict[str, dict] = {
         "source_captation": "vue SQL (pas de captation propre)",
         "sylob": "n/a (vue)",
     },
+    "v_retard_expedition": {
+        "role": "Vue de lecture -- retard fige par expedition (grain ligne PO x article)",
+        "grain": "derive de commande + ot_transport",
+        "source_captation": "vue SQL (pas de captation propre)",
+        "sylob": "n/a (vue)",
+    },
+    "v_retard_fournisseur": {
+        "role": "Vue de lecture -- retard moyen fige par fournisseur (12 mois glissants)",
+        "grain": "derive de v_retard_expedition",
+        "source_captation": "vue SQL (pas de captation propre)",
+        "sylob": "n/a (vue)",
+    },
+    # 4 tables evenements metier email-first (creees 22/07,
+    # sql/20260722_tables_evenements_metier.sql), grain evenement,
+    # idempotence via cle_idempotence -- remplacent le fourre-tout
+    # commande_annotation pour les threads Gmail non lies au transport.
+    "qualite_decision": {
+        "role": "Decision conforme/non-conforme (email-first, Eric T)",
+        "grain": "evenement",
+        "source_captation": "threads Gmail (corps)",
+        "sylob": "non (email-first ; FNC formel Sylob a reconcilier)",
+    },
+    "transport_evenement": {
+        "role": "Retards / imprevus / changements ETD-ETA-livraison",
+        "grain": "evenement",
+        "source_captation": "threads Gmail + transitaire",
+        "sylob": "non (transport absent de Sylob)",
+    },
+    "commerce_decision": {
+        "role": "Arbitrages commerce (prix client, go/no-go, priorite, promo)",
+        "grain": "evenement",
+        "source_captation": "threads Gmail (Eric/David)",
+        "sylob": "non (informel commerce)",
+    },
+    "design_evenement": {
+        "role": "Validations design (boite, artwork, marquage, pantone)",
+        "grain": "evenement",
+        "source_captation": "threads Gmail (Clarisse)",
+        "sylob": "non (design absent de Sylob)",
+    },
 }
 
 # Colonnes dont le sens n'est pas evident depuis leur seul nom -- documentees

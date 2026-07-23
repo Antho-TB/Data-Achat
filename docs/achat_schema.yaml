@@ -1,4 +1,4 @@
-genere_le: '2026-07-02T10:43:32.872149+00:00'
+genere_le: '2026-07-23T06:48:04.757685+00:00'
 schema_postgres: achat
 base: dtpf_sylob_prod
 avertissement: 'Structure SQL auto-introspectee (toujours fiable) ; role/source/Sylob
@@ -370,6 +370,14 @@ tables:
       type: timestamp without time zone
       nullable: true
       default: now()
+    - name: commentaire_andrea
+      type: text
+      nullable: true
+      default: null
+    - name: commentaire_clarisse_thomas
+      type: text
+      nullable: true
+      default: null
   commande:
     role: Suivi commandes import (coeur)
     grain: ligne article x commande
@@ -604,6 +612,132 @@ tables:
     - name: updated_at
       type: timestamp with time zone
       nullable: true
+      default: now()
+  commerce_decision:
+    role: Arbitrages commerce (prix client, go/no-go, priorite, promo)
+    grain: evenement
+    source_captation: threads Gmail (Eric/David)
+    existe_dans_sylob: non (informel commerce)
+    cles:
+      PRIMARY KEY:
+      - id
+      UNIQUE:
+      - cle_idempotence
+    colonnes:
+    - name: id
+      type: integer
+      nullable: false
+      default: nextval('achat.commerce_decision_id_seq'::regclass)
+    - name: cle_idempotence
+      type: text
+      nullable: false
+      default: null
+    - name: po_number
+      type: text
+      nullable: true
+      default: null
+    - name: code_article
+      type: text
+      nullable: true
+      default: null
+    - name: n_conteneur
+      type: text
+      nullable: true
+      default: null
+    - name: thread_id
+      type: text
+      nullable: true
+      default: null
+    - name: acteur
+      type: text
+      nullable: true
+      default: null
+    - name: source
+      type: text
+      nullable: true
+      default: null
+    - name: date_info
+      type: date
+      nullable: true
+      default: null
+    - name: type
+      type: text
+      nullable: true
+      default: null
+    - name: contenu
+      type: text
+      nullable: true
+      default: null
+    - name: texte
+      type: text
+      nullable: true
+      default: null
+    - name: created_at
+      type: timestamp with time zone
+      nullable: false
+      default: now()
+  design_evenement:
+    role: Validations design (boite, artwork, marquage, pantone)
+    grain: evenement
+    source_captation: threads Gmail (Clarisse)
+    existe_dans_sylob: non (design absent de Sylob)
+    cles:
+      PRIMARY KEY:
+      - id
+      UNIQUE:
+      - cle_idempotence
+    colonnes:
+    - name: id
+      type: integer
+      nullable: false
+      default: nextval('achat.design_evenement_id_seq'::regclass)
+    - name: cle_idempotence
+      type: text
+      nullable: false
+      default: null
+    - name: po_number
+      type: text
+      nullable: true
+      default: null
+    - name: code_article
+      type: text
+      nullable: true
+      default: null
+    - name: n_conteneur
+      type: text
+      nullable: true
+      default: null
+    - name: thread_id
+      type: text
+      nullable: true
+      default: null
+    - name: acteur
+      type: text
+      nullable: true
+      default: null
+    - name: source
+      type: text
+      nullable: true
+      default: null
+    - name: date_info
+      type: date
+      nullable: true
+      default: null
+    - name: type
+      type: text
+      nullable: true
+      default: null
+    - name: statut
+      type: text
+      nullable: true
+      default: null
+    - name: texte
+      type: text
+      nullable: true
+      default: null
+    - name: created_at
+      type: timestamp with time zone
+      nullable: false
       default: now()
   fournisseur_ca:
     role: CA cumule 3 ans
@@ -1077,6 +1211,73 @@ tables:
       type: timestamp without time zone
       nullable: true
       default: now()
+  qualite_decision:
+    role: Decision conforme/non-conforme (email-first, Eric T)
+    grain: evenement
+    source_captation: threads Gmail (corps)
+    existe_dans_sylob: non (email-first ; FNC formel Sylob a reconcilier)
+    cles:
+      PRIMARY KEY:
+      - id
+      UNIQUE:
+      - cle_idempotence
+    colonnes:
+    - name: id
+      type: integer
+      nullable: false
+      default: nextval('achat.qualite_decision_id_seq'::regclass)
+    - name: cle_idempotence
+      type: text
+      nullable: false
+      default: null
+    - name: po_number
+      type: text
+      nullable: true
+      default: null
+    - name: code_article
+      type: text
+      nullable: true
+      default: null
+    - name: n_conteneur
+      type: text
+      nullable: true
+      default: null
+    - name: thread_id
+      type: text
+      nullable: true
+      default: null
+    - name: acteur
+      type: text
+      nullable: true
+      default: null
+    - name: source
+      type: text
+      nullable: true
+      default: null
+    - name: date_info
+      type: date
+      nullable: true
+      default: null
+    - name: decision
+      type: text
+      nullable: true
+      default: null
+    - name: motif
+      type: text
+      nullable: true
+      default: null
+    - name: stade
+      type: text
+      nullable: true
+      default: null
+    - name: texte
+      type: text
+      nullable: true
+      default: null
+    - name: created_at
+      type: timestamp with time zone
+      nullable: false
+      default: now()
   qualite_doc:
     role: Index rapports (lien FAIL vers fichier)
     grain: fichier rapport
@@ -1292,16 +1493,24 @@ tables:
       type: timestamp without time zone
       nullable: true
       default: now()
-  v_artwork:
-    role: Vue de lecture -- statut artwork consolide
-    grain: derive de artwork_statut
-    source_captation: vue SQL (pas de captation propre)
-    existe_dans_sylob: n/a (vue)
-    cles: {}
+  transport_evenement:
+    role: Retards / imprevus / changements ETD-ETA-livraison
+    grain: evenement
+    source_captation: threads Gmail + transitaire
+    existe_dans_sylob: non (transport absent de Sylob)
+    cles:
+      PRIMARY KEY:
+      - id
+      UNIQUE:
+      - cle_idempotence
     colonnes:
     - name: id
       type: integer
-      nullable: true
+      nullable: false
+      default: nextval('achat.transport_evenement_id_seq'::regclass)
+    - name: cle_idempotence
+      type: text
+      nullable: false
       default: null
     - name: po_number
       type: text
@@ -1311,19 +1520,70 @@ tables:
       type: text
       nullable: true
       default: null
+    - name: n_conteneur
+      type: text
+      nullable: true
+      default: null
+    - name: thread_id
+      type: text
+      nullable: true
+      default: null
+    - name: acteur
+      type: text
+      nullable: true
+      default: null
+    - name: source
+      type: text
+      nullable: true
+      default: null
+    - name: date_info
+      type: date
+      nullable: true
+      default: null
+    - name: type
+      type: text
+      nullable: true
+      default: null
+    - name: champ_date
+      type: text
+      nullable: true
+      default: null
+    - name: ancienne_valeur
+      type: date
+      nullable: true
+      default: null
+    - name: nouvelle_valeur
+      type: date
+      nullable: true
+      default: null
+    - name: motif
+      type: text
+      nullable: true
+      default: null
+    - name: texte
+      type: text
+      nullable: true
+      default: null
+    - name: created_at
+      type: timestamp with time zone
+      nullable: false
+      default: now()
+  v_artwork:
+    role: Vue de lecture -- statut artwork consolide
+    grain: derive de artwork_statut
+    source_captation: vue SQL (pas de captation propre)
+    existe_dans_sylob: n/a (vue)
+    cles: {}
+    colonnes:
+    - name: code_article
+      type: text
+      nullable: true
+      default: null
     - name: designation
       type: text
       nullable: true
       default: null
     - name: statut_artwork
-      type: text
-      nullable: true
-      default: null
-    - name: responsable
-      type: text
-      nullable: true
-      default: null
-    - name: commentaire
       type: text
       nullable: true
       default: null
@@ -1347,8 +1607,24 @@ tables:
       type: text
       nullable: true
       default: null
+    - name: commentaire
+      type: text
+      nullable: true
+      default: null
+    - name: commentaire_andrea
+      type: text
+      nullable: true
+      default: null
+    - name: commentaire_clarisse_thomas
+      type: text
+      nullable: true
+      default: null
+    - name: po_number
+      type: text
+      nullable: true
+      default: null
     - name: updated_at
-      type: timestamp with time zone
+      type: timestamp without time zone
       nullable: true
       default: null
   v_previsionnel:
@@ -1498,5 +1774,71 @@ tables:
       default: null
     - name: statut_retard
       type: text
+      nullable: true
+      default: null
+  v_retard_expedition:
+    role: Vue de lecture -- retard fige par expedition (grain ligne PO x article)
+    grain: derive de commande + ot_transport
+    source_captation: vue SQL (pas de captation propre)
+    existe_dans_sylob: n/a (vue)
+    cles: {}
+    colonnes:
+    - name: po_number
+      type: text
+      nullable: true
+      default: null
+    - name: code_article
+      type: text
+      nullable: true
+      default: null
+    - name: fournisseur
+      type: text
+      nullable: true
+      default: null
+    - name: etd_confirme
+      type: date
+      nullable: true
+      default: null
+    - name: etd_reel
+      type: date
+      nullable: true
+      default: null
+    - name: ecart_jours
+      type: integer
+      nullable: true
+      default: null
+    - name: jours_retard
+      type: integer
+      nullable: true
+      default: null
+  v_retard_fournisseur:
+    role: Vue de lecture -- retard moyen fige par fournisseur (12 mois glissants)
+    grain: derive de v_retard_expedition
+    source_captation: vue SQL (pas de captation propre)
+    existe_dans_sylob: n/a (vue)
+    cles: {}
+    colonnes:
+    - name: fournisseur
+      type: text
+      nullable: true
+      default: null
+    - name: nb_expeditions_12m
+      type: bigint
+      nullable: true
+      default: null
+    - name: nb_expeditions_en_retard
+      type: bigint
+      nullable: true
+      default: null
+    - name: retard_moyen_jours
+      type: numeric
+      nullable: true
+      default: null
+    - name: derniere_expedition
+      type: date
+      nullable: true
+      default: null
+    - name: nb_ecarts_suspects
+      type: bigint
       nullable: true
       default: null

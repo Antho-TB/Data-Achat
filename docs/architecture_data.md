@@ -14,7 +14,7 @@ graph TD
         subgraph "PostgreSQL: Schémas logiques"
             C -.-> D[ssylob9_*\n(DÉPRÉCIÉ - Obsolète)]
             C -.-> E[alz_*\nTables d'entraînement Alizés]
-            F[Fichiers Excel Andréa] -->|ETL Python Antho| G[achat.*\nPOC Data-Achat]
+            F[Fichiers Excel Andréa] -->|ETL Python Antho| G[achat.*\nFUSEAU -- applicatif deploye]
             H[n8n + Gmail\nTemps Réel] -.->|Cible Future| G
         end
     end

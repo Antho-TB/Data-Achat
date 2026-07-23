@@ -18,7 +18,7 @@
 6. **Chemin critique sur le suivi de commande** : qu'est-ce qui rend un PO "critique" (delai, valeur, conteneur bloquant) ?
 7. **Code article / prototype (Circuit A)** : relation plusieurs-a-plusieurs prototype<->code non resolue -- piste "code affaire" GDD a valider avec Olivier. Q11 (donnees circulant avant le code article) toujours sans reponse.
 8. **Acces Gmail boite Andrea** avant le 31/07 -- reste LE point bloquant deadline, a confirmer.
-9. **Acces Drive qualite (crawl complet)** : le pilote manuel (8 fichiers/2 PO) est en place, mais le crawl a l'echelle necessite un **consentement OAuth Drive interactif** (navigateur, compte Marlene) -- a planifier qui/quand fait ce clic, ce n'est pas automatisable a distance (cf. section OAuth dans la passation Antigravity).
+9. **Acces Drive qualite (crawl complet)** : le pilote manuel (8 fichiers/2 PO) est en place, mais le crawl a l'echelle necessite un **consentement OAuth Drive interactif** (navigateur, compte Marlene) -- a planifier qui/quand fait ce clic, ce n'est pas automatisable a distance (cf. section OAuth dans `05_ARCHIVES/Versions_Anterieures/20260721_Passation_Antigravity_v1.md` -- Antigravity abandonne depuis, doc archivee pour l'historique OAuth uniquement).
 
 ---
 
@@ -49,7 +49,7 @@
 - **Dashboard** (`17b3605`) : statut "Inconnu" et "Deja livre" rendus visibles (2 KPI + camembert 4 tranches) -- avant, ces lignes disparaissaient silencieusement des compteurs En retard/Dans les delais.
 - **Suivi commande** (`19207c3`) : badge parti/pas-parti (rouge/bleu) au lieu d'un texte discret.
 - **Audit retours metier reorganise** en 4 blocs (semantique a arbitrer, donnees manquantes a la source, constructions substantielles non demarrees, a revalider a l'ecran) -- `docs/20260721_FUSEAU_Audit_RetoursMetier_v1.md`.
-- **Passation Antigravity mise a jour** (`bbf1ac2`) -- `docs/20260721_Passation_Antigravity_v1.md`, inclut l'etat exact de l'OAuth Drive (prerequis restants, qui doit faire quoi).
+- **Passation Antigravity mise a jour** (`bbf1ac2`) -- `05_ARCHIVES/Versions_Anterieures/20260721_Passation_Antigravity_v1.md` (archivee : Antigravity abandonne, Claude code directement en sandbox depuis), inclut l'etat exact de l'OAuth Drive (prerequis restants, qui doit faire quoi).
 - Tout est commite et pousse sur `main` jusqu'a `bbf1ac2`.
 
 ---
