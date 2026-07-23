@@ -63,9 +63,14 @@ PG_USER=platform_team
 PG_PASSWORD=__A_COMPLETER__
 PG_SSLMODE=require
 API_KEY=__MEME_CLE_QUE_LE_TEST__
+# 127.0.0.1 = acces reserve a ce poste. Decision 23/07 : Andrea accede depuis
+# son propre poste (LAN bureau) -> mettre 0.0.0.0 + executer
+# deploy\install_service_windows.ps1 (ouvre le firewall, scope LAN uniquement).
 API_HOST=127.0.0.1
 API_PORT=5050
 API_RELOAD=0
+# Si API_HOST=0.0.0.0, ajouter l'IP LAN du poste ici (ex. http://192.168.x.x:5050)
+CORS_ORIGINS=http://127.0.0.1:5050,http://localhost:5050
 DATA_DIR=Service_Achat
 # Plan A PJ Gmail (optionnel) :
 # GMAIL_LABEL=Achats/Fournisseurs

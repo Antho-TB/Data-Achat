@@ -4,8 +4,11 @@ Dashboard/ERP Achats (suivi des imports Chine, Circuit B réappro) : ETL Excel/S
 DWH Azure PostgreSQL (`achat.*`), API FastAPI + frontend, alimentation email-first
 (Gmail). Projet data analytique en amont du DWH MyReport.
 
-> **Statut (22/07/2026) :** applicatif déployé sur le poste de Marlène --
-> dépassé le stade POC (10 onglets opérationnels, cf. section Fonctionnalités).
+> **Statut (23/07/2026) :** mise en prod prévue mardi 27/07 -- utilisatrices :
+> Marlène (poste local) + Andréa (accès LAN bureau depuis son propre poste).
+> Antho reste en dev sur son poste (localhost uniquement). API tournant en
+> Tâche Planifiée Windows (auto-restart), cf. `docs/20260723_FUSEAU_RunbookServiceWindows_v1.md`.
+> Dépassé le stade POC (10 onglets opérationnels, cf. section Fonctionnalités).
 > Toute nouvelle fonctionnalité prod reste validée avec le métier avant
 > généralisation. Coordination : e.georgeon@tb-groupe.fr (Supply Chain),
 > Marlène Montbrizon (Responsable Achats).
@@ -52,8 +55,13 @@ Python 3.11 (cible standard, cf. `CLAUDE.md`) via `.venv311` (uv) — migré le
 02/07 depuis l'interpréteur global 3.13. `uv` télécharge et gère l'interpréteur
 3.11 lui-même, pas besoin de l'installer séparément.
 
-Laisser la fenêtre ouverte. **VPN Stormshield requis** (accès DWH Azure).
+Laisser la fenêtre ouverte (dev). **VPN Stormshield requis** (accès DWH Azure).
 Vérifier avant toute démo : http://127.0.0.1:5050/api/health → `write_enabled: true`.
+
+**Poste Marlène (prod) :** ne pas lancer `run_api.py` à la main -- l'API tourne
+en Tâche Planifiée Windows (`FUSEAU-API`, auto-restart), installée via
+`deploy\install_service_windows.ps1`. Procédure complète, accès LAN Andréa,
+logs, dépannage : `docs/20260723_FUSEAU_RunbookServiceWindows_v1.md`.
 
 ## Liens utiles
 
@@ -65,6 +73,7 @@ Vérifier avant toute démo : http://127.0.0.1:5050/api/health → `write_enable
 | Plan d'action | `docs/plan_action.md` |
 | Runbook OAuth Gmail | `docs/20260622_FUSEAU_RunbookOAuthGmail_v1.md` |
 | Déploiement poste Marlène + Gmail | `docs/20260629_FUSEAU_DeploiementPosteMarlene_Cowork_v1.md` |
+| Runbook service Windows (prod, accès LAN Andréa) | `docs/20260723_FUSEAU_RunbookServiceWindows_v1.md` |
 | Schéma machine-readable `achat.*` | `docs/achat_schema.yaml` |
 | Sources gsheet/Drive (artworks, qualité, maritime) | `docs/sources_gsheet_drive.md` |
 
