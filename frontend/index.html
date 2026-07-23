@@ -723,8 +723,10 @@ function filterPromo() {
   const q = document.getElementById('f-promo-search').value.toLowerCase();
   const stat = document.getElementById('f-promo-statut').value;
   
-  // Only rows with op_client_appro
-  const promos = _commandes.filter(r => r.op_client_appro);
+  // Filtre resserre (decision metier 23/07) : uniquement les OP/operations
+  // reelles (libelle commencant par "OP" ou "NOUVEAU"), pas tout ce qui a
+  // un champ op_client_appro renseigne (trop large, remontait du bruit).
+  const promos = _commandes.filter(r => r.op_client_appro && /^\s*(OP|NOUVEAU)/i.test(r.op_client_appro));
   
   const filtered = promos.filter(r => {
     const matchQ = !q || (r.op_client_appro || '').toLowerCase().includes(q) || (r.fournisseur || '').toLowerCase().includes(q);
@@ -738,6 +740,7 @@ function filterPromo() {
   let html = `<div class="table-wrap"><table>
     <thead><tr>
       <th>OP / Client</th>
+      <th title="Champ en attente de source de donnée (definition 'prioritaire' a trancher avec Andrea/Marlene)">Prioritaire</th>
       <th>Fournisseur</th>
       <th>PO#</th>
       <th>Article</th>
@@ -746,10 +749,11 @@ function filterPromo() {
       <th>Prix</th>
       <th>Date Cde</th>
     </tr></thead><tbody>`;
-    
+
   for(const r of filtered) {
     html += `<tr>
       <td style="font-weight:bold;color:var(--blue)">${esc(r.op_client_appro)}</td>
+      <td><span class="badge badge-gray" title="Pas encore de source de donnée pour ce champ">-</span></td>
       <td>${esc(r.fournisseur)}</td>
       <td class="mono">${esc(r.po_number)}</td>
       <td class="mono">${esc(r.code_article)}</td>
