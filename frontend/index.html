@@ -1546,6 +1546,11 @@ const _logiBucket = r => r.est_livre ? 'Livré' : (r.est_parti ? 'En transit' : 
 const _payBucket  = r => r.est_a_payer_en_retard ? 'À payer (retard)' : (r.est_a_payer ? 'À payer' : 'Payé');
 const _PAY_ORDER  = ['Payé', 'À payer', 'À payer (retard)'];
 const _PAY_COLORS = { 'Payé': TB.navy, 'À payer': TB.orange, 'À payer (retard)': TB.red };
+const _PAY_BADGE  = { 'Payé': 'badge-green', 'À payer': 'badge-orange', 'À payer (retard)': 'badge-red' };
+function payBadge(r) {
+  const b = _payBucket(r);
+  return `<span class="badge ${_PAY_BADGE[b]}">${b}</span>`;
+}
 const _LOGI_ORDER = ['Pas parti', 'En transit', 'Livré'];
 
 function renderCommandesCharts(rows) {
@@ -1615,6 +1620,7 @@ function renderCommandes(rows) {
         <th title="ETD confirmé : date de départ prévue depuis la Chine.">ETD confirmé</th>
         <th title="Axe LOGISTIQUE : EN RETARD (ETD dépassé, pas livré) / DANS LES DÉLAIS / CLÔTURÉE. Différent du statut de la commande.">Statut retard</th>
         <th title="Axe COMMANDE : état du cycle de vie de la commande (En cours, En production, En cours de livraison, Livrée, Payée, Annulée).">Statut cde</th>
+        <th title="Axe PAIEMENT (independant du statut commande) : Payé / À payer / À payer EN RETARD (ETD du BL + 15 j dépassé, non payé).">Paiement</th>
         <th title="N° du conteneur (si rattaché). Cliquer pour l'ouvrir dans l'onglet Suivi des conteneurs.">N° conteneur</th>
         <th>Raison retard</th>
         <th title="Date du dernier évènement métier : annotation manuelle sinon date de changement de statut. Ce n'est pas la date du run ETL.">Dernier évènement</th>
@@ -1651,6 +1657,7 @@ function renderCommandes(rows) {
             </span>
           </td>
           <td>${badge(r.statut)}</td>
+          <td>${payBadge(r)}</td>
           <td class="mono">${r.n_conteneur ? '<a href="#" title="Voir dans Suivi des conteneurs" onclick="focusConteneur(\'' + esc(r.n_conteneur) + '\');return false;">' + esc(r.n_conteneur) + '</a>' : '<span style="color:var(--muted)">—</span>'}</td>
           <td style="font-size:12px;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer"
               title="${esc(r.commentaire) || ''}"
