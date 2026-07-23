@@ -5,7 +5,7 @@ DWH Azure PostgreSQL (`achat.*`), API FastAPI + frontend, alimentation email-fir
 (Gmail). Projet data analytique en amont du DWH MyReport.
 
 > **Statut (22/07/2026) :** applicatif déployé sur le poste de Marlène --
-> dépassé le stade POC (8 onglets opérationnels, cf. section Fonctionnalités).
+> dépassé le stade POC (10 onglets opérationnels, cf. section Fonctionnalités).
 > Toute nouvelle fonctionnalité prod reste validée avec le métier avant
 > généralisation. Coordination : e.georgeon@tb-groupe.fr (Supply Chain),
 > Marlène Montbrizon (Responsable Achats).
@@ -21,20 +21,23 @@ rendant fiable et interrogeable côté DWH. FUSEAU est le pont provisoire ;
 l'objectif final est de réintégrer cette donnée nativement dans Sylob (API en
 écriture / champs personnalisés), pas de maintenir un datastore parallèle.
 
-## Fonctionnalités (8 onglets, tous opérationnels)
+## Fonctionnalités (10 onglets, tous opérationnels)
 
 Dashboard · Commandes · Fournisseurs · Artwork · Prévisionnel (financier) ·
-Conteneurs · Qualité · Fiche Achat (Phase A, pré-rempli).
+Conteneurs · Promo/Opé · Qualité · Article (fiche 360°) · Fiche Achat (Phase A,
+pré-rempli).
 
 Endpoints clés (`app/main.py`) : `/api/kpis`, `/api/commandes` (+ annotation),
-`/api/fournisseurs` (+ historique-prix), `/api/artwork`, `/api/previsionnel`
-(cash_echeances + par_conteneur), `/api/conteneurs`, `/api/qualite` (+
-fournisseurs), `/api/health`.
+`/api/fournisseurs` (+ historique-prix), `/api/produit/{code_article}` (fiche
+Article 360°, fusionne produit + nomenclature + artwork + qualité),
+`/api/artwork`, `/api/previsionnel` (cash_echeances + par_conteneur),
+`/api/conteneurs`, `/api/qualite` (+ fournisseurs), `/api/health`.
+Promo/Opé est dérivé côté frontend (filtre `op_client_appro` sur
+`/api/commandes`, pas d'endpoint dédié).
 
-Reste à faire (non couvert) : onglets Article et Promo (périmètres validés en
-démo, pas construits), Fiche Achat Phase B (génération PDF/xlsx), détection
-non-conformité via mail Eric T, Design System TB pas encore appliqué au
-frontend (encore orange maison + Calibri/Segoe UI).
+Reste à faire (non couvert) : Fiche Achat Phase B (génération PDF/xlsx),
+détection non-conformité via mail Eric T, Design System TB pas encore
+appliqué au frontend (encore orange maison + Calibri/Segoe UI).
 
 ## Démarrage rapide
 

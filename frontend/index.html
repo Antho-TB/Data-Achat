@@ -124,6 +124,7 @@ button { cursor: pointer; }
 .header-sub { font-size: 12px; color: #a8c0d8; }
 .header-spacer { flex: 1; }
 .header-db { font-size: 11px; color: #a8c0d8; }
+.header-source { font-size: 11px; color: #a8c0d8; margin-right: 18px; max-width: 260px; text-align: right; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: #6b7280; display: inline-block; margin-right: 4px; }
 .dot.ok { background: var(--status-success); }
 .dot.err { background: var(--status-danger); }
@@ -457,6 +458,9 @@ button { cursor: pointer; }
     <div class="header-sub">Pilotage Import · Service Achats · Chine ↔ France</div>
   </div>
   <div class="header-spacer"></div>
+  <div class="header-source" id="header-source" title="">
+    <span style="cursor:help;">ⓘ Source</span>
+  </div>
   <div class="header-db">
     <span class="dot" id="db-dot"></span>
     <span id="db-status">Connexion…</span>
@@ -1259,12 +1263,31 @@ const loaded = new Set();
   });
 })();
 
+// Provenance des données par onglet (cf. docs/modele_semantique.md).
+// Statique pour l'instant (v1) -- un badge par ligne avec la vraie source_fichier
+// est possible pour Conteneurs/Qualité/Artwork (colonne déjà en base), reste à
+// brancher côté API si besoin d'un niveau de détail plus fin.
+const SOURCE_INFO = {
+  dashboard:     "Agrégé : IMPORT 2026.xlsx (Excel Andréa) + Sylob V25 + Gmail (BL, threads événements)",
+  commandes:     "Source : IMPORT 2026.xlsx (Excel Andréa), full-refresh ETL -- jamais édité en direct",
+  fournisseurs:  "Source : dérivé de commande (Excel) + Sylob V25 (CA 3 ans, vue_commande_achat)",
+  artwork:       "Source : gsheet \"Suivi des artworks-import\" (Clarisse), lecture Drive",
+  previsionnel:  "Source : dérivé de commande (Excel) + ot_transport (gsheet SUIVI MARITIME, transitaire QUALITAIR)",
+  conteneurs:    "Source : gsheet SUIVI MARITIME TARRERIAS 2026 (transitaire) + PJ Gmail (BL, tâche planifiée poste Marlène)",
+  promo:         "Source : dérivé de commande (Excel), colonne op_client_appro",
+  qualite:       "Source : IMPORT (MAT/SP) + Drive ANALYSES ET INSPECTIONS (rapports DEKRA/SPECTRO)",
+  article:       "Source : Matrice TB Import.xlsx + pull direct Sylob V25 (dimensions/prix) + gsheet artwork + Drive qualité",
+  fiche:         "Source : pré-remplissage depuis achat.* (Excel + Sylob + Gmail selon le champ) -- formulaire Phase A",
+};
+
 function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach((b, i) => {
     b.classList.toggle('active', Object.keys(loaders)[i] === name);
   });
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
+  const src = document.getElementById('header-source');
+  if (src) src.title = SOURCE_INFO[name] || '';
   if (!loaded.has(name)) {
     loaded.add(name);
     loaders[name]();
@@ -2497,6 +2520,7 @@ checkHealth();
 setInterval(checkHealth, 30000);
 loadDashboard();
 loaded.add('dashboard');
+document.getElementById('header-source').title = SOURCE_INFO.dashboard;
 
 // 🎨🎨🎨 TRI DES TABLEAUX (DOM) 🎨🎨🎨
 document.addEventListener('click', function(e) {

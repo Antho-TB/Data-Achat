@@ -225,6 +225,39 @@ disparaître dans Sylob). Deux mécanismes suffisent :
   ne pas écraser le marqueur d'un autre job d'enrichissement.
   Sql : `sql/20260702_source_dimensions_produit.sql`.
 
+### ⚠️ Fiabilité de la clé `code_article` côté Sylob (vérifié 23/07)
+
+Vérification directe sur `tarrerias_production_dwh` (schéma
+`TARRERIAS_SE_TARRERIAS_BONJEAN_Article`, table `af_article`), suite à une
+question d'Antho sur la régénération de l'ERD : **`code_article` n'est PAS la
+clé primaire réelle côté Sylob.**
+
+- **PK native Sylob** : `id_article` (surrogate, ex.
+  `4028e68a57ab42270157aeb7c30b473a`) — confirmé par introspection
+  `information_schema.table_constraints` sur le schéma société. Aucune
+  contrainte `UNIQUE` sur `code_article`.
+- **`code_article` est dupliqué en pratique** : 5 groupes / 16 lignes sur 9885
+  articles (0,16 %) partagent le même `code_article` pour des désignations
+  totalement différentes (ex. `10300019` → "BLOC MAGNETIQUE 5 COUTEAUX...",
+  "PAIN", "ANNULER" sur 5 `id_article` distincts — recyclage de code dans le
+  temps, pattern ERP classique).
+- **`code_gtin_13` (EAN13) encore moins fiable** : 38 groupes de doublons.
+- **Impact FUSEAU** : `enrich_from_sylob.py` matche par `code_article` (fallback
+  EAN13) et construit un dict `{code_article: data}` — en cas de doublon
+  source, la dernière ligne lue écrase silencieusement les précédentes, sans
+  log d'erreur. Pour les ~16 articles concernés (et potentiellement plus via
+  le fallback EAN), l'enrichissement `sylob_last_price`/dimensions peut donc
+  provenir du **mauvais** article source, sans qu'aucune alerte ne le
+  signale aujourd'hui.
+- **Correction à porter** : le skill `sylob-dwh` documente `af_article` comme
+  "PK: code article" — c'est une clé fonctionnelle documentée à la main, pas
+  une contrainte de base réellement enforced. À corriger dans une prochaine
+  itération du skill.
+- **Action recommandée (non faite à ce stade)** : durcir
+  `enrich_from_sylob.py` pour détecter les `code_article` ambigus côté Sylob
+  (plusieurs `id_article` pour un même code) et les exclure du matching
+  automatique plutôt que de prendre arbitrairement la dernière ligne.
+
 ### 🔍 Audit Sylob V25 détaillé (2026-07-02, directive Emmanuelle) — FINDING MAJEUR
 
 Audit mené sur `tarrerias_production_dwh` (192.168.102.41:5432, V25), société `TARRERIAS_SE_TARRERIAS_BONJEAN`, schémas `Achat`/`Article`/`Fournisseur`/`Qualite`/`Concevoir`/`Finances`.
