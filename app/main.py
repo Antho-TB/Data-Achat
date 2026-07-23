@@ -675,6 +675,38 @@ def get_previsionnel():
             """))
             par_conteneur = rows_to_dicts(r3)
 
+            # B/L en attente ou bloques + paiement, groupes par CONTENEUR puis
+            # FOURNISSEUR (retours metier : "groupes par conteneur puis fournisseur"
+            # ET "vue deja-paye par fournisseur ET conteneur/BL" -- une seule vue
+            # groupee sert les 2 besoins, pas 2 requetes redondantes). "En attente" =
+            # pas encore livre ; "bloque" = en retard ET pas encore parti (meme
+            # definition que la carte Actions prioritaires du Dashboard).
+            bl_bloques = rows_to_dicts(conn.execute(text(f"""
+                SELECT
+                    c.n_conteneur,
+                    MAX(ot.n_bl)                              AS n_bl,
+                    c.fournisseur,
+                    COUNT(DISTINCT c.po_number)                AS nb_po,
+                    COUNT(*)                                   AS nb_articles,
+                    ROUND(SUM(CASE WHEN c.code_article IS NULL THEN COALESCE(c.total_prix, 0)
+                                   ELSE COALESCE(c.prix_unitaire * c.quantite, 0) END), 2) AS valeur,
+                    MAX(COALESCE(ot.etd_reel, c.etd_confirme)) AS etd,
+                    MAX(ot.eta)                                AS eta,
+                    COUNT(*) FILTER (WHERE v.est_en_retard AND NOT v.est_parti) AS nb_bloques,
+                    BOOL_OR(v.est_en_retard AND NOT v.est_parti)               AS est_bloque,
+                    COUNT(*) FILTER (WHERE v.est_a_payer_en_retard)                       AS nb_a_payer_retard,
+                    COUNT(*) FILTER (WHERE v.est_a_payer AND NOT v.est_a_payer_en_retard) AS nb_a_payer,
+                    COUNT(*) FILTER (WHERE NOT v.est_a_payer)                             AS nb_paye,
+                    ROUND(SUM(CASE WHEN v.est_a_payer THEN v.montant ELSE 0 END), 2)      AS valeur_a_payer
+                FROM {SCHEMA}.commande c
+                LEFT JOIN {SCHEMA}.ot_transport ot ON ot.n_conteneur = c.n_conteneur
+                LEFT JOIN {SCHEMA}.v_previsionnel v ON v.id = c.id
+                WHERE c.n_conteneur IS NOT NULL AND c.n_conteneur <> ''
+                  AND c.statut NOT IN ('Livrée', 'Annulée')
+                GROUP BY c.n_conteneur, c.fournisseur
+                ORDER BY c.n_conteneur, nb_bloques DESC
+            """)))
+
             # Echeancier de paiement (financier / achat de dollar).
             # Regle metier 07/07 : le paiement se declenche au BL, avec 15 j de
             # tolerance -> date d'echeance = ETD reel (BL) sinon ETD confirme, + 15 j.
@@ -706,6 +738,7 @@ def get_previsionnel():
             return {
                 "planning_mensuel": planning,
                 "par_conteneur": par_conteneur,
+                "bl_par_conteneur_fournisseur": bl_bloques,
                 "cash_echeances": cash,
             }
         except Exception as e:

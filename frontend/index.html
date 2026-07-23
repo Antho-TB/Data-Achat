@@ -603,6 +603,9 @@ button { cursor: pointer; }
     <div id="prev-mesures" class="artwork-stats"></div>
     <div class="section-header"><span class="section-title">Par fournisseur (à payer / inspection / parti / retard)</span></div>
     <div id="prev-frs"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
+    <div class="section-header"><span class="section-title">B/L en attente ou bloqués — par conteneur puis fournisseur</span></div>
+    <p style="font-size:12px;color:var(--muted);margin:4px 0 8px;">« Bloqué » = en retard de livraison ET pas encore parti. Paiement : même logique que l'onglet Conteneurs (Payé / À payer / À payer en retard), ventilée ici par fournisseur au sein de chaque conteneur.</p>
+    <div id="prev-bl-bloques"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
   </div>
 
   <!-- CONTENEURS -->
@@ -2393,10 +2396,61 @@ async function loadPrevisionnel() {
   try {
     const r = await apiFetch('/api/previsionnel');
     renderCash(r.cash_echeances || []);
+    renderBlBloques(r.bl_par_conteneur_fournisseur || []);
     loadPrevisionnelMesures();
   } catch (e) {
     toast(e.message, true);
   }
+}
+
+// B/L en attente/bloques, groupes par conteneur puis fournisseur (retour metier
+// 23/07). Sert aussi la vue "deja-paye" croisee fournisseur x conteneur : les
+// colonnes Paiement sont ventilees ligne par ligne (1 ligne = 1 fournisseur au
+// sein d'un conteneur), la ligne d'en-tete conteneur agrege le total.
+function renderBlBloques(rows) {
+  const el = document.getElementById('prev-bl-bloques');
+  if (!rows.length) { el.innerHTML = '<div class="empty">Aucun B/L en attente</div>'; return; }
+  const byConteneur = {};
+  rows.forEach(r => {
+    const k = r.n_conteneur || '—';
+    (byConteneur[k] = byConteneur[k] || []).push(r);
+  });
+  let html = `<div class="table-wrap"><table>
+    <thead><tr>
+      <th>Conteneur / Fournisseur</th><th>N° BL</th>
+      <th title="Nombre de PO.">PO · nb</th><th title="Nombre de lignes article.">Art. · nb</th>
+      <th title="Valeur des lignes, en USD.">Valeur · USD</th>
+      <th>ETD</th><th>ETA</th>
+      <th title="En retard de livraison ET pas encore parti.">Bloqué</th>
+      <th title="Payé / À payer / À payer en retard, ventilé pour ce fournisseur au sein de ce conteneur.">Paiement</th>
+    </tr></thead><tbody>`;
+  Object.entries(byConteneur).forEach(([cont, frsRows]) => {
+    const totPo = new Set(), totArt = frsRows.reduce((s,r)=>s+(r.nb_articles||0),0);
+    const totVal = frsRows.reduce((s,r)=>s+(Number(r.valeur)||0),0);
+    const anyBloque = frsRows.some(r => r.est_bloque);
+    html += `<tr style="background:var(--sand,#FAF6EF);font-weight:600;">
+      <td colspan="4">📦 ${esc(cont)}</td>
+      <td>${fmt(totVal, 'money')}</td>
+      <td colspan="2"></td>
+      <td>${anyBloque ? '<span class="badge badge-red">Oui</span>' : '<span class="badge badge-green">Non</span>'}</td>
+      <td></td>
+    </tr>`;
+    frsRows.forEach(r => {
+      html += `<tr>
+        <td style="padding-left:24px;">${esc(r.fournisseur) || '—'}</td>
+        <td class="mono">${esc(r.n_bl) || '—'}</td>
+        <td style="text-align:right">${r.nb_po ?? 0}</td>
+        <td style="text-align:right">${r.nb_articles ?? 0}</td>
+        <td style="text-align:right">${fmt(r.valeur, 'money')}</td>
+        <td>${fmt(r.etd, 'date')}</td>
+        <td>${fmt(r.eta, 'date')}</td>
+        <td>${r.est_bloque ? `<span class="badge badge-red">${r.nb_bloques}</span>` : '<span class="badge badge-gray">-</span>'}</td>
+        <td>${conteneurPayBadge(r)}</td>
+      </tr>`;
+    });
+  });
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
