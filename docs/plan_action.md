@@ -66,7 +66,7 @@
 - [ ] Suivi commande : différencier **statut de paiement** (payé/non payé) de l'**état de la commande** (conflaté aujourd'hui dans `statut`).
 - [ ] Prévisionnel : vue prioritaire **par livraison/conteneur/mois** ; B/L en attente ou bloqués groupés par conteneur puis fournisseur ; vue "déjà payé" par fournisseur ET conteneur/BL ; alertes changement ETA remontées au Dashboard (mise en forme progressive orange→rouge→violet selon nb de changements).
 - [ ] Qualité : brancher le parsing numéro de rapport → code article une fois la convention actée avec le service Qualité (cf. [DEC] ci-dessus).
-- [ ] Article : colonne **"Artwork (Oui/Non)"** (jointure `achat.v_artwork`).
+- [x] Article : colonne "Artwork (Oui/Non)" -- deja couvert (et depasse) par le bloc Artwork complet de la fiche 360 (statut/priorite/valideur/dates, commit `1db4ac1`) ; ajoute le 23/07 l'indicateur explicite "Non" quand l'article n'en a pas (`4e304f9`).
 - [ ] Fiche Achat (aperçu live construit cette session) : emplacement du marquage (zone produit), bloc légal AGEC intégral, N° commande + N° lot, HO Code (optionnel, distributeurs type Carrefour), clarifier Name (Sylob EN) vs Désignation FR, vrai logo Design System (asset au lieu du bloc texte "TB").
 - [ ] Artwork : coller aux noms de colonnes/formats de date du gsheet source `LIS-CON-28-0` ; permettre l'ajout de nouvelles lignes depuis FUSEAU (écrire dans `artwork_statut`, pas juste consulter) ; aperçu + lien cliquable vers le document Drive par ligne.
 - [ ] Transverse : extractions régulières (gsheet/Excel/PDF) au lieu d'exports manuels ponctuels ; passe de vérification systématique Sylob (article/fournisseur/EAN) au-delà du ponctuel du 02/07.
