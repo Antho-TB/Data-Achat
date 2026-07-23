@@ -727,13 +727,20 @@ def get_conteneurs():
     engine = get_engine()
     with engine.connect() as conn:
         try:
+            # Axe PAIEMENT par conteneur (retour metier : "vue deja paye par
+            # conteneur/BL") -- reutilise v_previsionnel.est_a_payer(_en_retard),
+            # deja calcule ligne a ligne, agrege ici au grain conteneur.
             agg = f"""
                 SELECT c.n_conteneur,
                        COUNT(DISTINCT c.po_number) AS nb_po,
                        COUNT(*)                    AS nb_articles,
                        ROUND(SUM(CASE WHEN c.code_article IS NULL THEN COALESCE(c.total_prix, 0)
-                                      ELSE COALESCE(c.prix_unitaire * c.quantite, 0) END), 2) AS valeur
+                                      ELSE COALESCE(c.prix_unitaire * c.quantite, 0) END), 2) AS valeur,
+                       COUNT(*) FILTER (WHERE v.est_a_payer_en_retard)          AS nb_a_payer_retard,
+                       COUNT(*) FILTER (WHERE v.est_a_payer AND NOT v.est_a_payer_en_retard) AS nb_a_payer,
+                       COUNT(*) FILTER (WHERE NOT v.est_a_payer)               AS nb_paye
                 FROM {SCHEMA}.commande c
+                LEFT JOIN {SCHEMA}.v_previsionnel v ON v.id = c.id
                 WHERE c.statut <> 'Annulée' AND c.n_conteneur IS NOT NULL AND c.n_conteneur <> ''
                 GROUP BY c.n_conteneur
             """
@@ -742,7 +749,10 @@ def get_conteneurs():
                        ot.lieu_livraison AS destinataire,
                        ot.etd_reel AS etd, ot.eta, ot.date_livraison,
                        COALESCE(a.nb_po, 0) AS nb_po, COALESCE(a.nb_articles, 0) AS nb_articles,
-                       COALESCE(a.valeur, 0) AS valeur
+                       COALESCE(a.valeur, 0) AS valeur,
+                       COALESCE(a.nb_a_payer_retard, 0) AS nb_a_payer_retard,
+                       COALESCE(a.nb_a_payer, 0)        AS nb_a_payer,
+                       COALESCE(a.nb_paye, 0)           AS nb_paye
                 FROM {SCHEMA}.ot_transport ot
                 LEFT JOIN ({agg}) a ON a.n_conteneur = ot.n_conteneur
                 ORDER BY COALESCE(ot.eta, ot.etd_reel) DESC NULLS LAST
