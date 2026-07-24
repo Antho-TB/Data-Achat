@@ -596,16 +596,16 @@ button { cursor: pointer; }
       <span class="section-title">Échéancier de paiement (à payer, USD) — échéance = ETD du BL + 15 j</span>
       <button class="btn btn-ghost btn-sm" onclick="loadPrevisionnel()">&#8635; Actualiser</button>
     </div>
-    <div style="height:200px;margin-bottom:16px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:12px;">
+    <div style="height:260px;margin-bottom:16px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:12px;">
       <canvas id="chart-cash"></canvas>
     </div>
       <div class="section-header"><span class="section-title">Mesures prévisionnelles</span></div>
     <div id="prev-mesures" class="artwork-stats"></div>
-    <div class="section-header"><span class="section-title">Par fournisseur (à payer / inspection / parti / retard)</span></div>
-    <div id="prev-frs"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
     <div class="section-header"><span class="section-title">B/L en attente ou bloqués — par conteneur puis fournisseur</span></div>
     <p style="font-size:12px;color:var(--muted);margin:4px 0 8px;">« Bloqué » = en retard de livraison ET pas encore parti. Paiement : même logique que l'onglet Conteneurs (Payé / À payer / À payer en retard), ventilée ici par fournisseur au sein de chaque conteneur.</p>
     <div id="prev-bl-bloques"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
+    <div class="section-header"><span class="section-title">Par fournisseur (à payer / inspection / parti / retard)</span></div>
+    <div id="prev-frs"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
   </div>
 
   <!-- CONTENEURS -->
@@ -2395,7 +2395,7 @@ async function openArtworkCommentaire(codeArticle, field, current) {
 async function loadPrevisionnel() {
   try {
     const r = await apiFetch('/api/previsionnel');
-    renderCash(r.cash_echeances || []);
+    renderCash(r.cash_par_mois_conteneur || []);
     renderBlBloques(r.bl_par_conteneur_fournisseur || []);
     loadPrevisionnelMesures();
   } catch (e) {
@@ -2593,22 +2593,54 @@ function renderConteneursTable(rows) {
 }
 
 let chartCash = null;
+// Echeancier de paiement empile par conteneur (retour metier 23/07 : "decoupe
+// les barres histogramme par conteneur, pour se rendre compte de la valeur
+// par conteneur par mois"). 1 barre = 1 mois d'echeance (ETD BL + 15j), 1
+// segment empile = 1 conteneur. Cap aux N conteneurs les plus lourds pour
+// garder une legende lisible -- le reste est regroupe en "Autres".
+const MAX_CONTENEURS_CASH = 8;
 function renderCash(rows) {
   const ctx = document.getElementById('chart-cash');
   if (chartCash) chartCash.destroy();
-  // Tranche "En retard" en rouge, le reste en bleu.
-  const colors = rows.map(r => (r.tranche || '').startsWith('1.') ? TB.red : TB.navy);
+  if (!rows.length) {
+    if (chartCash) { chartCash.destroy(); chartCash = null; }
+    return;
+  }
+  const mois = [...new Set(rows.map(r => r.mois))].sort();
+  const totalParConteneur = {};
+  rows.forEach(r => { totalParConteneur[r.n_conteneur] = (totalParConteneur[r.n_conteneur] || 0) + Number(r.valeur || 0); });
+  const topConteneurs = Object.entries(totalParConteneur)
+    .sort((a, b) => b[1] - a[1]).slice(0, MAX_CONTENEURS_CASH).map(([c]) => c);
+  const isTop = new Set(topConteneurs);
+  const series = [...topConteneurs, 'Autres'];
+
+  const datasets = series.map((cont, i) => {
+    const data = mois.map(m => {
+      return rows
+        .filter(r => r.mois === m && (cont === 'Autres' ? !isTop.has(r.n_conteneur) : r.n_conteneur === cont))
+        .reduce((s, r) => s + Number(r.valeur || 0), 0);
+    });
+    return {
+      label: cont, data,
+      backgroundColor: cont === 'Autres' ? '#c9c9c9' : TB_SERIES[i % TB_SERIES.length],
+      stack: 'echeancier', borderRadius: 2,
+    };
+  }).filter(ds => ds.data.some(v => v > 0));
+
   chartCash = new Chart(ctx, {
     type: 'bar',
-    data: {
-      labels: rows.map(r => (r.tranche || '').replace(/^\d+\.\s*/, '')),
-      datasets: [{ label: 'À payer (USD)', data: rows.map(r => Number(r.montant || 0)), backgroundColor: colors, borderRadius: 3 }]
-    },
+    data: { labels: mois, datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => fmt(c.raw, 'money') } } },
-      scales: { y: { beginAtZero: true, title: { display: true, text: 'USD' } } }
-    }
+      plugins: {
+        legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: c => `${c.dataset.label} : ${fmt(c.raw, 'money')}` } },
+      },
+      scales: {
+        x: { stacked: true },
+        y: { stacked: true, beginAtZero: true, title: { display: true, text: 'USD' } },
+      },
+    },
   });
 }
 

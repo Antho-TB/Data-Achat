@@ -735,11 +735,30 @@ def get_previsionnel():
                 ORDER BY tranche
             """)))
 
+            # Meme echeancier, ventile par MOIS d'echeance x CONTENEUR (retour metier
+            # 23/07 : "decoupe les barres histogramme par conteneur, pour se rendre
+            # compte de la valeur par conteneur par mois") -- alimente un bar chart
+            # empile (1 barre par mois, 1 segment par conteneur).
+            cash_par_mois_conteneur = rows_to_dicts(conn.execute(text(f"""
+                SELECT
+                    TO_CHAR((COALESCE(ot.etd_reel, c.etd_confirme) + 15), 'YYYY-MM') AS mois,
+                    COALESCE(NULLIF(NULLIF(TRIM(c.n_conteneur), ''), '/'), 'Sans conteneur') AS n_conteneur,
+                    ROUND(SUM(CASE WHEN c.code_article IS NULL THEN COALESCE(c.total_prix, 0)
+                                   ELSE COALESCE(c.prix_unitaire * c.quantite, 0) END), 2) AS valeur
+                FROM {SCHEMA}.commande c
+                LEFT JOIN {SCHEMA}.ot_transport ot ON ot.n_conteneur = c.n_conteneur
+                WHERE c.statut <> 'Annulée' AND c.date_paiement IS NULL
+                  AND COALESCE(ot.etd_reel, c.etd_confirme) IS NOT NULL
+                GROUP BY 1, 2
+                ORDER BY 1, 2
+            """)))
+
             return {
                 "planning_mensuel": planning,
                 "par_conteneur": par_conteneur,
                 "bl_par_conteneur_fournisseur": bl_bloques,
                 "cash_echeances": cash,
+                "cash_par_mois_conteneur": cash_par_mois_conteneur,
             }
         except Exception as e:
             raise internal_error(e)
