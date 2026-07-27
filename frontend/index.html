@@ -2058,14 +2058,14 @@ function fieldRow(label, val, unit) {
   return `<div class="fiche-row" style="margin-bottom:4px;"><label style="width:180px;">${esc(label)}</label><span>${esc(val)}${unit ? ' ' + unit : ''}</span></div>`;
 }
 
-function renderProduitFiche(d) {
-  if (!d) return '';
-  const p = d.produit || {};
-  const n = d.nomenclature || {};
-  const aw = d.artwork;
-  const cv = d.cycle_vie;
-  const qhist = d.qualite || [];
-  const composants = d.composants || [];
+function renderProduitFiche(data) {
+  if (!data) return '';
+  const p = data.produit || {};
+  const n = data.nomenclature || {};
+  const aw = data.artwork;
+  const cv = data.cycle_vie;
+  const qhist = data.qualite || [];
+  const composants = data.composants || [];
   const g = (obj, k) => obj && obj[k] != null && obj[k] !== '' ? obj[k] : null;
   const pick = (...vals) => vals.find(v => v !== null && v !== undefined && v !== '');
 
@@ -2141,6 +2141,7 @@ function renderProduitFiche(d) {
       ${fieldRow('Valideur', aw.valideur)}
       ${fieldRow('Dernière version', aw.derniere_version)}
       ${fieldRow('Dernière validation', aw.date_validation)}
+      ${(aw.drive_url || aw.drive_file_id) ? `<a href="${esc(aw.drive_url || 'https://drive.google.com/file/d/' + aw.drive_file_id + '/view')}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="margin-left:auto" title="Ouvrir le fichier original dans Google Drive">🎨 Ouvrir l'artwork (Drive) 🔗</a>` : ''}
     </div>` : `
     <div class="section-header" style="margin-top:14px;"><span class="section-title">Artwork (design)</span></div>
     <div class="fiche-row"><label style="width:180px;">Artwork</label><span class="badge badge-gray">Non</span></div>`;
@@ -2152,6 +2153,31 @@ function renderProduitFiche(d) {
       ${fieldRow('Qté en commande', cv.quantite_en_commande)}
     </div>` : '';
 
+  const qdocs = data?.qualite_docs || [];
+  const qana = data?.qualite_analyses || [];
+  const docsBlock = (qdocs.length || qana.length) ? `
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Rapports & Analyses Qualité (${qdocs.length + qana.length})</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Type</th><th>Réf / Nom</th><th>PO#</th><th>Date / Stade</th><th>Conformité</th><th>Document</th></tr></thead>
+      <tbody>
+        ${qdocs.map(d => `<tr>
+          <td><span class="badge badge-blue">${esc(d.type || 'Rapport')}</span></td>
+          <td class="mono">${esc(d.ref_rapport || d.fichier || '—')}</td>
+          <td class="mono">${esc(d.po_number || '—')}</td>
+          <td>${esc(d.stade || '—')}</td>
+          <td>-</td>
+          <td><a href="${esc(d.drive_url || 'https://drive.google.com/file/d/' + d.drive_file_id + '/view')}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="Ouvrir le PDF dans Google Drive">📎 Ouvrir PDF 🔗</a></td>
+        </tr>`).join('')}
+        ${qana.map(a => `<tr>
+          <td><span class="badge badge-green">Analyse Spectro</span></td>
+          <td class="mono">${esc(a.ref_rapport || a.sample_name || '—')}</td>
+          <td class="mono">${esc(a.po_number || '—')}</td>
+          <td>${esc(a.date_mesure || '—')}</td>
+          <td>${badge(a.conformite)}</td>
+          <td><a href="${esc(a.drive_url || 'https://drive.google.com/file/d/' + a.drive_file_id + '/view')}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="Ouvrir le rapport dans Google Drive">📎 Ouvrir Rapport 🔗</a></td>
+        </tr>`).join('')}
+      </tbody></table></div>` : '';
+
   const qualiteBlock = qhist.length ? `
     <div class="section-header" style="margin-top:14px;"><span class="section-title">Historique qualité (${qhist.length})</span></div>
     <div class="table-wrap"><table>
@@ -2160,15 +2186,15 @@ function renderProduitFiche(d) {
         <td class="mono">${esc(q.po_number)||'-'}</td>
         <td>${esc(q.fournisseur)||'-'}</td>
         <td>${inspBadge(q.resultat_inspection)} <small>${esc(q.date_inspection)||''}</small></td>
-        <td class="mono">${esc(q.ref_rapport)||'-'}</td>
+        <td class="mono">${q.ref_rapport ? (q.drive_url ? `<a href="${esc(q.drive_url)}" target="_blank" rel="noopener" title="Ouvrir dans Drive">${esc(q.ref_rapport)} 📎</a>` : (q.drive_file_id ? `<a href="https://drive.google.com/file/d/${esc(q.drive_file_id)}/view" target="_blank" rel="noopener" title="Ouvrir dans Drive">${esc(q.ref_rapport)} 📎</a>` : esc(q.ref_rapport))) : '-'}</td>
         <td>${esc(q.reception)||'-'}</td>
         <td class="mono">${esc(q.ncr)||'-'}</td>
       </tr>`).join('')}</tbody></table></div>` : '';
 
-  if (!p.code_article && !n.code_article && !aw && !cv && !qhist.length) {
+  if (!p.code_article && !n.code_article && !aw && !cv && !qhist.length && !qdocs.length && !qana.length) {
     return '<div class="empty">Aucune fiche 360° trouvée (ni Sylob/Matrice, ni artwork, ni qualité) pour cet article.</div>';
   }
-  return identite + logistique + matiere + composantsBlock + artworkBlock + cycleBlock + qualiteBlock;
+  return identite + logistique + matiere + composantsBlock + artworkBlock + cycleBlock + docsBlock + qualiteBlock;
 }
 
 async function loadArticle() {
@@ -2312,7 +2338,7 @@ function renderQualite(rows, warning) {
       <td>${esc(r.echantillon_conformite)||'-'}</td>
       <td>${esc(r.production_bat)||'-'}</td>
       <td>${inspBadge(r.resultat_inspection)} <small>${esc(r.date_inspection)||''}</small></td>
-      <td class="mono">${r.ref_rapport ? (r.drive_url ? `<a href="${esc(r.drive_url)}" target="_blank" rel="noopener" title="Ouvrir le rapport dans Drive">${esc(r.ref_rapport)} 📎</a>` : esc(r.ref_rapport)) : '-'}</td>
+      <td class="mono">${r.ref_rapport ? (r.drive_url ? `<a href="${esc(r.drive_url)}" target="_blank" rel="noopener" title="Ouvrir le rapport dans Drive">${esc(r.ref_rapport)} 📎</a>` : (r.drive_file_id ? `<a href="https://drive.google.com/file/d/${esc(r.drive_file_id)}/view" target="_blank" rel="noopener" title="Ouvrir le rapport dans Drive">${esc(r.ref_rapport)} 📎</a>` : esc(r.ref_rapport))) : '-'}</td>
       <td>${esc(r.conformite)||'-'}</td>
       <td>${esc(r.reception)||'-'}</td>
       <td class="mono">${esc(r.ncr)||'-'}</td>
@@ -2374,11 +2400,12 @@ async function loadArtwork() {
     if (r.warning) {
       document.getElementById('artwork-stats').innerHTML =
         `<div style="color:var(--yellow);font-size:13px;padding:8px;">⚠️ ${esc(r.warning)}</div>`;
-    } else {
-      renderArtworkStats(_artwork);
-      renderArtworkCharts(_artwork);
-      wireArtworkValideurSelect(_artwork);
+      document.getElementById('table-artwork').innerHTML = '';
+      return;
     }
+    renderArtworkStats(_artwork);
+    renderArtworkCharts(_artwork);
+    wireArtworkValideurSelect(_artwork);
     renderArtwork(_artwork);
   } catch (e) {
     document.getElementById('table-artwork').innerHTML =
