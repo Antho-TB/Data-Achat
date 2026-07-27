@@ -46,5 +46,6 @@ if __name__ == "__main__":
         host=Config.API_HOST,
         port=Config.API_PORT,
         reload=Config.API_RELOAD,  # API_RELOAD=1 dans .env pour le dev uniquement
+        reload_dirs=["app", "frontend"] if Config.API_RELOAD else None,
         log_level="info",
     )
