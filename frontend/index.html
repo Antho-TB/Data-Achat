@@ -893,6 +893,7 @@ function fmt(v, type) {
 }
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
+const loaded = new Set();
 const loaders = {
   dashboard:    loadDashboard,
   commandes:    loadCommandes,
@@ -905,6 +906,23 @@ const loaders = {
   article:      loadArticle,
   fiche:        loadFiche,
 };
+
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  const btn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick')?.includes("'" + tabId + "'"));
+  if (btn) btn.classList.add('active');
+  const panel = document.getElementById('tab-' + tabId);
+  if (panel) panel.classList.add('active');
+  if (typeof SOURCE_INFO !== 'undefined' && SOURCE_INFO && SOURCE_INFO[tabId]) {
+    const hs = document.getElementById('header-source');
+    if (hs) hs.title = SOURCE_INFO[tabId];
+  }
+  if (!loaded.has(tabId) && loaders[tabId]) {
+    loaders[tabId]();
+    loaded.add(tabId);
+  }
+}
 
 // ── Fiche Achat (Purchase Sheet, gabarit FOR-ACH-03-12) ─────────────────────
 // Reconstruit le 22/07 a partir des VRAIS gabarits Andrea (extraction openpyxl
