@@ -59,9 +59,9 @@ class Config:
     # sslmode : "require" pour Azure (defaut), "disable" pour un PostgreSQL local de secours.
     PG_SSLMODE: str = os.getenv("PG_SSLMODE", "require")
 
-    # DWH Sylob On-Premise (tarrerias_production_dwh)
-    SYLOB_HOST: str = os.getenv("SYLOB_HOST", "192.168.102.21")
-    SYLOB_PORT: int = int(os.getenv("SYLOB_PORT", "5433"))
+    # DWH Sylob On-Premise V25 (SRV_ERP_DATA -- tarrerias_production_dwh)
+    SYLOB_HOST: str = os.getenv("SYLOB_HOST", "192.168.102.41")
+    SYLOB_PORT: int = int(os.getenv("SYLOB_PORT", "5432"))
     SYLOB_DB: str = os.getenv("SYLOB_DB", "tarrerias_production_dwh")
     SYLOB_USER: str = os.getenv("SYLOB_USER", "")
     SYLOB_PASSWORD: str = os.getenv("SYLOB_PASSWORD", "")
