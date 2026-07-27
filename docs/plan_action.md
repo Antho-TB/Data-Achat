@@ -1,7 +1,8 @@
 # Plan d'action -- Système Data-Achat TB Groupe
 
 > Issu de la réunion de cadrage · 2026-06-01  
-> Mis à jour : **2026-07-23** (tache planifiee Windows + acces LAN Andrea pour la mise en prod du **mardi 28/07** ; voir commit `6751c07`). Le detail des decisions metier en attente est dans la section **"Retours demo 21/07 14h"** juste en dessous -- c'est la liste vivante, pas la section OAuth (obsolete, Antigravity abandonne).  
+> Mis à jour : **2026-07-23** (tache planifiee Windows + acces LAN Andrea pour la mise en prod du **mardi 28/07** ; voir commit `6751c07`). Le detail des decisions metier en attente est dans la section **"Retours demo 21/07 14h"** juste en dessous -- c'est la liste vivante, pas la section OAuth (obsolete, Antigravity abandonne).
+> **Mise en prod avancee au 23/07** (decision Antho) : passation ecrite pour le poste Marlene dans `docs/20260723_FUSEAU_Passation_MiseEnProd_PosteMarlene_v1.md` -- code a jour sur GitHub (`main` = `f8fd29d`), migrations SQL deja jouees par Antho, seul le mecanisme de sync du code vers le poste (git vs robocopy `A:\DATA\PARTAGE\Data-Achat`) restait a confirmer sur place.  
 > Périmètre : Achats Import · Utilisateurs finaux : Andréa, Marlène, Olivier, Eric, Charles, David, Jonatan, Julia, Emmanuelle
 
 ---
