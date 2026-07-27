@@ -2071,16 +2071,22 @@ function renderFrsDetailRows() {
   const q = (document.getElementById('frs-art') ? document.getElementById('frs-art').value : '').toLowerCase();
   const rows = _frsDetailRows.filter(r => !q
     || (r.code_article || '').toLowerCase().includes(q)
-    || (r.designation || '').toLowerCase().includes(q));
+    || (r.designation || '').toLowerCase().includes(q)
+    || (r.designation_fr || '').toLowerCase().includes(q)
+    || (r.designation_en || '').toLowerCase().includes(q)
+    || (r.ean13 || '').toLowerCase().includes(q)
+    || (r.po_number || '').toLowerCase().includes(q));
   document.getElementById('frs-detail-table').innerHTML = rows.length ? `<div class="table-wrap"><table>
-    <thead><tr><th>PO#</th><th>Article</th><th>Désignation</th><th>Prix</th><th>Date</th></tr></thead>
+    <thead><tr><th>PO#</th><th>Article</th><th>EAN13</th><th>Désignation FR</th><th>Désignation EN</th><th>Prix</th><th>Date</th></tr></thead>
     <tbody>${rows.map(r => `<tr>
       <td class="mono">${esc(r.po_number) || '-'}</td>
       <td class="mono">${esc(r.code_article) || '-'}</td>
-      <td>${esc(r.designation) || '-'}</td>
+      <td class="mono">${esc(r.ean13) || '-'}</td>
+      <td>${esc(r.designation_fr || r.designation) || '-'}</td>
+      <td style="color:var(--muted);font-style:italic;">${esc(r.designation_en) || '-'}</td>
       <td style="text-align:right">${r.prix != null ? Number(r.prix).toFixed(3) + ' $' : '-'}</td>
       <td>${fmt(r.date_mail, 'date')}</td>
-    </tr>`).join('')}</tbody></table></div>` : '<div class="empty">Aucun resultat</div>';
+    </tr>`).join('')}</tbody></table></div>` : '<div class="empty">Aucun résultat</div>';
 }
 
 async function loadFrsDetail(frs) {
@@ -2104,8 +2110,8 @@ async function loadFrsDetail(frs) {
 
     _frsDetailRows = rows;
     document.getElementById('frs-detail-content').innerHTML = `
-      <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Historique prix - 3 dernieres commandes par article - Source : ${src}</p>
-      <input id="frs-art" type="text" placeholder="Filtrer par article ou désignation..." oninput="renderFrsDetailRows()" style="margin-bottom:8px;width:260px;">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Historique prix - 3 dernières commandes par article - Source : ${src}</p>
+      <input id="frs-art" type="text" placeholder="Filtrer par article, EAN13, désignation (FR/EN) ou PO..." oninput="renderFrsDetailRows()" style="margin-bottom:8px;width:380px;">
       <div id="frs-detail-table"></div>`;
     renderFrsDetailRows();
   } catch (e) {

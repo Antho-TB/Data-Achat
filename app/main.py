@@ -482,11 +482,16 @@ def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
         try:
             # 3 dernieres commandes PAR ARTICLE (besoin metier : evolution recente du prix).
             # ROW_NUMBER fenetre par code_article, on garde les 3 plus recentes.
-            # LEFT JOIN produit : libelle metier (designation) -- retour demo 07/07.
+            # LEFT JOIN produit : ean13, designation_fr, designation_en -- retour 27/07.
             r = conn.execute(text(f"""
-                SELECT t.po_number, t.code_article, COALESCE(p.designation_fr, p.designation_en) AS designation, t.fournisseur, t.prix, t.date_mail
+                SELECT t.po_number, t.code_article,
+                       COALESCE(p.designation_fr, t.designation) AS designation_fr,
+                       p.designation_en,
+                       COALESCE(p.designation_fr, p.designation_en, t.designation) AS designation,
+                       p.ean13,
+                       t.fournisseur, t.prix, t.date_mail
                 FROM (
-                    SELECT po_number, code_article, fournisseur,
+                    SELECT po_number, code_article, designation, fournisseur,
                            prix_unitaire AS prix, date_commande AS date_mail,
                            ROW_NUMBER() OVER (PARTITION BY code_article
                                               ORDER BY date_commande DESC NULLS LAST) AS rn
