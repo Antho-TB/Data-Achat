@@ -649,9 +649,9 @@ def search_article(q: str = "", limit: int = 10):
             conds = ["code_article = :q"]
             if len(q) >= 2:
                 conds.append("(designation ILIKE :like OR libelle ILIKE :like)")
-            if q.isdigit() and len(q) >= 6:
-                conds.append("(code_gtin_13 = :q OR identifiant_edi = :q OR identifiant_edi2 = :q "
-                             "OR sup_ean14_pcb = :q OR sup_ean14_spcb = :q OR sup_ean14_palette = :q)")
+            if q.isdigit() and len(q) >= 4:
+                conds.append("(code_gtin_13 ILIKE :like OR identifiant_edi ILIKE :like OR identifiant_edi2 ILIKE :like "
+                             "OR sup_ean14_pcb ILIKE :like OR sup_ean14_spcb ILIKE :like OR sup_ean14_palette ILIKE :like)")
             where = " OR ".join(conds)
             sql = text(
                 "SELECT code_article, "
@@ -673,7 +673,7 @@ def search_article(q: str = "", limit: int = 10):
             sql_p = text(f"""
                 SELECT code_article, COALESCE(designation_fr, designation_en) AS designation, ean13
                 FROM {SCHEMA}.produit
-                WHERE code_article ILIKE :like OR designation_fr ILIKE :like OR designation_en ILIKE :like OR ean13 = :q
+                WHERE code_article ILIKE :like OR designation_fr ILIKE :like OR designation_en ILIKE :like OR ean13 ILIKE :like
                 LIMIT :lim
             """)
             rows_p = rows_to_dicts(conn.execute(sql_p, {"q": q, "like": like, "lim": lim}))
