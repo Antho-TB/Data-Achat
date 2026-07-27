@@ -2201,19 +2201,60 @@ function renderProduitFiche(data) {
   return identite + logistique + matiere + composantsBlock + artworkBlock + cycleBlock + docsBlock + qualiteBlock;
 }
 
+async function selectAndLoadArticle(code) {
+  document.getElementById('f-article-code').value = code;
+  return loadArticle();
+}
+
 async function loadArticle() {
-  const code = document.getElementById('f-article-code').value.trim();
+  const inputVal = document.getElementById('f-article-code').value.trim();
   const el = document.getElementById('article-content');
-  if (!code) {
-    el.innerHTML = '<div class="empty">Saisissez un code article pour voir sa fiche complète.</div>';
+  if (!inputVal) {
+    el.innerHTML = '<div class="empty">Saisissez un code article, un EAN ou une désignation pour voir sa fiche complète.</div>';
     return;
   }
-  el.innerHTML = '<div class="loader"><span class="spinner"></span>Chargement...</div>';
+  el.innerHTML = '<div class="loader"><span class="spinner"></span>Recherche en cours...</div>';
   try {
+    let targetCode = inputVal;
+
+    // Si la recherche contient du texte (désignation) ou n'est pas un code direct à 8 chiffres
+    if (!/^\d{8}$/.test(inputVal)) {
+      const searchRes = await apiFetch(`/api/search/article?q=${encodeURIComponent(inputVal)}&limit=15`);
+      const candidates = searchRes.data || [];
+      
+      if (candidates.length === 0) {
+        // Aucun candidat trouvé
+      } else if (candidates.length === 1) {
+        targetCode = candidates[0].code_article;
+      } else {
+        // Plusieurs articles correspondent à la désignation -> Affichage du sélecteur
+        el.innerHTML = `
+          <div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px;">
+            <div style="font-weight:600;font-size:14px;margin-bottom:10px;">🔍 ${candidates.length} articles correspondent à « ${esc(inputVal)} » :</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Code Article</th><th>Désignation</th><th>EAN13 / EDI</th><th>Action</th></tr></thead>
+                <tbody>
+                  ${candidates.map(c => `<tr>
+                    <td class="mono"><strong>${esc(c.code_article)}</strong></td>
+                    <td>${esc(c.designation || '—')}</td>
+                    <td class="mono">${esc(c.ean13 || c.edi || '—')}</td>
+                    <td>
+                      <button class="btn btn-ghost btn-sm" onclick="selectAndLoadArticle('${esc(c.code_article)}')">🔍 Voir la Fiche 360°</button>
+                    </td>
+                  </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>`;
+        return;
+      }
+    }
+
     const [hist, cmd, prod] = await Promise.all([
-      apiFetch(`/api/fournisseurs/all/historique-prix?code_article=${encodeURIComponent(code)}`),
-      apiFetch(`/api/commandes?code_article=${encodeURIComponent(code)}&limit=200`),
-      apiFetch(`/api/produit/${encodeURIComponent(code)}`),
+      apiFetch(`/api/fournisseurs/all/historique-prix?code_article=${encodeURIComponent(targetCode)}`),
+      apiFetch(`/api/commandes?code_article=${encodeURIComponent(targetCode)}&limit=200`),
+      apiFetch(`/api/produit/${encodeURIComponent(targetCode)}`),
     ]);
     const histRows = (hist.data || []).slice(0, 3);
     const enCours = (cmd.data || []).filter(r => !r.est_livre);
@@ -2244,7 +2285,7 @@ async function loadArticle() {
     const nomDesignation = prod.data?.produit?.designation_fr || prod.data?.nomenclature?.description_fr || histRows[0]?.designation || '';
 
     el.innerHTML = `
-      <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Article <strong>${esc(code)}</strong> - ${esc(nomDesignation)}</p>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Article <strong>${esc(targetCode)}</strong> - ${esc(nomDesignation)}</p>
       ${renderProduitFiche(prod.data)}
       <div class="section-header" style="margin-top:16px;"><span class="section-title">Commandes en cours</span></div>
       ${cmdTable}

@@ -632,40 +632,73 @@ def export_fiche_excel(req: FicheExportRequest):
 
 @app.get("/api/search/article")
 def search_article(q: str = "", limit: int = 10):
-    """Recherche article transverse. Source SYLOB d'abord (public.articles3),
-    achat en complement. Accepte designation, EAN/EDI (code_gtin_13 /
-    identifiant_edi / EAN14 PCB-SPCB) et code article, dans l'ordre d'usage
-    reel (designation > EAN > code). Retourne des candidats distincts."""
+    """Recherche article transverse. Source SYLOB (public.articles3),
+    achat.produit et achat.commande en complément. Accepte désignation, EAN/EDI
+    et code article. Retourne des candidats distincts."""
     q = (q or "").strip()
     if not q:
         return {"data": [], "count": 0}
     lim = max(1, min(int(limit or 10), 50))
     like = "%" + q + "%"
-    conds = ["code_article = :q"]
-    if len(q) >= 3:
-        conds.append("(designation ILIKE :like OR libelle ILIKE :like)")
-    if q.isdigit() and len(q) >= 6:
-        conds.append("(code_gtin_13 = :q OR identifiant_edi = :q OR identifiant_edi2 = :q "
-                     "OR sup_ean14_pcb = :q OR sup_ean14_spcb = :q OR sup_ean14_palette = :q)")
-    where = " OR ".join(conds)
-    sql = text(
-        "SELECT code_article, "
-        "COALESCE(MAX(designation) FILTER (WHERE libelle_langue ILIKE 'fran%'), MAX(designation)) AS designation, "
-        "MAX(code_gtin_13) AS ean13, MAX(identifiant_edi) AS edi, "
-        "MAX(sup_ean14_pcb) AS ean14_pcb, MAX(sup_ean14_spcb) AS ean14_spcb, "
-        "bool_or(code_article = :q OR code_gtin_13 = :q OR identifiant_edi = :q "
-        "OR identifiant_edi2 = :q OR sup_ean14_pcb = :q OR sup_ean14_spcb = :q "
-        "OR sup_ean14_palette = :q) AS exact "
-        "FROM public.articles3 WHERE " + where + " "
-        "GROUP BY code_article ORDER BY exact DESC, designation LIMIT :lim"
-    )
     engine = get_engine()
+    results = {}
+
     with engine.connect() as conn:
+        # 1. Tentative SYLOB public.articles3
         try:
+            conds = ["code_article = :q"]
+            if len(q) >= 2:
+                conds.append("(designation ILIKE :like OR libelle ILIKE :like)")
+            if q.isdigit() and len(q) >= 6:
+                conds.append("(code_gtin_13 = :q OR identifiant_edi = :q OR identifiant_edi2 = :q "
+                             "OR sup_ean14_pcb = :q OR sup_ean14_spcb = :q OR sup_ean14_palette = :q)")
+            where = " OR ".join(conds)
+            sql = text(
+                "SELECT code_article, "
+                "COALESCE(MAX(designation) FILTER (WHERE libelle_langue ILIKE 'fran%'), MAX(designation)) AS designation, "
+                "MAX(code_gtin_13) AS ean13, MAX(identifiant_edi) AS edi "
+                "FROM public.articles3 WHERE " + where + " "
+                "GROUP BY code_article ORDER BY designation LIMIT :lim"
+            )
             rows = rows_to_dicts(conn.execute(sql, {"q": q, "like": like, "lim": lim}))
-            return {"data": rows, "count": len(rows)}
+            for r in rows:
+                if r.get("code_article"):
+                    results[r["code_article"]] = r
         except Exception as e:
-            raise internal_error(e)
+            logger.info("[INFO] public.articles3 non accessible pour search (%s)", str(e).splitlines()[0])
+
+        # 2. Complément achat.produit
+        try:
+            sql_p = text(f"""
+                SELECT code_article, COALESCE(designation_fr, designation_en) AS designation, ean13
+                FROM {SCHEMA}.produit
+                WHERE code_article ILIKE :like OR designation_fr ILIKE :like OR designation_en ILIKE :like OR ean13 = :q
+                LIMIT :lim
+            """)
+            rows_p = rows_to_dicts(conn.execute(sql_p, {"q": q, "like": like, "lim": lim}))
+            for r in rows_p:
+                if r.get("code_article") and r["code_article"] not in results:
+                    results[r["code_article"]] = r
+        except Exception as e:
+            logger.warning("[ATTENTION] Erreur search achat.produit : %s", e)
+
+        # 3. Complément achat.commande
+        try:
+            sql_c = text(f"""
+                SELECT DISTINCT code_article, designation
+                FROM {SCHEMA}.commande
+                WHERE code_article ILIKE :like OR designation ILIKE :like
+                LIMIT :lim
+            """)
+            rows_c = rows_to_dicts(conn.execute(sql_c, {"like": like, "lim": lim}))
+            for r in rows_c:
+                if r.get("code_article") and r["code_article"] not in results:
+                    results[r["code_article"]] = r
+        except Exception as e:
+            logger.warning("[ATTENTION] Erreur search achat.commande : %s", e)
+
+    out = list(results.values())[:lim]
+    return {"data": out, "count": len(out)}
 
 @app.get("/api/artwork")
 def get_artwork(code_article: Optional[str] = None):
