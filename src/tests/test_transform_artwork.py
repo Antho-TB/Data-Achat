@@ -19,12 +19,16 @@ B2_OK = ["401740", "PIERRE A AIGUISER EN BOITE", "6-juin-24", "24-févr.-26",
 B2_NA = ["10320023", "ETUI", "\\#N/A", "\\#N/A", "Carrefour", "à voir"]
 B2_DUP = ["401740", "PIERRE A AIGUISER (maj)", "8-avr.-25", "22/1/2026", "Clarisse", "version récente"]
 
-ROWS = [["Suivi"], H1, B1_OK, B1_NOUVEAU, B1_NOREF, H2, B2_OK, B2_NA, B2_DUP]
+TAGGED_ROWS = [
+    ("Suivi", r) for r in [["Suivi"], H1, B1_OK, B1_NOREF, H2, B2_OK, B2_NA, B2_DUP]
+] + [
+    ("Artworks en attente", r) for r in [H1, B1_NOUVEAU]
+]
 
 
 class TestTransformArtwork:
     def setup_method(self):
-        self.recs = {r["code_article"]: r for r in transform_rows(ROWS, "test.xlsx")}
+        self.recs = {r["code_article"]: r for r in transform_rows(TAGGED_ROWS, "test.xlsx")}
 
     def test_skips_pas_de_ref(self):
         assert "PAS DE REF" not in self.recs
@@ -40,8 +44,8 @@ class TestTransformArtwork:
         assert r["date_validation"] == "2024-03-26"
         assert r["priorite"] == 3
 
-    def test_statut_nouveau(self):
-        assert self.recs["Comp0806"]["statut_artwork"] == "Nouveau"
+    def test_statut_en_attente(self):
+        assert self.recs["Comp0806"]["statut_artwork"] == "En attente"
 
     def test_statut_valide(self):
         assert self.recs["443850"]["statut_artwork"] == "Validé"
