@@ -2508,7 +2508,7 @@ function renderArtwork(rows) {
         <th>Article</th><th>Désignation</th><th title="Onglet source du gsheet Clarisse (LIS-CON-28-0)">Statut</th>
         <th title="Niveau de priorité du gsheet (1 = urgent -> 5), onglet 'Artworks en attente' uniquement">Prio.</th>
         <th>Valideur</th><th>Commentaire</th><th title="N° de commande(s) connu(s) pour cet article, info seulement (n'influence jamais le statut)">PO</th>
-        <th>MAJ</th><th>Action</th>
+        <th>MAJ</th><th>Action / Drive</th>
       </tr></thead>
       <tbody>
         ${rows.map(r => { const comment = artworkCommentTitle(r); return `<tr>
@@ -2532,9 +2532,10 @@ function renderArtwork(rows) {
           </td>
           <td class="mono" style="font-size:11px;">${esc(r.po_number) || '—'}</td>
           <td style="font-size:11px;color:var(--muted)">${fmt(r.updated_at,'date')}</td>
-          <td>
+          <td style="white-space:nowrap">
             <button class="btn btn-ghost btn-sm"
               onclick="openArtworkCommentaire('${esc(r.code_article)}', ${r.statut_artwork==='En attente' ? "'com_clarisse_thomas'" : "'commentaire'"}, '${esc(comment)}')">✎</button>
+            <a href="${esc(r.drive_url || (r.drive_file_id ? 'https://drive.google.com/file/d/' + r.drive_file_id + '/view' : 'https://docs.google.com/spreadsheets/d/1FTr2nloJGIgLELjbEVkODVhLz4oaAjhaqtrWqXJ4Jrc/edit'))}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="Ouvrir l'artwork / gsheet dans Google Drive">🎨 Drive 🔗</a>
           </td>
         </tr>`; }).join('')}
       </tbody>
