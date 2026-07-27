@@ -281,6 +281,7 @@ button { cursor: pointer; }
   vertical-align: middle;
 }
 .table-wrap tr:last-child td { border-bottom: none; }
+.table-wrap tbody tr:nth-child(even) { background: #f7f9fb; }
 .table-wrap tr:hover td { background: #f8fafc; }
 .table-wrap td.mono { font-family: var(--font-mono); font-size: 12px; }
 
@@ -975,7 +976,34 @@ let _ficheData = {};
 let _fichePics = {};
 let _ficheItems = [];
 const FICHE_AUTO_KEYS = new Set(['supplier', 'po_number', 'forwarder', 'port', 'etd']);
-const FICHE_ITEM_AUTO_KEYS = new Set(['reference', 'name']);
+const FICHE_ITEM_AUTO_KEYS = new Set(['reference', 'name', 'french_desc', 'pcs_inner', 'pcs_master', 'thickness', 'length', 'chrome_pct', 'finishing', 'handle_material', 'pantone', 'stamping_dim', 'carton_l', 'carton_w', 'carton_h', 'ean13', 'ean14_inner', 'ean14_master']);
+
+function ficheItemSeed(pre) {
+  pre = pre || {};
+  const p = pre.produit || {};
+  const n = pre.nomenclature || {};
+  const pk = (...v) => { for (const x of v) { if (x !== null && x !== undefined && x !== '') return x; } return ''; };
+  return {
+    reference: pre.code_article || '',
+    name: pk(p.designation_en, n.description_en, pre.designation),
+    french_desc: pk(p.designation_fr, n.description_fr),
+    pcs_inner: pk(p.spcb, p.inner_qty),
+    pcs_master: pk(p.pcb, p.master_qty),
+    thickness: pk(p.epaisseur_mm, n.epaisseur_mm),
+    length: pk(p.longueur_mm, n.longueur_mm),
+    chrome_pct: pk(p.chrome_pct, n.chrome_pct),
+    finishing: pk(p.finition, n.finition),
+    handle_material: pk(p.matiere_manche, n.matiere_manche),
+    pantone: pk(n.pantone_manche),
+    stamping_dim: pk(n.dim_marquage),
+    carton_l: pk(p.longueur_pcb_cm),
+    carton_w: pk(p.largeur_pcb_cm),
+    carton_h: pk(p.hauteur_pcb_cm),
+    ean13: pk(p.ean13, n.ean13),
+    ean14_inner: pk(p.ean14_spcb, n.ean14_spcb),
+    ean14_master: pk(p.ean14_pcb, n.ean14_pcb),
+  };
+}
 
 function blankFicheItem(seed) {
   const it = {};
@@ -996,15 +1024,28 @@ async function loadFiche() {
       if (row) {
         pre = {
           fournisseur: row.fournisseur, code_article: row.code_article, designation: row.designation,
-          po_number: row.po_number, transitaire: row.transitaire,
+          po_number: row.po_number, transitaire: row.transitaire || 'QUALITAIRSEA',
           etd: row.date_etd ? String(row.date_etd).slice(0, 10) : '',
           port: 'FOS SUR MER (= MARSEILLE)',
         };
         document.getElementById('fiche-hint').textContent = `Pré-rempli depuis PO ${row.po_number || '—'}`;
       } else {
-        document.getElementById('fiche-hint').textContent = 'Article/PO non trouvé — formulaire vierge';
+        pre = { code_article: q, transitaire: 'QUALITAIRSEA', port: 'FOS SUR MER (= MARSEILLE)' };
       }
     } catch (e) { document.getElementById('fiche-hint').textContent = e.message; }
+  }
+  if (q && pre.code_article) {
+    try {
+      const pr = await apiFetch('/api/produit/' + encodeURIComponent(pre.code_article));
+      if (pr && pr.data && (pr.data.produit || pr.data.nomenclature)) {
+        pre.produit = pr.data.produit || {};
+        pre.nomenclature = pr.data.nomenclature || {};
+      }
+    } catch (e) { /* enrichissement best-effort */ }
+    const h = document.getElementById('fiche-hint');
+    if (pre.po_number) h.textContent = 'Pré-rempli depuis PO ' + pre.po_number + ((pre.produit || pre.nomenclature) ? ' + référentiel Sylob' : '');
+    else if (pre.produit || pre.nomenclature) h.textContent = 'Pré-rempli depuis le référentiel Sylob';
+    else h.textContent = 'Article/PO non trouvé — formulaire vierge';
   }
   renderFicheForm(pre);
 }
@@ -1133,7 +1174,7 @@ function renderFicheForm(pre) {
     forwarder: pre.transitaire || '', port: pre.port || '', etd: pre.etd || '',
     shipping_paid_by: 'TB', // regle Andrea : toujours TB, jamais le fournisseur (cf. questionnaire §5)
   };
-  _ficheItems = [blankFicheItem({ reference: pre.code_article || '', name: pre.designation || '' })];
+  _ficheItems = [blankFicheItem(ficheItemSeed(pre))];
   document.getElementById('fiche-form').innerHTML = `
     <div id="fiche-form-global">
       ${FICHE_GLOBAL_FIELDS.map(([titre, champs]) => `
