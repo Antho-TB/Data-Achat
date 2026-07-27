@@ -537,8 +537,20 @@ def get_produit(code_article: str):
                 FROM {SCHEMA}.qualite WHERE code_article = :c
                 ORDER BY date_inspection DESC NULLS LAST
             """), {"c": code_article}))
+            qualite_docs = rows_to_dicts(conn.execute(text(f"""
+                SELECT DISTINCT d.* FROM {SCHEMA}.qualite_doc d
+                LEFT JOIN {SCHEMA}.commande c ON c.po_number = d.po_number
+                WHERE c.code_article = :c OR d.fichier LIKE :c_like
+                ORDER BY d.charge_le DESC
+            """), {"c": code_article, "c_like": f"%{code_article}%"}))
+            qualite_analyses = rows_to_dicts(conn.execute(text(f"""
+                SELECT DISTINCT a.* FROM {SCHEMA}.qualite_analyse a
+                LEFT JOIN {SCHEMA}.commande c ON c.po_number = a.po_number
+                WHERE c.code_article = :c OR a.sample_name LIKE :c_like
+                ORDER BY a.charge_le DESC
+            """), {"c": code_article, "c_like": f"%{code_article}%"}))
 
-            if not (produit or nomenclature or artwork or cycle_vie or qualite):
+            if not (produit or nomenclature or artwork or cycle_vie or qualite or qualite_docs or qualite_analyses):
                 return {"data": None, "warning": "Article introuvable (aucune donnee produit/nomenclature/artwork/qualite)."}
 
             return {"data": {
@@ -548,7 +560,49 @@ def get_produit(code_article: str):
                 "artwork": artwork[0] if artwork else None,
                 "cycle_vie": cycle_vie[0] if cycle_vie else None,
                 "qualite": qualite,
+                "qualite_docs": qualite_docs,
+                "qualite_analyses": qualite_analyses,
             }}
+        except Exception as e:
+            raise internal_error(e)
+
+
+@app.get("/api/qualite/rapports")
+def get_qualite_rapports(
+    code_article: Optional[str] = Query(None),
+    po_number: Optional[str] = Query(None),
+):
+    """Recherche des rapports d'inspection et d'analyse qualite rattachés par code_article ou po_number."""
+    engine = get_engine()
+    with engine.connect() as conn:
+        try:
+            filters_doc = []
+            filters_ana = []
+            params: dict[str, Any] = {}
+            if code_article:
+                filters_doc.append("(c.code_article = :code_article OR d.fichier LIKE :code_like)")
+                filters_ana.append("(c.code_article = :code_article OR a.sample_name LIKE :code_like)")
+                params["code_article"] = code_article
+                params["code_like"] = f"%{code_article}%"
+            if po_number:
+                filters_doc.append("d.po_number = :po_number")
+                filters_ana.append("a.po_number = :po_number")
+                params["po_number"] = po_number
+
+            where_doc = ("WHERE " + " AND ".join(filters_doc)) if filters_doc else ""
+            where_ana = ("WHERE " + " AND ".join(filters_ana)) if filters_ana else ""
+
+            docs = rows_to_dicts(conn.execute(text(f"""
+                SELECT DISTINCT d.* FROM {SCHEMA}.qualite_doc d
+                LEFT JOIN {SCHEMA}.commande c ON c.po_number = d.po_number
+                {where_doc} ORDER BY d.charge_le DESC
+            """), params))
+            analyses = rows_to_dicts(conn.execute(text(f"""
+                SELECT DISTINCT a.* FROM {SCHEMA}.qualite_analyse a
+                LEFT JOIN {SCHEMA}.commande c ON c.po_number = a.po_number
+                {where_ana} ORDER BY a.charge_le DESC
+            """), params))
+            return {"docs": docs, "analyses": analyses}
         except Exception as e:
             raise internal_error(e)
 

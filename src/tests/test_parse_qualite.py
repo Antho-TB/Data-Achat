@@ -55,6 +55,12 @@ class TestParseFilename:
         assert r["type"] == "analyse"
         assert r["societe"] == "TB"
 
+    def test_article_code_in_filename(self):
+        r = parse_filename("PO181325_10110034_CA183435_MAT.pdf")
+        assert r["po_number"] == "00181325"
+        assert r["code_article"] == "10110034"
+        assert r["ref_rapport"] == "CA183435"
+
 
 class TestParseSpectro:
     def setup_method(self):

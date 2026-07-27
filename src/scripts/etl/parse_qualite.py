@@ -22,11 +22,12 @@ import re
 from typing import Optional
 
 RE_PO = re.compile(r"PO\s*0*(\d{4,8})", re.I)
-RE_CA = re.compile(r"\b(CA\d{4,})\b", re.I)
+RE_CA = re.compile(r"(?<![A-Za-z0-9])(CA\d{4,})(?![A-Za-z0-9])", re.I)
 RE_STADE = re.compile(r"\b(SP|MAT|PROD|PP|FT)\b")
 RE_ECH = re.compile(r"[eé]ch\.?\s*(\d+)", re.I)
 RE_DT = re.compile(r"(\d{2})/(\d{2})/(\d{4})\s+(\d{2}:\d{2}:\d{2})")
 RE_HRC = re.compile(r"(\d{1,2}(?:[.,]\d+)?)\s*HRC", re.I)
+RE_CODE_ARTICLE = re.compile(r"\b(\d{8})\b")
 
 
 def parse_filename(title: str, type_doc: Optional[str] = None,
@@ -36,15 +37,46 @@ def parse_filename(title: str, type_doc: Optional[str] = None,
     ca = RE_CA.search(title)
     stade = RE_STADE.search(title)
     ech = RE_ECH.search(title)
+
+    po_val = po.group(1).zfill(8) if po else None
+    art_matches = re.findall(r"(?<!\d)(\d{8})(?!\d)", title)
+    art_val = None
+    for a in art_matches:
+        if not po_val or (a != po.group(1) and a != po_val):
+            art_val = a
+            break
+
     return {
-        "po_number": po.group(1).zfill(8) if po else None,
+        "po_number": po_val,
         "ref_rapport": ca.group(1).upper() if ca else None,
+        "code_article": art_val,
         "stade": stade.group(1) if stade else None,
         "echantillon": ech.group(1) if ech else None,
         "type": type_doc,
         "societe": societe,
         "fichier": title,
     }
+
+
+def resolve_code_article_from_po(po_number: str, engine=None) -> list[str]:
+    """Rapproche un numéro de PO avec les code_article associés dans achat.commande."""
+    if not po_number:
+        return []
+    if engine is None:
+        try:
+            from app.database import get_engine
+            engine = get_engine()
+        except Exception:
+            return []
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            r = conn.execute(text(
+                "SELECT DISTINCT code_article FROM achat.commande WHERE po_number = :po AND code_article IS NOT NULL"
+            ), {"po": str(po_number).zfill(8)})
+            return [row[0] for row in r.fetchall()]
+    except Exception:
+        return []
 
 
 def _after(label: str, text: str, window: int = 60) -> Optional[str]:
