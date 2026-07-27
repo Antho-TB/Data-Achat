@@ -665,6 +665,7 @@ def search_article(q: str = "", limit: int = 10):
                 if r.get("code_article"):
                     results[r["code_article"]] = r
         except Exception as e:
+            conn.rollback()
             logger.info("[INFO] public.articles3 non accessible pour search (%s)", str(e).splitlines()[0])
 
         # 2. Complément achat.produit
@@ -680,6 +681,7 @@ def search_article(q: str = "", limit: int = 10):
                 if r.get("code_article") and r["code_article"] not in results:
                     results[r["code_article"]] = r
         except Exception as e:
+            conn.rollback()
             logger.warning("[ATTENTION] Erreur search achat.produit : %s", e)
 
         # 3. Complément achat.commande
@@ -695,6 +697,7 @@ def search_article(q: str = "", limit: int = 10):
                 if r.get("code_article") and r["code_article"] not in results:
                     results[r["code_article"]] = r
         except Exception as e:
+            conn.rollback()
             logger.warning("[ATTENTION] Erreur search achat.commande : %s", e)
 
     out = list(results.values())[:lim]

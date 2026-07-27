@@ -640,6 +640,9 @@ button { cursor: pointer; }
         <option value="totale">Volume Total Engagé (Payé + À payer)</option>
       </select>
       <button class="btn btn-ghost btn-sm" onclick="loadPrevisionnel()" style="margin-left:auto;">&#8635; Actualiser</button>
+    <div id="cash-zoom-banner" style="display:none;align-items:center;justify-content:space-between;background:var(--sand,#FFF6E5);border:1px solid #F3D299;padding:6px 14px;border-radius:6px;margin-bottom:10px;font-size:12.5px;font-weight:600;color:#855400;">
+      <span id="cash-zoom-title">🔍 Zoom sur le mois : </span>
+      <button class="btn btn-ghost btn-sm" onclick="resetCashZoom()" style="color:#855400;font-weight:600;">✖ Revenir au prévisionnel complet</button>
     </div>
     <div style="height:260px;margin-bottom:16px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:12px;">
       <canvas id="chart-cash"></canvas>
@@ -2888,7 +2891,21 @@ function renderConteneursTable(rows) {
 
 let chartCash = null;
 let _cashRows = [];
+let _cashZoomMois = null;
 const MAX_CONTENEURS_CASH = 8;
+
+function resetCashZoom() {
+  _cashZoomMois = null;
+  const banner = document.getElementById('cash-zoom-banner');
+  if (banner) banner.style.display = 'none';
+  renderCash();
+}
+
+function zoomCashMois(m) {
+  _cashZoomMois = m;
+  renderCash();
+}
+
 function renderCash(rows) {
   if (rows) _cashRows = rows;
   const mode = document.getElementById('f-cash-mode')?.value || 'a_payer';
@@ -2900,45 +2917,117 @@ function renderCash(rows) {
     if (chartCash) { chartCash.destroy(); chartCash = null; }
     return;
   }
-  const mois = [...new Set(_cashRows.map(r => r.mois))].sort();
-  const totalParConteneur = {};
-  _cashRows.forEach(r => {
-    const val = Number(r[valKey] ?? r.valeur ?? 0);
-    totalParConteneur[r.n_conteneur] = (totalParConteneur[r.n_conteneur] || 0) + val;
-  });
-  const topConteneurs = Object.entries(totalParConteneur)
-    .sort((a, b) => b[1] - a[1]).slice(0, MAX_CONTENEURS_CASH).map(([c]) => c);
-  const isTop = new Set(topConteneurs);
-  const series = [...topConteneurs, 'Autres'];
 
-  const datasets = series.map((cont, i) => {
-    const data = mois.map(m => {
-      return _cashRows
-        .filter(r => r.mois === m && (cont === 'Autres' ? !isTop.has(r.n_conteneur) : r.n_conteneur === cont))
-        .reduce((s, r) => s + Number(r[valKey] ?? r.valeur ?? 0), 0);
+  const banner = document.getElementById('cash-zoom-banner');
+  const bannerTitle = document.getElementById('cash-zoom-title');
+
+  if (_cashZoomMois) {
+    // Mode Zoomé sur 1 mois
+    const rowsMois = _cashRows.filter(r => r.mois === _cashZoomMois);
+    const sumMois = rowsMois.reduce((s, r) => s + Number(r[valKey] ?? r.valeur ?? 0), 0);
+
+    if (banner && bannerTitle) {
+      bannerTitle.innerHTML = `🔍 Zoom sur le mois de <strong>${esc(_cashZoomMois)}</strong> — Total : <strong>${fmt(sumMois, 'money')}</strong>`;
+      banner.style.display = 'flex';
+    }
+
+    const conteneursMois = [...new Set(rowsMois.map(r => r.n_conteneur))].sort();
+    const dataVals = conteneursMois.map(cont => {
+      return rowsMois.filter(r => r.n_conteneur === cont).reduce((s, r) => s + Number(r[valKey] ?? r.valeur ?? 0), 0);
     });
-    return {
-      label: cont, data,
-      backgroundColor: cont === 'Autres' ? '#c9c9c9' : TB_SERIES[i % TB_SERIES.length],
-      stack: 'echeancier', borderRadius: 2,
-    };
-  }).filter(ds => ds.data.some(v => v > 0));
 
-  chartCash = new Chart(ctx, {
-    type: 'bar',
-    data: { labels: mois, datasets },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
-        tooltip: { callbacks: { label: c => `${c.dataset.label} : ${fmt(c.raw, 'money')}` } },
+    chartCash = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: conteneursMois.map(c => c === '/' ? 'Sans conteneur' : c),
+        datasets: [{
+          label: 'Montant ($ US)',
+          data: dataVals,
+          backgroundColor: conteneursMois.map((c, i) => c === '/' ? '#e2001a' : TB_SERIES[i % TB_SERIES.length]),
+          borderRadius: 4,
+        }]
       },
-      scales: {
-        x: { stacked: true },
-        y: { stacked: true, beginAtZero: true, title: { display: true, text: 'USD' } },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        onClick: (event, elements) => {
+          if (elements && elements.length > 0) {
+            resetCashZoom();
+          }
+        },
+        onHover: (event, elements) => {
+          if (event.native && event.native.target) {
+            event.native.target.style.cursor = elements && elements.length ? 'pointer' : 'default';
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          title: { display: true, text: `Décomposition par conteneur — ${esc(_cashZoomMois)} (Cliquer sur une barre pour dézoomer)`, font: { size: 12 } },
+          tooltip: { callbacks: { label: c => `${c.label} : ${fmt(c.raw, 'money')}` } },
+        },
+        scales: {
+          x: { title: { display: true, text: 'Conteneur / PO' } },
+          y: { beginAtZero: true, title: { display: true, text: 'USD' } },
+        },
       },
-    },
-  });
+    });
+
+  } else {
+    // Mode Vue Globale
+    if (banner) banner.style.display = 'none';
+
+    const mois = [...new Set(_cashRows.map(r => r.mois))].sort();
+    const totalParConteneur = {};
+    _cashRows.forEach(r => {
+      const val = Number(r[valKey] ?? r.valeur ?? 0);
+      totalParConteneur[r.n_conteneur] = (totalParConteneur[r.n_conteneur] || 0) + val;
+    });
+    const topConteneurs = Object.entries(totalParConteneur)
+      .sort((a, b) => b[1] - a[1]).slice(0, MAX_CONTENEURS_CASH).map(([c]) => c);
+    const isTop = new Set(topConteneurs);
+    const series = [...topConteneurs, 'Autres'];
+
+    const datasets = series.map((cont, i) => {
+      const data = mois.map(m => {
+        return _cashRows
+          .filter(r => r.mois === m && (cont === 'Autres' ? !isTop.has(r.n_conteneur) : r.n_conteneur === cont))
+          .reduce((s, r) => s + Number(r[valKey] ?? r.valeur ?? 0), 0);
+      });
+      return {
+        label: cont, data,
+        backgroundColor: cont === 'Autres' ? '#c9c9c9' : TB_SERIES[i % TB_SERIES.length],
+        stack: 'echeancier', borderRadius: 2,
+      };
+    }).filter(ds => ds.data.some(v => v > 0));
+
+    chartCash = new Chart(ctx, {
+      type: 'bar',
+      data: { labels: mois, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        onClick: (event, elements) => {
+          if (elements && elements.length > 0) {
+            const idx = elements[0].index;
+            const clickedMois = mois[idx];
+            if (clickedMois) zoomCashMois(clickedMois);
+          }
+        },
+        onHover: (event, elements) => {
+          if (event.native && event.native.target) {
+            event.native.target.style.cursor = elements && elements.length ? 'pointer' : 'default';
+          }
+        },
+        plugins: {
+          legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+          title: { display: true, text: '💡 Cliquer sur une barre de mois pour zoomer sur le détail', font: { size: 11, style: 'italic' }, color: '#64748b' },
+          tooltip: { callbacks: { label: c => `${c.dataset.label} : ${fmt(c.raw, 'money')}` } },
+        },
+        scales: {
+          x: { stacked: true },
+          y: { stacked: true, beginAtZero: true, title: { display: true, text: 'USD' } },
+        },
+      },
+    });
+  }
 }
 
 // renderPrevisionnel (Prochaines arrivees) retire le 21/07 : la logistique des
