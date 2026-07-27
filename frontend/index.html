@@ -1079,10 +1079,20 @@ async function loadFiche() {
   let pre = {};
   if (q) {
     try {
+      // 1. Résolution de désignation/EAN via search/article si non-chiffré direct à 8 chiffres
+      let resolvedCode = q;
+      if (!/^\d{8}$/.test(q)) {
+        const sres = await apiFetch('/api/search/article?q=' + encodeURIComponent(q) + '&limit=1');
+        if (sres && sres.data && sres.data.length > 0) {
+          resolvedCode = sres.data[0].code_article;
+        }
+      }
+
       const r = await apiFetch('/api/commandes?limit=1000');
       const data = r.data || [];
-      const row = data.find(x => (x.code_article || '') === q || (x.po_number || '') === q)
-               || data.find(x => (x.code_article || '').toLowerCase().includes(q.toLowerCase()));
+      const row = data.find(x => (x.code_article || '') === resolvedCode || (x.po_number || '') === q)
+               || data.find(x => (x.code_article || '').toLowerCase().includes(q.toLowerCase()))
+               || data.find(x => (x.designation || '').toLowerCase().includes(q.toLowerCase()));
       if (row) {
         pre = {
           fournisseur: row.fournisseur, code_article: row.code_article, designation: row.designation,
@@ -1092,10 +1102,11 @@ async function loadFiche() {
         };
         document.getElementById('fiche-hint').textContent = `Pré-rempli depuis PO ${row.po_number || '—'}`;
       } else {
-        pre = { code_article: q, transitaire: 'QUALITAIRSEA', port: 'FOS SUR MER (= MARSEILLE)' };
+        pre = { code_article: resolvedCode, transitaire: 'QUALITAIRSEA', port: 'FOS SUR MER (= MARSEILLE)' };
       }
     } catch (e) { document.getElementById('fiche-hint').textContent = e.message; }
   }
+
   if (q && pre.code_article) {
     try {
       const pr = await apiFetch('/api/produit/' + encodeURIComponent(pre.code_article));
@@ -1106,7 +1117,7 @@ async function loadFiche() {
     } catch (e) { /* enrichissement best-effort */ }
     const h = document.getElementById('fiche-hint');
     if (pre.po_number) h.textContent = 'Pré-rempli depuis PO ' + pre.po_number + ((pre.produit || pre.nomenclature) ? ' + référentiel Sylob' : '');
-    else if (pre.produit || pre.nomenclature) h.textContent = 'Pré-rempli depuis le référentiel Sylob';
+    else if (pre.produit || pre.nomenclature) h.textContent = 'Pré-rempli depuis le référentiel Sylob (' + pre.code_article + ')';
     else h.textContent = 'Article/PO non trouvé — formulaire vierge';
   }
   renderFicheForm(pre);
