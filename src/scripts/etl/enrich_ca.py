@@ -30,15 +30,19 @@ a tort GUANGWEI/DIAMOND TRACK avec HONGXING (2 fournisseurs bien distincts) a
 cause de cette unique ligne de saisie bruitee. Un filtre uniforme (sans distinguer
 "nom ambigu" de "nom a faible volume") ferait a tort disparaitre POLLYDA & co.
 
-Alias connus (source humaine, pas de detection automatique possible) : le
-questionnaire de passation d'Andrea (`docs/20260721_FicheAchat_Questionnaire_
-Sourcing_Andrea_v1.docx`, §6 "Pieges recurrents") liste des synonymes de
-fournisseur utilises par la direction, dont certains ne partagent JAMAIS un
-frn_code commun dans nos PO actuels (aucune preuve data-driven possible) --
-ex. POLLYDA / DIAMOND TRACK / GUANGWEI : POLLYDA n'apparait sur aucun PO avec
-le frn_code de GUANGWEI (00001220), donc l'algorithme frn_code seul ne peut
-PAS le detecter. D'ou ALIAS_CONNUS ci-dessous, fusionne AVANT le Union-Find
-par frn_code (les deux mecanismes se completent, ne se remplacent pas).
+Alias connus (source humaine, pas de detection automatique possible) : confirme
+par le contenu reel du questionnaire de passation Andrea, relaye par Antho le
+27/07 (le fichier `docs/20260721_FicheAchat_Questionnaire_Sourcing_Andrea_
+v1.docx` en repo est reste vierge -- Andrea a repondu par un autre canal ;
+contenu integral capture dans
+`docs/20260727_FicheAchat_Questionnaire_Sourcing_Andrea_COMPLETE_v1.md`, §6
+"Pieges recurrents"). Ces synonymes de fournisseur ne partagent parfois
+JAMAIS de frn_code commun dans nos PO actuels (aucune preuve data-driven
+possible) -- ex. POLLYDA / DIAMOND TRACK / GUANGWEI : POLLYDA n'apparait sur
+aucun PO avec le frn_code de GUANGWEI (00001220), donc l'algorithme frn_code
+seul ne peut PAS le detecter. D'ou ALIAS_CONNUS ci-dessous, fusionne AVANT
+le Union-Find par frn_code (les deux mecanismes se completent, ne se
+remplacent pas).
 
 Usage : python -m src.scripts.etl.enrich_ca
 """

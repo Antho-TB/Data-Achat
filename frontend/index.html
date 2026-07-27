@@ -426,7 +426,7 @@ button { cursor: pointer; }
 .ps-doc { background: #fff; border: 1px solid #000; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; }
 .ps-head { display: flex; border-bottom: 2px solid #000; }
 .ps-head .ps-logo { flex: 0 0 90px; border-right: 1px solid #000; display: flex; align-items: center; justify-content: center; padding: 6px; }
-.ps-head .ps-logo-box { border: 2px solid #000; padding: 4px 8px; font-family: var(--font-display); font-weight: 800; font-size: 20px; letter-spacing: 1px; }
+.ps-head .ps-logo svg { width: 56px; height: 56px; display: block; }
 .ps-head .ps-title { flex: 1; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px; }
 .ps-head .ps-title b { font-size: 13px; letter-spacing: .5px; }
 .ps-head .ps-ref { flex: 0 0 190px; border-left: 1px solid #000; font-size: 9px; padding: 6px 8px; line-height: 1.5; }
@@ -868,17 +868,36 @@ const loaders = {
 // Images = session navigateur uniquement (generation PDF/xlsx reelle = Phase
 // B, non faite -- decision metier 21/07 : perimetre onglet = consultation/
 // mise a jour des fiches EXISTANTES, pas creation ex nihilo, cf. plan_action.md).
+//
+// Complements 27/07 (cf. plan_action.md ligne Fiche Achat) : HO Code (champ
+// optionnel, distributeurs type Carrefour, source = commentaire Sylob) ;
+// label Name clarifie "(EN -- Sylob)" vs french_desc renomme "Designation FR"
+// (les 2 coexistaient sans distinction visuelle) ; vrai logo TB (TB_LOGO_SVG,
+// asset officiel Design System) a la place du bloc texte "TB" invente.
+// Emplacement du marquage (image) et bloc AGEC integral etaient deja en
+// place depuis la reconstruction du 22/07 -- non retouches ici.
+//
+// Le fichier docx envoye a Andrea (docs/20260721_FicheAchat_Questionnaire_
+// Sourcing_Andrea_v1.docx) est reste VIERGE -- elle a repondu par un autre
+// canal, contenu integral capture dans docs/20260727_FicheAchat_
+// Questionnaire_Sourcing_Andrea_COMPLETE_v1.md. Ce contenu reel a permis
+// d'ajouter des hints (icone ⓘ, attribut title) sur les champs ou une regle
+// metier precise existe et n'est pas evidente pour Marlène : format N° LOT
+// (AAMMJJHHMM = date+heure creation commande Sylob), regle ETD (+90j sauf
+// urgence), regle "please_send_us" (cases a cocher selon existant/nouveau x
+// vrac/packaging special), "shipping paid by" toujours TB (defaut applique).
 const FICHE_GLOBAL_FIELDS = [
   ['DESCRIPTION OF THE PRODUCT / SUPPLIER', [
-    { key: 'supplier', label: 'Supplier', type: 'text', auto: 1 },
-    { key: 'n_lot', label: 'N° LOT', type: 'text', placeholder: '0000000000' },
+    { key: 'supplier', label: 'Supplier', type: 'text', auto: 1, hint: "Fournisseur confirme par Julia (plus fiable que la direction, qui utilise parfois d'anciens noms — ex. POLLYDA/GUANGWEI)." },
+    { key: 'n_lot', label: 'N° LOT', type: 'text', placeholder: 'AAMMJJHHMM, ex. 2607231636', hint: "Format AAMMJJHHMM = date+heure de creation de la commande Sylob (ex. 2607231636 = 23/07/2026 16h36)." },
     { key: 'po_number', label: 'N° commande (PO)', type: 'text', auto: 1 },
+    { key: 'ho_code', label: 'HO Code', type: 'text', placeholder: 'optionnel — distributeurs type Carrefour', hint: "Source : commentaire Sylob." },
   ]],
   ['TRANSPORT', [
     { key: 'forwarder', label: 'Forwarder', type: 'text', auto: 1 },
     { key: 'transport_type', label: 'Type of transport', type: 'select', options: ['Sea', 'Air', 'Truck'] },
     { key: 'port', label: 'Port / airport / city of destination', type: 'text', auto: 1 },
-    { key: 'etd', label: 'ETD', type: 'text', auto: 1 },
+    { key: 'etd', label: 'ETD', type: 'text', auto: 1, hint: "Regle Andrea : 90 jours a ajouter a la date de passage de commande, sauf commande urgente (date donnee par Eric)." },
   ]],
   ['PACKAGING INFORMATIONS', [
     { key: 'number_of_pieces_sets', label: 'Number of pieces/sets', type: 'text' },
@@ -891,8 +910,8 @@ const FICHE_GLOBAL_FIELDS = [
   ]],
   ['SAMPLE', [
     { key: 'testing_samples', label: 'Testing samples (before launching production)', type: 'checkbox' },
-    { key: 'shipping_paid_by', label: 'Shipping paid by', type: 'select', options: ['TB', 'Supplier'] },
-    { key: 'please_send_us', label: 'Please send us', type: 'checkboxgroup', group: ['Raw material', 'Semi-production sample', 'Compliance sample', 'Production sample', 'Printing sample'] },
+    { key: 'shipping_paid_by', label: 'Shipping paid by', type: 'select', options: ['TB', 'Supplier'], hint: "Regle Andrea : toujours TB, jamais le fournisseur." },
+    { key: 'please_send_us', label: 'Please send us', type: 'checkboxgroup', group: ['Raw material', 'Semi-production sample', 'Compliance sample', 'Production sample', 'Printing sample'], hint: "Regle Andrea : existant en vrac = Raw+Semi-prod+Prod ; existant packaging special = + Printing ; nouveau en vrac = + Compliance (sans Printing) ; nouveau packaging special = les 5." },
   ]],
   ['STAMPING', [
     { key: 'blade_stamping', label: 'Blade or product stamping', type: 'text', placeholder: 'Texte du marquage, ou vide = No stamping' },
@@ -906,7 +925,7 @@ const FICHE_GLOBAL_FIELDS = [
 // Colonnes partagees par les 7 tableaux du PS reel (cle commune = REFERENCE).
 const FICHE_ITEM_FIELDS = [
   { key: 'reference', label: 'Reference', auto: 1 },
-  { key: 'name', label: 'Name', auto: 1 },
+  { key: 'name', label: 'Name (EN — Sylob)', auto: 1 },
   { key: 'pcs_item', label: 'Item (pcs)' },
   { key: 'pcs_inner', label: 'Inner (pcs)' },
   { key: 'pcs_master', label: 'Master (pcs)' },
@@ -926,7 +945,7 @@ const FICHE_ITEM_FIELDS = [
   { key: 'ean13', label: 'Item = EAN 13' },
   { key: 'ean14_inner', label: 'Inner = EAN 14 SPCB' },
   { key: 'ean14_master', label: 'Master = EAN 14 PCB' },
-  { key: 'french_desc', label: 'French translation (description)' },
+  { key: 'french_desc', label: 'Désignation FR (French translation)' },
 ];
 
 // Bloc reglementaire ARTWORK : texte fige (loi AGEC), identique sur les deux
@@ -947,6 +966,10 @@ const FICHE_ARTWORK_LEGAL = {
     ], footnote: '* Mineral Oil Saturated Hydrocarbons' },
   ],
 };
+
+// Logomark officiel TB Groupe (docs/TB Design System.zip -> assets/logos/TB_BLACK.svg),
+// recopie a l'identique -- remplace l'ancien bloc texte "TB" (invention, pas le vrai logo).
+const TB_LOGO_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 387.18 387.18"><g fill="#000000"><path d="M40.02,347.16h307.14V40.02H40.02v307.14ZM47.42,47.42h292.34v292.33H47.42V47.42Z"></path><path d="M253.98,189.37v-.52c14.89-4.51,24.24-14.72,24.24-26.54,0-9.49-4.71-16.66-12.14-21.34-8.7-6.07-20.62-8.79-39.18-8.79-7.05,0-14.17.34-20.51.88h-114.24v13.27h43.64v107.6h18.79v-107.6h38.47v107.24c6.2.73,15.98,1.47,28.72,1.47,23.45,0,39.61-3.59,49.4-11.32,7.48-5.9,12.38-13.8,12.38-24.19,0-17.95-16-27.46-29.59-30.16ZM211.58,145.25c2.96-.5,7.9-1.06,16.4-1.06,18.72,0,31.28,5.73,31.28,19.7,0,11.71-11.48,20.44-30.86,20.44h-16.83v-39.09h0ZM227.16,242.83c-6.61,0-11.78-.17-15.58-.73v-46.06h15.33c20.26,0,37.06,6.95,37.06,23.31,0,17.55-17.68,23.48-36.81,23.48Z"></path></g></svg>';
 
 let _ficheData = {};
 let _fichePics = {};
@@ -994,7 +1017,7 @@ function resetFiche() {
 }
 
 function renderFicheInput(f, val, isAuto, dataAttr) {
-  const lbl = `<label>${esc(f.label)}${isAuto ? ' <span class="auto-tag">● auto</span>' : ''}</label>`;
+  const lbl = `<label${f.hint ? ` title="${esc(f.hint)}"` : ''}>${esc(f.label)}${isAuto ? ' <span class="auto-tag">● auto</span>' : ''}${f.hint ? ' <span style="cursor:help;opacity:.6;">ⓘ</span>' : ''}</label>`;
   let input;
   if (f.type === 'select') {
     input = `<select ${dataAttr}="${f.key}"><option value="">--</option>${(f.options || [])
@@ -1108,6 +1131,7 @@ function renderFicheForm(pre) {
   _ficheData = {
     supplier: pre.fournisseur || '', po_number: pre.po_number || '',
     forwarder: pre.transitaire || '', port: pre.port || '', etd: pre.etd || '',
+    shipping_paid_by: 'TB', // regle Andrea : toujours TB, jamais le fournisseur (cf. questionnaire §5)
   };
   _ficheItems = [blankFicheItem({ reference: pre.code_article || '', name: pre.designation || '' })];
   document.getElementById('fiche-form').innerHTML = `
@@ -1143,13 +1167,14 @@ function renderFichePreview(data, pics, items) {
   document.getElementById('fiche-preview').innerHTML = `
   <div class="ps-doc">
     <div class="ps-head">
-      <div class="ps-logo"><div class="ps-logo-box">TB</div></div>
+      <div class="ps-logo">${TB_LOGO_SVG}</div>
       <div class="ps-title"><b>PURCHASE SHEET</b><div>${g('supplier') ? 'FRS ' + g('supplier') : '&nbsp;'}</div></div>
       <div class="ps-ref">
         <div><b>N° LOT :</b> ${g('n_lot') || '0000000000'}</div>
         <div><b>Date d'application :</b> 15/05/2023</div>
         <div><b>Date de commande :</b> ${new Date().toLocaleDateString('fr-FR')}</div>
         ${g('po_number') ? `<div><b>N° commande (PO) :</b> ${g('po_number')}</div>` : ''}
+        ${g('ho_code') ? `<div><b>HO Code :</b> ${g('ho_code')}</div>` : ''}
       </div>
     </div>
 
