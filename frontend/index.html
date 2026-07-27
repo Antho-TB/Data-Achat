@@ -407,7 +407,27 @@ button { cursor: pointer; }
   border-top: 4px solid var(--blue);
   border-bottom: none;
   opacity: 1;
+.fiche-search-wrap { position: relative; display: inline-block; }
+.fiche-suggest {
+  position: absolute; top: 100%; left: 0; z-index: 1000;
+  background: var(--card, #fff); border: 1px solid var(--border, #cbd5e1);
+  border-radius: 6px; box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+  max-height: 320px; overflow-y: auto; margin-top: 4px; min-width: 380px; text-align: left;
 }
+.fs-header {
+  padding: 6px 12px; font-size: 11px; font-weight: 700; color: var(--blue, #0F2942);
+  background: var(--sand, #F8FAFC); border-bottom: 1px solid var(--border, #e2e8f0);
+}
+.fs-item {
+  padding: 8px 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer;
+  transition: background 0.15s ease;
+}
+.fs-item:hover { background: #f0f7ff; }
+.fs-item:last-child { border-bottom: none; }
+.fs-code { font-weight: 700; color: var(--red, #E2001A); font-family: monospace; font-size: 12px; }
+.fs-desig { font-size: 12px; color: var(--text, #1e293b); }
+.fs-meta { font-size: 10.5px; color: var(--muted, #64748b); margin-top: 2px; }
+.fs-empty { padding: 12px; text-align: center; color: var(--muted, #64748b); font-size: 12px; }
 
 /* ── Fiche Achat : formulaire + apercu Purchase Sheet ────────────────────── */
 .fiche-split { display: flex; gap: 20px; align-items: flex-start; }
@@ -701,10 +721,13 @@ button { cursor: pointer; }
         <span class="section-title">Fiche Article (Suivi complet par référence)</span>
       </div>
       <div class="toolbar">
-        <input id="f-article-code" type="text" placeholder="Saisir un code article..." onkeydown="if(event.key==='Enter') loadArticle()" style="width: 250px;">
+        <span class="fiche-search-wrap">
+          <input id="f-article-code" type="text" autocomplete="off" placeholder="Code article, désignation ou EAN..." oninput="articleSearch(this.value)" onblur="setTimeout(articleSuggestHide,200)" onkeydown="if(event.key==='Enter'){ articleSuggestHide(); loadArticle(); }" style="width: 320px;">
+          <div id="article-suggest" class="fiche-suggest" style="display:none;"></div>
+        </span>
         <button class="btn btn-primary btn-sm" onclick="loadArticle()">Rechercher</button>
       </div>
-      <div id="article-content"><div class="empty">Saisissez un code article pour voir son historique et ses commandes en cours.</div></div>
+      <div id="article-content"><div class="empty">Saisissez un code article, un EAN ou une désignation pour voir sa fiche 360°.</div></div>
     </div>
 
     <!-- FICHE ACHAT -->
@@ -1048,24 +1071,54 @@ function ficheSearch(v) {
   if (q.length < 2) { ficheSuggestHide(); return; }
   _ficheSearchTimer = setTimeout(async () => {
     try {
-      const r = await apiFetch('/api/search/article?q=' + encodeURIComponent(q) + '&limit=8');
-      renderFicheSuggest(r.data || []);
+      const r = await apiFetch('/api/search/article?q=' + encodeURIComponent(q) + '&limit=12');
+      renderFicheSuggest(r.data || [], q, 'fiche-suggest', 'pickFicheArticle');
     } catch (e) { ficheSuggestHide(); }
-  }, 250);
+  }, 200);
 }
-function renderFicheSuggest(items) {
-  const d = document.getElementById('fiche-suggest');
+
+let _articleSearchTimer = null;
+function articleSuggestHide() { const d = document.getElementById('article-suggest'); if (d) { d.style.display = 'none'; d.innerHTML = ''; } }
+function articleSearch(v) {
+  const q = (v || '').trim();
+  clearTimeout(_articleSearchTimer);
+  if (q.length < 2) { articleSuggestHide(); return; }
+  _articleSearchTimer = setTimeout(async () => {
+    try {
+      const r = await apiFetch('/api/search/article?q=' + encodeURIComponent(q) + '&limit=12');
+      renderFicheSuggest(r.data || [], q, 'article-suggest', 'pickArticleTab');
+    } catch (e) { articleSuggestHide(); }
+  }, 200);
+}
+
+function pickArticleTab(code) {
+  const el = document.getElementById('f-article-code');
+  if (el) el.value = code;
+  articleSuggestHide();
+  loadArticle();
+}
+
+function renderFicheSuggest(items, query, containerId = 'fiche-suggest', pickCallback = 'pickFicheArticle') {
+  const d = document.getElementById(containerId);
   if (!d) return;
-  if (!items.length) { d.innerHTML = '<div class="fs-empty">Aucun article trouv&eacute;</div>'; d.style.display = 'block'; return; }
-  d.innerHTML = items.map(it => {
-    const meta = [it.ean13 ? ('EAN ' + it.ean13) : '', it.code_article].filter(Boolean).join(' · ');
+  if (!items || !items.length) {
+    d.innerHTML = `<div class="fs-empty">Aucun article trouvé pour « ${esc(query || '')} »</div>`;
+    d.style.display = 'block';
+    return;
+  }
+  let html = `<div class="fs-header">💡 ${items.length} proposition(s) trouvée(s) pour « ${esc(query || '')} »</div>`;
+  html += items.map(it => {
+    const meta = [it.ean13 ? ('EAN ' + it.ean13) : '', it.edi ? ('EDI ' + it.edi) : ''].filter(Boolean).join(' · ');
     const codeArg = String(it.code_article).replace(/'/g, "\\'");
-    return '<div class="fs-item" onmousedown="pickFicheArticle(\'' + codeArg + '\')">'
-      + '<div class="fs-desig">' + esc(it.designation || it.code_article) + '</div>'
-      + '<div class="fs-meta">' + esc(meta) + '</div></div>';
+    return `<div class="fs-item" onmousedown="${pickCallback}('${codeArg}')">
+      <div><span class="fs-code">${esc(it.code_article)}</span> ${it.designation ? `<span class="fs-desig">— ${esc(it.designation)}</span>` : ''}</div>
+      ${meta ? `<div class="fs-meta">${esc(meta)}</div>` : ''}
+    </div>`;
   }).join('');
+  d.innerHTML = html;
   d.style.display = 'block';
 }
+
 function pickFicheArticle(code) {
   const el = document.getElementById('f-fiche-art');
   if (el) el.value = code;
