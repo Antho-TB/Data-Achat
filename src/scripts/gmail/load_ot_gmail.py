@@ -92,10 +92,11 @@ ON CONFLICT (n_conteneur) DO UPDATE SET
 
 EVENT_SQL = """
 INSERT INTO achat.transport_evenement
-    (cle_idempotence, n_conteneur, source, date_info, type, champ_date,
+    (id, cle_idempotence, n_conteneur, source, date_info, type, champ_date,
      ancienne_valeur, nouvelle_valeur, texte)
 VALUES
-    (:cle, :n_conteneur, :source, CAST(:date_info AS date), 'chgt_date', :champ_date,
+    ((SELECT COALESCE(MAX(id), 0) + 1 FROM achat.transport_evenement),
+     :cle, :n_conteneur, :source, CAST(:date_info AS date), 'chgt_date', :champ_date,
      CAST(:ancienne_valeur AS date), CAST(:nouvelle_valeur AS date), :texte)
 ON CONFLICT (cle_idempotence) DO NOTHING
 """

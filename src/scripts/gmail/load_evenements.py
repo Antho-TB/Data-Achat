@@ -75,7 +75,8 @@ def load(records: list[dict], dry_run: bool = False) -> None:
             col_list = ["cle_idempotence"] + cols
             placeholders = ", ".join(f":{c}" for c in col_list)
             conn.execute(text(
-                f"INSERT INTO {table} ({', '.join(col_list)}) VALUES ({placeholders}) "
+                f"INSERT INTO {table} (id, {', '.join(col_list)}) "
+                f"VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM {table}), {placeholders}) "
                 f"ON CONFLICT (cle_idempotence) DO NOTHING"
             ), payload)
             stats[dom] = stats.get(dom, 0) + 1
