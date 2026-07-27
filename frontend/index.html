@@ -284,6 +284,14 @@ button { cursor: pointer; }
 .table-wrap tbody tr:nth-child(even) { background: #f7f9fb; }
 .table-wrap tr:hover td { background: #f8fafc; }
 .table-wrap td.mono { font-family: var(--font-mono); font-size: 12px; }
+.fiche-search-wrap { position: relative; display: inline-block; }
+.fiche-suggest { position: absolute; top: 100%; left: 0; z-index: 200; min-width: 320px; max-width: 560px; max-height: 300px; overflow-y: auto; background: #ffffff; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.12); margin-top: 2px; }
+.fiche-suggest .fs-item { padding: 7px 10px; cursor: pointer; border-bottom: 1px solid #f0f4f8; }
+.fiche-suggest .fs-item:last-child { border-bottom: none; }
+.fiche-suggest .fs-item:hover { background: #f1f5f9; }
+.fiche-suggest .fs-desig { font-weight: 600; font-size: 13px; }
+.fiche-suggest .fs-meta { color: var(--muted); font-size: 11px; font-family: var(--font-mono); }
+.fiche-suggest .fs-empty { padding: 8px 10px; color: var(--muted); font-size: 12px; }
 
 /* ── Badges statut ───────────────────────────────────────────────────────── */
 .badge {
@@ -686,7 +694,7 @@ button { cursor: pointer; }
     <!-- FICHE ACHAT -->
     <div id="tab-fiche" class="tab-panel">
       <div class="toolbar">
-        <input id="f-fiche-art" type="text" placeholder="Code article ou PO..." onkeydown="if(event.key==='Enter') loadFiche()">
+        <span class="fiche-search-wrap"><input id="f-fiche-art" type="text" autocomplete="off" placeholder="D&eacute;signation, EAN/EDI, code article ou PO..." oninput="ficheSearch(this.value)" onblur="setTimeout(ficheSuggestHide,200)" onkeydown="if(event.key==='Enter'){ ficheSuggestHide(); loadFiche(); }"><div id="fiche-suggest" class="fiche-suggest" style="display:none;"></div></span>
         <button class="btn btn-ghost btn-sm" onclick="loadFiche()">Charger / pré-remplir</button>
         <button class="btn btn-ghost btn-sm" onclick="resetFiche()">Vider le formulaire</button>
       </div>
@@ -1009,6 +1017,39 @@ function blankFicheItem(seed) {
   const it = {};
   FICHE_ITEM_FIELDS.forEach(f => { it[f.key] = f.type === 'checkbox' ? false : ''; });
   return Object.assign(it, seed || {});
+}
+
+let _ficheSearchTimer = null;
+function ficheSuggestHide() { const d = document.getElementById('fiche-suggest'); if (d) { d.style.display = 'none'; d.innerHTML = ''; } }
+function ficheSearch(v) {
+  const q = (v || '').trim();
+  clearTimeout(_ficheSearchTimer);
+  if (q.length < 2) { ficheSuggestHide(); return; }
+  _ficheSearchTimer = setTimeout(async () => {
+    try {
+      const r = await apiFetch('/api/search/article?q=' + encodeURIComponent(q) + '&limit=8');
+      renderFicheSuggest(r.data || []);
+    } catch (e) { ficheSuggestHide(); }
+  }, 250);
+}
+function renderFicheSuggest(items) {
+  const d = document.getElementById('fiche-suggest');
+  if (!d) return;
+  if (!items.length) { d.innerHTML = '<div class="fs-empty">Aucun article trouv&eacute;</div>'; d.style.display = 'block'; return; }
+  d.innerHTML = items.map(it => {
+    const meta = [it.ean13 ? ('EAN ' + it.ean13) : '', it.code_article].filter(Boolean).join(' · ');
+    const codeArg = String(it.code_article).replace(/'/g, "\\'");
+    return '<div class="fs-item" onmousedown="pickFicheArticle(\'' + codeArg + '\')">'
+      + '<div class="fs-desig">' + esc(it.designation || it.code_article) + '</div>'
+      + '<div class="fs-meta">' + esc(meta) + '</div></div>';
+  }).join('');
+  d.style.display = 'block';
+}
+function pickFicheArticle(code) {
+  const el = document.getElementById('f-fiche-art');
+  if (el) el.value = code;
+  ficheSuggestHide();
+  loadFiche();
 }
 
 async function loadFiche() {
