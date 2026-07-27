@@ -537,11 +537,11 @@ button { cursor: pointer; }
     </div>
     <div class="charts-row">
       <div class="chart-card">
-        <h3 title="Retard maxi constaté (jours) = pire écart ETD réel - ETD confirmé observé chez ce fournisseur, figé (pas recalculé contre la date du jour). Survole une barre pour le détail.">Retards par fournisseur <span style="cursor:help;font-size:11px;color:var(--muted);">ⓘ</span></h3>
+        <h3 title="Retard maxi constaté (jours) = pire écart ETD réel - ETD confirmé observé chez ce fournisseur, figé (pas recalculé contre la date du jour). Survole une barre pour le détail.">Retards par fournisseur <span class="badge badge-blue" style="margin-left:6px;" title="Source : Calcul d'écart ETD confirmé vs ETD réel dans IMPORT 2026.xlsx">IMPORT 2026.xlsx</span> <span style="cursor:help;font-size:11px;color:var(--muted);">ⓘ</span></h3>
         <div class="chart-wrap"><canvas id="chart-retards"></canvas></div>
       </div>
       <div class="chart-card">
-        <h3>Statuts commandes</h3>
+        <h3>Statuts commandes <span class="badge badge-blue" style="margin-left:6px;" title="Source : Statuts Sylob V25 & IMPORT 2026.xlsx">Sylob V25 + Commandes</span></h3>
         <div class="chart-wrap"><canvas id="chart-statuts"></canvas></div>
       </div>
     </div>
@@ -549,6 +549,10 @@ button { cursor: pointer; }
 
   <!-- ═══ COMMANDES ══════════════════════════════════════════════════════════ -->
   <div id="tab-commandes" class="tab-panel">
+    <div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;">
+      <span style="font-weight:600;font-size:15px;color:var(--text);">Commandes d'importation</span>
+      <span class="badge badge-blue" title="Source : Fichier Excel 'IMPORT 2026.xlsx' d'Andréa (Mise à jour automatique ETL)">IMPORT 2026.xlsx (Excel Andréa)</span>
+    </div>
     <div class="toolbar">
       <input id="f-po" type="text" placeholder="N° commande (PO)…" oninput="filterCommandes()">
       <input id="f-designation" type="text" placeholder="Désignation…" oninput="filterCommandes()">
@@ -582,9 +586,11 @@ button { cursor: pointer; }
   <!-- ═══ FOURNISSEURS ═══════════════════════════════════════════════════════ -->
   <div id="tab-fournisseurs" class="tab-panel">
     <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;">
+      <span style="font-weight:600;font-size:15px;color:var(--text);">Synthèse & Performance Fournisseurs</span>
+      <span class="badge badge-blue" title="Source : DWH Sylob V25 (CA 3 ans) + Commandes d'import">Sylob V25 + Commandes</span>
       <input id="f-frs-search" type="text" placeholder="Rechercher un fournisseur…"
              oninput="filterFournisseurs()"
-             style="padding:6px 10px;border:1px solid var(--border);border-radius:5px;font-size:13px;width:260px;">
+             style="padding:6px 10px;border:1px solid var(--border);border-radius:5px;font-size:13px;width:260px;margin-left:auto;">
       <button class="btn btn-ghost btn-sm" onclick="loadFournisseurs()">&#8635;</button>
     </div>
     <div id="table-fournisseurs">
@@ -603,6 +609,10 @@ button { cursor: pointer; }
 
   <!-- ═══ ARTWORK ════════════════════════════════════════════════════════════ -->
   <div id="tab-artwork" class="tab-panel">
+    <div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;">
+      <span style="font-weight:600;font-size:15px;color:var(--text);">Suivi des Artworks & Packaging</span>
+      <span class="badge badge-yellow" title="Source : Google Sheet 'Suivi des artworks-import' (Clarisse) via API Drive">GSheet Clarisse (Drive)</span>
+    </div>
     <div class="artwork-stats" id="artwork-stats"></div>
     <div id="artwork-charts" style="display:none;gap:16px;margin-bottom:14px;flex-wrap:wrap;">
       <div style="flex:1;min-width:220px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:10px;">
@@ -636,6 +646,7 @@ button { cursor: pointer; }
   <div id="tab-previsionnel" class="tab-panel">
     <div class="section-header" style="display:flex;align-items:center;gap:12px;">
       <span class="section-title">Échéancier de paiement — échéance = ETD du BL + 15 j</span>
+      <span class="badge badge-blue" title="Source : Montants de commandes Sylob V25 & IMPORT 2026.xlsx (Date = ETD + 15j)">Calcul ETD + 15j</span>
       <select id="f-cash-mode" onchange="renderCash()" class="select-sm" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);font-size:12px;background:var(--card,#fff);color:var(--text);cursor:pointer;">
         <option value="a_payer">Reste à payer (Cash futur)</option>
         <option value="totale">Volume Total Engagé (Payé + À payer)</option>
@@ -649,12 +660,12 @@ button { cursor: pointer; }
     <div style="height:260px;margin-bottom:16px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:12px;">
       <canvas id="chart-cash"></canvas>
     </div>
-      <div class="section-header"><span class="section-title">Mesures prévisionnelles</span></div>
+      <div class="section-header"><span class="section-title">Mesures prévisionnelles</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : Agrégation des lignes de commandes d'importation">Commandes Import</span></div>
     <div id="prev-mesures" class="artwork-stats"></div>
-    <div class="section-header"><span class="section-title">B/L en attente ou bloqués — par conteneur puis fournisseur</span></div>
+    <div class="section-header"><span class="section-title">B/L en attente ou bloqués — par conteneur puis fournisseur</span><span class="badge badge-green" style="margin-left:8px;" title="Source : Suivi Maritime Transitaire (Qualitairsea) + PJ Gmail (BL)">Suivi Maritime + Gmail BL</span></div>
     <p style="font-size:12px;color:var(--muted);margin:4px 0 8px;">« Bloqué » = en retard de livraison ET pas encore parti. Paiement : même logique que l'onglet Conteneurs (Payé / À payer / À payer en retard), ventilée ici par fournisseur au sein de chaque conteneur.</p>
     <div id="prev-bl-bloques"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
-    <div class="section-header"><span class="section-title">Par fournisseur (à payer / inspection / parti / retard)</span></div>
+    <div class="section-header"><span class="section-title">Par fournisseur (à payer / inspection / parti / retard)</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : Commandes d'importation ventilées par fournisseur">Commandes Import</span></div>
     <div id="prev-frs"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
   </div>
 
@@ -663,7 +674,8 @@ button { cursor: pointer; }
     <div id="conteneurs-kpis" class="kpi-grid" style="margin-bottom:14px;"></div>
     <div class="section-header">
       <span class="section-title">Prévisionnel des arrivées (mois courant → M+3)</span>
-      <button class="btn btn-ghost btn-sm" onclick="loadConteneurs()">&#8635; Actualiser</button>
+      <span class="badge badge-green" style="margin-left:8px;" title="Source : GSheet Suivi Maritime Transitaire 2026 (Qualitairsea)">GSheet Transitaire</span>
+      <button class="btn btn-ghost btn-sm" onclick="loadConteneurs()" style="margin-left:auto;">&#8635; Actualiser</button>
     </div>
     <div style="height:220px;margin-bottom:16px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:12px;">
       <canvas id="chart-conteneurs-m3"></canvas>
