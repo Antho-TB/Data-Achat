@@ -79,6 +79,30 @@ Invoke-RestMethod http://127.0.0.1:5050/api/health
 # Attendu : status=ok, db=connected, write_enabled=true
 ```
 
+## 3bis. Accès Andréa (LAN bureau, décision 23/07)
+
+Pas de second déploiement pour Andréa — elle accède à **cette même instance** via le réseau
+local, en navigateur uniquement. À faire une fois (sur ce poste) :
+
+```powershell
+# 1. config\.env : passer API_HOST à 0.0.0.0 (valeur par defaut actuelle = 127.0.0.1,
+#    personne ne l'a encore change -- editer le fichier a la main).
+
+# 2. Ouvrir le firewall (scope LAN uniquement, jamais Internet) :
+cd deploy
+.\install_service_windows.ps1   # recree aussi la regle "FUSEAU-API (LAN bureau)", idempotent
+
+# 3. Redemarrer pour prendre en compte API_HOST=0.0.0.0
+Restart-ScheduledTask -TaskName "FUSEAU-API"
+
+# 4. Recuperer l'IP LAN de ce poste et la transmettre a Andrea
+ipconfig | Select-String "IPv4"
+```
+
+Andréa ouvre ensuite `http://<IP-LAN-de-ce-poste>:5050` dans son navigateur. Rien à installer
+chez elle. Si elle fait une action d'écriture, le navigateur lui demandera la clé API au
+premier essai (stockée dans son propre navigateur, `localStorage`).
+
 ## 4. Smoke test après redémarrage (ce qui est NOUVEAU cette session, à vérifier à l'écran)
 
 - **Onglet Prévisionnel** (ordre revu 23/07) :
