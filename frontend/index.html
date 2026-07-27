@@ -2148,7 +2148,7 @@ function renderProduitFiche(data) {
   const pick = (...vals) => vals.find(v => v !== null && v !== undefined && v !== '');
 
   const identite = `
-    <div class="section-header"><span class="section-title">Identité</span></div>
+    <div class="section-header"><span class="section-title">Identité</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : DWH Sylob V25 + Matrice TB Import.xlsx">Sylob V25 + Matrice</span></div>
     <div style="display:flex;flex-wrap:wrap;gap:0 24px;">
       ${fieldRow('Désignation FR', pick(g(p,'designation_fr'), g(n,'description_fr')))}
       ${fieldRow('Désignation EN (Name)', pick(g(p,'designation_en'), g(n,'description_en')))}
@@ -2163,7 +2163,7 @@ function renderProduitFiche(data) {
 
   const logistique = `
     <div class="section-header" style="margin-top:14px;"><span class="section-title">Logistique & EAN</span>
-      ${p.source_dimensions === 'sylob_v25' ? '<span class="badge badge-green" style="margin-left:8px;" title="Dimensions/packaging issus du pull direct Sylob V25 (source de vérité), pas de la Matrice Excel.">Sylob V25</span>' : ''}
+      <span class="badge badge-green" style="margin-left:8px;" title="Dimensions/packaging et EAN issus du pull direct Sylob V25 (source de vérité) ou Matrice Excel.">${p.source_dimensions === 'sylob_v25' ? 'Sylob V25' : 'Matrice TB Import'}</span>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:0 24px;">
       ${fieldRow('EAN13 (ITEM)', pick(g(p,'ean13'), g(n,'ean13')))}
@@ -2182,7 +2182,7 @@ function renderProduitFiche(data) {
     </div>`;
 
   const matiere = `
-    <div class="section-header" style="margin-top:14px;"><span class="section-title">Matière, marquage & packaging</span></div>
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Matière, marquage & packaging</span><span class="badge badge-gray" style="margin-left:8px;" title="Source : Matrice TB Import.xlsx + Nomenclature Sylob">Matrice TB + Sylob</span></div>
     <div style="display:flex;flex-wrap:wrap;gap:0 24px;">
       ${fieldRow('Matière lame', pick(g(p,'matiere_lame'), g(n,'matiere_lame')))}
       ${fieldRow('Chrome %', pick(g(p,'chrome_pct'), g(n,'chrome_pct')))}
@@ -2198,7 +2198,7 @@ function renderProduitFiche(data) {
     </div>`;
 
   const composantsBlock = composants.length ? `
-    <div class="section-header" style="margin-top:14px;"><span class="section-title">Composants (lot multiple, ${composants.length})</span></div>
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Composants (lot multiple, ${composants.length})</span><span class="badge badge-gray" style="margin-left:8px;" title="Source : Matrice TB Import.xlsx (Feuille Nomenclatures)">Matrice TB (Nomenclatures)</span></div>
     <div class="table-wrap"><table>
       <thead><tr><th>#</th><th>Composant</th><th>Matière</th><th>Chrome %</th><th>Finition</th><th>Manche</th><th>Marquage</th></tr></thead>
       <tbody>${composants.map(c => `<tr>
@@ -2212,7 +2212,7 @@ function renderProduitFiche(data) {
       </tr>`).join('')}</tbody></table></div>` : '';
 
   const artworkBlock = aw ? `
-    <div class="section-header" style="margin-top:14px;"><span class="section-title">Artwork (design)</span></div>
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Artwork (design)</span><span class="badge badge-yellow" style="margin-left:8px;" title="Source : Google Sheet 'Suivi des artworks-import' (Clarisse)">GSheet Artwork (Clarisse)</span></div>
     <div style="display:flex;flex-wrap:wrap;gap:0 24px;align-items:center;">
       <div class="fiche-row" style="margin-bottom:4px;"><label style="width:180px;">Statut</label>${badge(aw.statut_artwork)}</div>
       ${fieldRow('Priorité', aw.priorite)}
@@ -2221,11 +2221,11 @@ function renderProduitFiche(data) {
       ${fieldRow('Dernière validation', aw.date_validation)}
       ${(aw.drive_url || aw.drive_file_id) ? `<a href="${esc(aw.drive_url || 'https://drive.google.com/file/d/' + aw.drive_file_id + '/view')}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="margin-left:auto" title="Ouvrir le fichier original dans Google Drive">🎨 Ouvrir l'artwork (Drive) 🔗</a>` : ''}
     </div>` : `
-    <div class="section-header" style="margin-top:14px;"><span class="section-title">Artwork (design)</span></div>
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Artwork (design)</span><span class="badge badge-gray" style="margin-left:8px;" title="Source : Google Sheet 'Suivi des artworks-import' (Clarisse)">GSheet Artwork (Clarisse)</span></div>
     <div class="fiche-row"><label style="width:180px;">Artwork</label><span class="badge badge-gray">Non</span></div>`;
 
   const cycleBlock = cv ? `
-    <div class="section-header" style="margin-top:14px;"><span class="section-title">Cycle de vie (Carrefour)</span></div>
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Cycle de vie (Carrefour)</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : Commentaire Sylob V25 (HO Code / Distributeur)">Sylob V25</span></div>
     <div style="display:flex;flex-wrap:wrap;gap:0 24px;">
       ${fieldRow('Statut', cv.statut)}
       ${fieldRow('Qté en commande', cv.quantite_en_commande)}
@@ -2234,7 +2234,7 @@ function renderProduitFiche(data) {
   const qdocs = data?.qualite_docs || [];
   const qana = data?.qualite_analyses || [];
   const docsBlock = (qdocs.length || qana.length) ? `
-    <div class="section-header" style="margin-top:14px;"><span class="section-title">Rapports & Analyses Qualité (${qdocs.length + qana.length})</span></div>
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Rapports & Analyses Qualité (${qdocs.length + qana.length})</span><span class="badge badge-yellow" style="margin-left:8px;" title="Source : Drive 'ANALYSES ET INSPECTIONS' (Rapports DEKRA / SPECTRO)">Drive Qualité (Drive)</span></div>
     <div class="table-wrap"><table>
       <thead><tr><th>Type</th><th>Réf / Nom</th><th>PO#</th><th>Date / Stade</th><th>Conformité</th><th>Document</th></tr></thead>
       <tbody>
@@ -2257,7 +2257,7 @@ function renderProduitFiche(data) {
       </tbody></table></div>` : '';
 
   const qualiteBlock = qhist.length ? `
-    <div class="section-header" style="margin-top:14px;"><span class="section-title">Historique qualité (${qhist.length})</span></div>
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Historique qualité (${qhist.length})</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : Inspections à l'arrivée et enregistrements NCR">Inspections & NCR</span></div>
     <div class="table-wrap"><table>
       <thead><tr><th>PO#</th><th>Fournisseur</th><th>Inspection</th><th>N° rapport</th><th>Réception</th><th>NCR</th></tr></thead>
       <tbody>${qhist.slice(0,10).map(q => `<tr>
@@ -2361,9 +2361,9 @@ async function loadArticle() {
     el.innerHTML = `
       <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Article <strong>${esc(targetCode)}</strong> - ${esc(nomDesignation)}</p>
       ${renderProduitFiche(prod.data)}
-      <div class="section-header" style="margin-top:16px;"><span class="section-title">Commandes en cours</span></div>
+      <div class="section-header" style="margin-top:16px;"><span class="section-title">Commandes en cours</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : IMPORT 2026.xlsx (Excel Andréa) + DWH Sylob V25">IMPORT 2026.xlsx + Sylob</span></div>
       ${cmdTable}
-      <div class="section-header" style="margin-top:16px;"><span class="section-title">3 derniers prix (tous fournisseurs confondus)</span></div>
+      <div class="section-header" style="margin-top:16px;"><span class="section-title">3 derniers prix (tous fournisseurs confondus)</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : Commandes historiques Sylob V25 / IMPORT 2026.xlsx">Commandes Sylob V25</span></div>
       ${histTable}`;
   } catch (e) {
     el.innerHTML = `<div class="empty"><div class="empty-icon">!</div>${esc(e.message)}</div>`;
