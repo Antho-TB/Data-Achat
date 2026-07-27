@@ -30,6 +30,16 @@ a tort GUANGWEI/DIAMOND TRACK avec HONGXING (2 fournisseurs bien distincts) a
 cause de cette unique ligne de saisie bruitee. Un filtre uniforme (sans distinguer
 "nom ambigu" de "nom a faible volume") ferait a tort disparaitre POLLYDA & co.
 
+Alias connus (source humaine, pas de detection automatique possible) : le
+questionnaire de passation d'Andrea (`docs/20260721_FicheAchat_Questionnaire_
+Sourcing_Andrea_v1.docx`, §6 "Pieges recurrents") liste des synonymes de
+fournisseur utilises par la direction, dont certains ne partagent JAMAIS un
+frn_code commun dans nos PO actuels (aucune preuve data-driven possible) --
+ex. POLLYDA / DIAMOND TRACK / GUANGWEI : POLLYDA n'apparait sur aucun PO avec
+le frn_code de GUANGWEI (00001220), donc l'algorithme frn_code seul ne peut
+PAS le detecter. D'ou ALIAS_CONNUS ci-dessous, fusionne AVANT le Union-Find
+par frn_code (les deux mecanismes se completent, ne se remplacent pas).
+
 Usage : python -m src.scripts.etl.enrich_ca
 """
 from __future__ import annotations
@@ -54,8 +64,20 @@ SCHEMAS = {
 # -- voir garde-fou anti-faux-positif dans le docstring module.
 MIN_PO_SUPPORT = 2
 
+# Synonymes de fournisseur connus du metier (Andrea, questionnaire de passation
+# 21/07) mais indetectables par le seul frn_code faute de PO partage en donnees
+# actuelles. HUGUESUN et VICO n'apparaissent pour l'instant dans aucun PO
+# (verifie le 23/07) -- gardes ici pour que la fusion s'applique automatiquement
+# des qu'ils apparaitront dans un futur import.
+ALIAS_CONNUS: list[list[str]] = [
+    ["POLLYDA", "DIAMOND TRACK", "GUANGWEI"],
+    ["HUGUESUN", "SMART IRON", "JIT GLOBAL"],
+    ["HIAMEA", "AOYAM"],
+    ["VICO", "MINGHAO"],
+]
 
-def _group_by_frn_code(four2codes: dict[str, set]) -> list[dict]:
+
+def _group_by_frn_code(four2codes: dict[str, set], alias_groups: list[list[str]] | None = None) -> list[dict]:
     """
     Regroupe les noms fournisseur (texte) par composante connexe sur le graphe
     biparti nom <-> (societe, frn_code).
@@ -89,6 +111,12 @@ def _group_by_frn_code(four2codes: dict[str, set]) -> list[dict]:
         find(nom)
         for code in codes:
             union(nom, code)
+
+    # Alias connus (source humaine, cf. docstring module) : fusionnes en plus des
+    # liens frn_code, pour les cas ou 2 noms ne partagent jamais de PO commun.
+    for cluster in (alias_groups or []):
+        for a, b in zip(cluster, cluster[1:]):
+            union(a, b)
 
     groups: dict = {}
     for nom, codes in four2codes.items():
@@ -184,7 +212,7 @@ def run() -> int:
             ), {"c": list(codes)}).fetchall():
                 ca_by_code[(soc, str(frn).strip())] = [float(ca or 0), int(nb or 0)]
 
-    groups = _group_by_frn_code(four2codes)
+    groups = _group_by_frn_code(four2codes, ALIAS_CONNUS)
 
     rows = []
     for g in groups:
