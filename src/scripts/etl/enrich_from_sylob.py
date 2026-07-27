@@ -232,6 +232,7 @@ def enrich_produits(achat_engine, sylob_engine) -> dict[str, int]:
                 len(by_code), len(by_ean))
 
     now = datetime.now(timezone.utc)
+    update_params = []
 
     with achat_engine.begin() as ca:
         for code, ean in [(r[0], r[1]) for r in rows]:
@@ -250,6 +251,21 @@ def enrich_produits(achat_engine, sylob_engine) -> dict[str, int]:
                 stats["non_trouves"] += 1
                 continue
 
+            update_params.append({
+                "ean13": data["ean13"],
+                "desig": data["designation_fr_sylob"],
+                "poids": data["poids_uvc_g_sylob"],
+                "vol": data["volume_m3_sylob"],
+                "delai": data["delai_reappro_jours"],
+                "prix": data["dernier_prix_sylob"],
+                "sylob_code": data["sylob_code_article"],
+                "match_type": match_type,
+                "synced": now,
+                "societe": data["sylob_societe"],
+                "code": code,
+            })
+
+        if update_params:
             ca.execute(text("""
                 UPDATE achat.produit SET
                     ean13 = COALESCE(NULLIF(ean13,''), :ean13),
@@ -263,19 +279,7 @@ def enrich_produits(achat_engine, sylob_engine) -> dict[str, int]:
                     sylob_synced_at = :synced,
                     sylob_societe = :societe
                 WHERE code_article = :code
-            """), {
-                "ean13": data["ean13"],
-                "desig": data["designation_fr_sylob"],
-                "poids": data["poids_uvc_g_sylob"],
-                "vol": data["volume_m3_sylob"],
-                "delai": data["delai_reappro_jours"],
-                "prix": data["dernier_prix_sylob"],
-                "sylob_code": data["sylob_code_article"],
-                "match_type": match_type,
-                "synced": now,
-                "societe": data["sylob_societe"],
-                "code": code,
-            })
+            """), update_params)
 
     return stats
 
