@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
@@ -897,33 +897,33 @@ const loaders = {
 // vrac/packaging special), "shipping paid by" toujours TB (defaut applique).
 const FICHE_GLOBAL_FIELDS = [
   ['DESCRIPTION OF THE PRODUCT / SUPPLIER', [
-    { key: 'supplier', label: 'Supplier', type: 'text', auto: 1, hint: "Fournisseur confirme par Julia (plus fiable que la direction, qui utilise parfois d'anciens noms — ex. POLLYDA/GUANGWEI)." },
-    { key: 'n_lot', label: 'N° LOT', type: 'text', placeholder: 'AAMMJJHHMM, ex. 2607231636', hint: "Format AAMMJJHHMM = date+heure de creation de la commande Sylob (ex. 2607231636 = 23/07/2026 16h36)." },
-    { key: 'po_number', label: 'N° commande (PO)', type: 'text', auto: 1 },
-    { key: 'ho_code', label: 'HO Code', type: 'text', placeholder: 'optionnel — distributeurs type Carrefour', hint: "Source : commentaire Sylob." },
+    { key: 'supplier', label: 'Supplier', type: 'text', auto: 1, placeholder: 'À voir avec Eric / Julia', hint: "Fournisseur confirmé par Julia (plus fiable que la direction, qui utilise parfois d'anciens noms — ex. POLLYDA/GUANGWEI)." },
+    { key: 'n_lot', label: 'N° LOT', type: 'text', placeholder: 'AAMMJJHHMM, ex. 2607231636', hint: "Format AAMMJJHHMM = date+heure de création de la commande Sylob (ex. 2607231636 = 23/07/2026 16h36)." },
+    { key: 'po_number', label: 'N° commande (PO)', type: 'text', auto: 1, placeholder: 'N° PO Sylob' },
+    { key: 'ho_code', label: 'HO Code', type: 'text', placeholder: 'optionnel — commentaire Sylob (ex. Carrefour)', hint: "Source : commentaire Sylob." },
   ]],
   ['TRANSPORT', [
-    { key: 'forwarder', label: 'Forwarder', type: 'text', auto: 1 },
-    { key: 'transport_type', label: 'Type of transport', type: 'select', options: ['Sea', 'Air', 'Truck'] },
-    { key: 'port', label: 'Port / airport / city of destination', type: 'text', auto: 1 },
-    { key: 'etd', label: 'ETD', type: 'text', auto: 1, hint: "Regle Andrea : 90 jours a ajouter a la date de passage de commande, sauf commande urgente (date donnee par Eric)." },
+    { key: 'forwarder', label: 'Forwarder', type: 'text', auto: 1, placeholder: 'QUALITAIRSEA (par défaut)' },
+    { key: 'transport_type', label: 'Type of transport', type: 'select', options: ['Sea', 'Air', 'Truck'], hint: "Aérien seulement si urgence (décidé par Eric / Olivier)" },
+    { key: 'port', label: 'Port / airport / city of destination', type: 'text', auto: 1, placeholder: 'FOS SUR MER (= MARSEILLE)' },
+    { key: 'etd', label: 'ETD', type: 'text', auto: 1, placeholder: 'À voir avec Eric / Service Achat (+90j)', hint: "Règle Andréa : 90 jours à ajouter à la date de passage de commande, sauf commande urgente (date donnée par Eric)." },
   ]],
   ['PACKAGING INFORMATIONS', [
-    { key: 'number_of_pieces_sets', label: 'Number of pieces/sets', type: 'text' },
-    { key: 'in_each_set', label: 'In each set', type: 'text' },
-    { key: 'shipping_marks', label: 'Shipping marks', type: 'text', placeholder: 'GW/NW - Item - EAN n° - Designation - Ctn n° - PCB - N° Lot' },
+    { key: 'number_of_pieces_sets', label: 'Number of pieces/sets', type: 'text', placeholder: 'À voir avec Eric / Julia / Sylob' },
+    { key: 'in_each_set', label: 'In each set', type: 'text', placeholder: 'Composition du set (ex: 6 couteaux)' },
+    { key: 'shipping_marks', label: 'Shipping marks', type: 'text', placeholder: 'GW/NW (Julia) — Item/EAN/PO/Lot (Sylob)' },
     { key: 'ean_on_product', label: 'EAN on product', type: 'checkbox' },
-    { key: 'nb_ean', label: 'Number of EAN', type: 'text' },
+    { key: 'nb_ean', label: 'Number of EAN', type: 'text', placeholder: 'Créé sur Sylob (Emmanuelle)' },
     { key: 'ean_on_pcb', label: 'EAN on PCB', type: 'checkbox' },
-    { key: 'particular_doc', label: 'Particular doc required (ex : Lawful…)', type: 'text' },
+    { key: 'particular_doc', label: 'Particular doc required (ex : Lawful…)', type: 'text', placeholder: 'Service Qualité (ex: FSC, lawful…)' },
   ]],
   ['SAMPLE', [
     { key: 'testing_samples', label: 'Testing samples (before launching production)', type: 'checkbox' },
-    { key: 'shipping_paid_by', label: 'Shipping paid by', type: 'select', options: ['TB', 'Supplier'], hint: "Regle Andrea : toujours TB, jamais le fournisseur." },
-    { key: 'please_send_us', label: 'Please send us', type: 'checkboxgroup', group: ['Raw material', 'Semi-production sample', 'Compliance sample', 'Production sample', 'Printing sample'], hint: "Regle Andrea : existant en vrac = Raw+Semi-prod+Prod ; existant packaging special = + Printing ; nouveau en vrac = + Compliance (sans Printing) ; nouveau packaging special = les 5." },
+    { key: 'shipping_paid_by', label: 'Shipping paid by', type: 'select', options: ['TB', 'Supplier'], hint: "Règle Andréa : toujours TB, jamais le fournisseur." },
+    { key: 'please_send_us', label: 'Please send us', type: 'checkboxgroup', group: ['Raw material', 'Semi-production sample', 'Compliance sample', 'Production sample', 'Printing sample'], hint: "Règle Andréa : existant en vrac = Raw+Semi-prod+Prod ; existant packaging spécial = + Printing ; nouveau en vrac = + Compliance (sans Printing) ; nouveau packaging spécial = les 5." },
   ]],
   ['STAMPING', [
-    { key: 'blade_stamping', label: 'Blade or product stamping', type: 'text', placeholder: 'Texte du marquage, ou vide = No stamping' },
+    { key: 'blade_stamping', label: 'Blade or product stamping', type: 'text', placeholder: 'Proposé par Eric / Confirmé par Clarisse' },
     { key: 'stamping_img', label: "Emplacement du marquage (image)", type: 'image' },
   ]],
   ['PICTURE OF PRODUCT', [
@@ -933,28 +933,28 @@ const FICHE_GLOBAL_FIELDS = [
 
 // Colonnes partagees par les 7 tableaux du PS reel (cle commune = REFERENCE).
 const FICHE_ITEM_FIELDS = [
-  { key: 'reference', label: 'Reference', auto: 1 },
-  { key: 'name', label: 'Name (EN — Sylob)', auto: 1 },
-  { key: 'pcs_item', label: 'Item (pcs)' },
-  { key: 'pcs_inner', label: 'Inner (pcs)' },
-  { key: 'pcs_master', label: 'Master (pcs)' },
-  { key: 'packaging_desc', label: 'Packaging' },
-  { key: 'thickness', label: 'Thickness (mm)' },
-  { key: 'length', label: 'Length (mm)' },
-  { key: 'quality', label: 'Quality' },
-  { key: 'chrome_pct', label: 'Chrome %' },
-  { key: 'heat_treatment', label: 'Heat treatment', type: 'checkbox' },
-  { key: 'finishing', label: 'Finishing' },
-  { key: 'handle_material', label: 'Handle — Material' },
-  { key: 'pantone', label: 'Handle — Pantone / Pattern' },
-  { key: 'stamping_dim', label: 'Dimensions of stamping (mm)' },
-  { key: 'carton_l', label: 'Master carton — Length (cm)' },
-  { key: 'carton_w', label: 'Master carton — Width (cm)' },
-  { key: 'carton_h', label: 'Master carton — Height (cm)' },
-  { key: 'ean13', label: 'Item = EAN 13' },
-  { key: 'ean14_inner', label: 'Inner = EAN 14 SPCB' },
-  { key: 'ean14_master', label: 'Master = EAN 14 PCB' },
-  { key: 'french_desc', label: 'Désignation FR (French translation)' },
+  { key: 'reference', label: 'Reference', auto: 1, placeholder: 'Sylob / Emmanuelle (création réf)' },
+  { key: 'name', label: 'Name (EN — Sylob)', auto: 1, placeholder: 'Proposé par Eric / Jonathan — Sylob' },
+  { key: 'pcs_item', label: 'Item (pcs)', placeholder: 'Sylob / Julia / Eric (ex: 16 pour M16)' },
+  { key: 'pcs_inner', label: 'Inner (pcs)', placeholder: 'Sylob / Julia (à transmettre à Emmanuelle)' },
+  { key: 'pcs_master', label: 'Master (pcs)', placeholder: 'Sylob / Julia (à transmettre à Emmanuelle)' },
+  { key: 'packaging_desc', label: 'Packaging', placeholder: 'Eric (nouveau pack) / Clarisse (existant)' },
+  { key: 'thickness', label: 'Thickness (mm)', placeholder: 'Julia (fournisseur) / Jonathan (plans)' },
+  { key: 'length', label: 'Length (mm)', placeholder: 'Julia (fournisseur) / Jonathan (plans)' },
+  { key: 'quality', label: 'Quality', placeholder: 'Julia (fournisseur) / Eric' },
+  { key: 'chrome_pct', label: 'Chrome %', placeholder: '13% couteaux / 16-18% autres couverts' },
+  { key: 'heat_treatment', label: 'Heat treatment', placeholder: 'Oui si couteau/découpe (sinon Non)' },
+  { key: 'finishing', label: 'Finishing', placeholder: 'Julia (fournisseur) / Eric' },
+  { key: 'handle_material', label: 'Handle — Material', placeholder: 'Julia (fournisseur) / Eric' },
+  { key: 'pantone', label: 'Handle — Pantone / Pattern', placeholder: 'Eric (propose) / Clarisse (Pantone) / Julia' },
+  { key: 'stamping_dim', label: 'Dimensions of stamping (mm)', placeholder: 'Clarisse (dimensions & plan)' },
+  { key: 'carton_l', label: 'Master carton — Length (cm)', placeholder: 'Sylob / basé sur produits similaires' },
+  { key: 'carton_w', label: 'Master carton — Width (cm)', placeholder: 'Sylob / basé sur produits similaires' },
+  { key: 'carton_h', label: 'Master carton — Height (cm)', placeholder: 'Sylob / basé sur produits similaires' },
+  { key: 'ean13', label: 'Item = EAN 13', placeholder: 'Créé sur Sylob (Emmanuelle)' },
+  { key: 'ean14_inner', label: 'Inner = EAN 14 SPCB', placeholder: 'Créé sur Sylob (Emmanuelle)' },
+  { key: 'ean14_master', label: 'Master = EAN 14 PCB', placeholder: 'Créé sur Sylob (Emmanuelle)' },
+  { key: 'french_desc', label: 'Désignation FR (French translation)', placeholder: 'Sylob / Eric / Jonathan' },
 ];
 
 // Bloc reglementaire ARTWORK : texte fige (loi AGEC), identique sur les deux
