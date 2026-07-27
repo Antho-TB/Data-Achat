@@ -456,6 +456,18 @@ button { cursor: pointer; }
 .ps-visa { display: flex; gap: 20px; padding: 10px; }
 .ps-visa div { flex: 1; border: 1px solid #000; min-height: 46px; padding: 4px 6px; font-size: 10px; }
 
+/* ── Print Stylesheet (Feuille d'impression PDF A4) ───────────────────────── */
+@media print {
+  body { background: #fff !important; color: #000 !important; font-family: Arial, sans-serif !important; }
+  .header, .tabs-bar, .toolbar, #fiche-hint, .fiche-col-form, .no-print { display: none !important; }
+  .main, .tab-panel, .fiche-split, .fiche-col-preview { display: block !important; width: 100% !important; margin: 0 !important; padding: 0 !important; position: static !important; max-height: none !important; overflow: visible !important; }
+  .ps-doc { width: 100% !important; border: 1px solid #000 !important; box-shadow: none !important; margin: 0 !important; }
+  .ps-bar, .ps-table th { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; background-color: #000000 !important; color: #ffffff !important; }
+  .ps-section { page-break-inside: avoid; }
+  .ps-table { page-break-inside: avoid; }
+  @page { size: A4 portrait; margin: 8mm; }
+}
+
 </style>
 </head>
 <body>
@@ -693,10 +705,13 @@ button { cursor: pointer; }
 
     <!-- FICHE ACHAT -->
     <div id="tab-fiche" class="tab-panel">
-      <div class="toolbar">
+      <div class="toolbar no-print">
         <span class="fiche-search-wrap"><input id="f-fiche-art" type="text" autocomplete="off" placeholder="D&eacute;signation, EAN/EDI, code article ou PO..." oninput="ficheSearch(this.value)" onblur="setTimeout(ficheSuggestHide,200)" onkeydown="if(event.key==='Enter'){ ficheSuggestHide(); loadFiche(); }"><div id="fiche-suggest" class="fiche-suggest" style="display:none;"></div></span>
         <button class="btn btn-ghost btn-sm" onclick="loadFiche()">Charger / pré-remplir</button>
         <button class="btn btn-ghost btn-sm" onclick="resetFiche()">Vider le formulaire</button>
+        <div style="flex:1;"></div>
+        <button class="btn btn-outline btn-sm" onclick="window.print()">🖨️ Exporter / Imprimer PDF</button>
+        <button class="btn btn-primary btn-sm" onclick="exportFicheExcel()">📊 Exporter Excel (.xlsx)</button>
       </div>
       <p id="fiche-hint" style="font-size:12px;color:var(--muted);margin:8px 0;">Saisissez un code article ou un PO pour pré-remplir, ou laissez vide pour un formulaire vierge. L'aperçu à droite se met à jour en direct. Images non enregistrées côté serveur (aperçu de session uniquement).</p>
       <div class="fiche-split">
@@ -1344,6 +1359,39 @@ function renderFichePreview(data, pics, items) {
     </div></div>
   </div>`;
 }
+
+async function exportFicheExcel() {
+  const data = collectFicheData();
+  const items = collectFicheItems();
+  const supplier = data.supplier || 'TB';
+  const po = data.po_number || data.code_article || 'EXPORT';
+  const filename = `Fiche_Achat_${supplier}_${po}.xlsx`.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+  
+  try {
+    const resp = await fetch('/api/fiche-achat/export-excel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data, items })
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || 'Erreur lors de la génération de l\'export Excel');
+    }
+    const blob = await resp.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    showToast('Fichier Excel généré et téléchargé avec succès !', 'success');
+  } catch (e) {
+    showToast('Erreur export Excel : ' + e.message, 'error');
+  }
+}
+
 const loaded = new Set();
 
 // Tri generique : clic sur un entete de colonne trie le tableau (asc/desc),

@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 [API]
 =============================================================================
@@ -22,10 +22,10 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 
 from app.database import check_connection, get_engine
@@ -548,6 +548,30 @@ def get_produit(code_article: str):
             }}
         except Exception as e:
             raise internal_error(e)
+
+
+class FicheExportRequest(BaseModel):
+    data: dict[str, Any] = Field(default_factory=dict)
+    items: list[dict[str, Any]] = Field(default_factory=list)
+
+
+@app.post("/api/fiche-achat/export-excel")
+def export_fiche_excel(req: FicheExportRequest):
+    """Exporte la Fiche Achat actuelle au format Excel (.xlsx) conforme au modèle FOR-ACH-03-12."""
+    try:
+        from src.utils.export_fiche_excel import generate_fiche_excel_bytes
+        excel_bytes = generate_fiche_excel_bytes(req.data, req.items)
+        supplier = req.data.get("supplier") or "TB"
+        po = req.data.get("po_number") or req.data.get("code_article") or "EXPORT"
+        filename = f"Fiche_Achat_{supplier}_{po}.xlsx".replace(" ", "_")
+        return Response(
+            content=excel_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        raise internal_error(e)
+
 
 @app.get("/api/search/article")
 def search_article(q: str = "", limit: int = 10):
