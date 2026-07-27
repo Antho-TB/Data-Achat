@@ -229,7 +229,7 @@ def get_kpis():
                 FROM {SCHEMA}.v_retard_expedition e
                 LEFT JOIN {SCHEMA}.v_retard_article a
                     ON a.code_article = e.code_article AND a.fournisseur = e.fournisseur
-                WHERE e.fournisseur IS NOT NULL
+                WHERE e.fournisseur IS NOT NULL AND e.jours_retard <= 180
                 GROUP BY e.fournisseur
                 ORDER BY retard_max_jours DESC
                 LIMIT 5

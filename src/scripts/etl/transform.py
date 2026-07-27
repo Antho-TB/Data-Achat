@@ -396,6 +396,21 @@ def transform_commande(df_import: pd.DataFrame) -> pd.DataFrame:
         "volume_m3_ref_total": pd.to_numeric(df.get("Volume m3 réfernce total"), errors="coerce"),
     })
 
+    # Garde-fou permanent ETL : correction des fautes de frappe sur l'année de l'ETD confirmé
+    # (ex. PO 145862 WANXIN : etd_confirme 2024-09-05 alors que la commande date de 2025-01-08)
+    def _fix_etd_confirme_year(row):
+        etd = row.get("etd_confirme")
+        cmd = row.get("date_commande")
+        if pd.notna(etd) and pd.notna(cmd) and hasattr(etd, "year") and hasattr(cmd, "year"):
+            if etd.year < 2025 and cmd.year >= 2025:
+                try:
+                    return etd.replace(year=cmd.year)
+                except Exception:
+                    pass
+        return etd
+
+    result["etd_confirme"] = result.apply(_fix_etd_confirme_year, axis=1)
+
     # Convertir code_article en str propre -- même nettoyage que PO#/MEN#
     # (float Excel 12345.0 -> "12345", valeurs poubelle "/" -> None)
     result["code_article"] = result["code_article"].apply(_clean_ref)
