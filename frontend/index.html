@@ -613,9 +613,13 @@ button { cursor: pointer; }
 
   <!-- ═══ PRÉVISIONNEL ═══════════════════════════════════════════════════════ -->
   <div id="tab-previsionnel" class="tab-panel">
-    <div class="section-header">
-      <span class="section-title">Échéancier de paiement (à payer, USD) — échéance = ETD du BL + 15 j</span>
-      <button class="btn btn-ghost btn-sm" onclick="loadPrevisionnel()">&#8635; Actualiser</button>
+    <div class="section-header" style="display:flex;align-items:center;gap:12px;">
+      <span class="section-title">Échéancier de paiement — échéance = ETD du BL + 15 j</span>
+      <select id="f-cash-mode" onchange="renderCash()" class="select-sm" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);font-size:12px;background:var(--card,#fff);color:var(--text);cursor:pointer;">
+        <option value="a_payer">Reste à payer (Cash futur)</option>
+        <option value="totale">Volume Total Engagé (Payé + À payer)</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="loadPrevisionnel()" style="margin-left:auto;">&#8635; Actualiser</button>
     </div>
     <div style="height:260px;margin-bottom:16px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:12px;">
       <canvas id="chart-cash"></canvas>
@@ -2778,22 +2782,25 @@ function renderConteneursTable(rows) {
 }
 
 let chartCash = null;
-// Echeancier de paiement empile par conteneur (retour metier 23/07 : "decoupe
-// les barres histogramme par conteneur, pour se rendre compte de la valeur
-// par conteneur par mois"). 1 barre = 1 mois d'echeance (ETD BL + 15j), 1
-// segment empile = 1 conteneur. Cap aux N conteneurs les plus lourds pour
-// garder une legende lisible -- le reste est regroupe en "Autres".
+let _cashRows = [];
 const MAX_CONTENEURS_CASH = 8;
 function renderCash(rows) {
+  if (rows) _cashRows = rows;
+  const mode = document.getElementById('f-cash-mode')?.value || 'a_payer';
+  const valKey = mode === 'totale' ? 'valeur_totale' : 'valeur_a_payer';
+
   const ctx = document.getElementById('chart-cash');
   if (chartCash) chartCash.destroy();
-  if (!rows.length) {
+  if (!_cashRows || !_cashRows.length) {
     if (chartCash) { chartCash.destroy(); chartCash = null; }
     return;
   }
-  const mois = [...new Set(rows.map(r => r.mois))].sort();
+  const mois = [...new Set(_cashRows.map(r => r.mois))].sort();
   const totalParConteneur = {};
-  rows.forEach(r => { totalParConteneur[r.n_conteneur] = (totalParConteneur[r.n_conteneur] || 0) + Number(r.valeur || 0); });
+  _cashRows.forEach(r => {
+    const val = Number(r[valKey] ?? r.valeur ?? 0);
+    totalParConteneur[r.n_conteneur] = (totalParConteneur[r.n_conteneur] || 0) + val;
+  });
   const topConteneurs = Object.entries(totalParConteneur)
     .sort((a, b) => b[1] - a[1]).slice(0, MAX_CONTENEURS_CASH).map(([c]) => c);
   const isTop = new Set(topConteneurs);
@@ -2801,9 +2808,9 @@ function renderCash(rows) {
 
   const datasets = series.map((cont, i) => {
     const data = mois.map(m => {
-      return rows
+      return _cashRows
         .filter(r => r.mois === m && (cont === 'Autres' ? !isTop.has(r.n_conteneur) : r.n_conteneur === cont))
-        .reduce((s, r) => s + Number(r.valeur || 0), 0);
+        .reduce((s, r) => s + Number(r[valKey] ?? r.valeur ?? 0), 0);
     });
     return {
       label: cont, data,

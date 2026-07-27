@@ -862,10 +862,14 @@ def get_previsionnel():
                     TO_CHAR((COALESCE(ot.etd_reel, c.etd_confirme) + 15), 'YYYY-MM') AS mois,
                     COALESCE(NULLIF(NULLIF(TRIM(c.n_conteneur), ''), '/'), 'Sans conteneur') AS n_conteneur,
                     ROUND(SUM(CASE WHEN c.code_article IS NULL THEN COALESCE(c.total_prix, 0)
-                                   ELSE COALESCE(c.prix_unitaire * c.quantite, 0) END), 2) AS valeur
+                                   ELSE COALESCE(c.prix_unitaire * c.quantite, 0) END), 2) AS valeur_totale,
+                    ROUND(SUM(CASE WHEN c.date_paiement IS NULL THEN
+                                   (CASE WHEN c.code_article IS NULL THEN COALESCE(c.total_prix, 0)
+                                         ELSE COALESCE(c.prix_unitaire * c.quantite, 0) END)
+                                   ELSE 0 END), 2) AS valeur_a_payer
                 FROM {SCHEMA}.commande c
                 LEFT JOIN {SCHEMA}.ot_transport ot ON ot.n_conteneur = c.n_conteneur
-                WHERE c.statut <> 'Annulée' AND c.date_paiement IS NULL
+                WHERE c.statut <> 'Annulée'
                   AND COALESCE(ot.etd_reel, c.etd_confirme) IS NOT NULL
                 GROUP BY 1, 2
                 ORDER BY 1, 2
