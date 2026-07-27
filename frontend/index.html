@@ -1845,7 +1845,7 @@ function renderCommandes(rows) {
               <button class="cancel-btn" onclick="cancelEdit(this)">✕</button>
             </span>
           </td>
-          <td>${badge(r.statut)}</td>
+          <td>${badge(r.statut)}${r.date_reception_sylob ? ` <span class="badge badge-green" title="Date de réception magasin répertoriée dans Sylob : ${fmt(r.date_reception_sylob, 'date')}">📦 ${fmt(r.date_reception_sylob, 'date')}</span>` : ''}</td>
           <td>${payBadge(r)}</td>
           <td class="mono">${r.n_conteneur ? '<a href="#" title="Voir dans Suivi des conteneurs" onclick="focusConteneur(\'' + esc(r.n_conteneur) + '\');return false;">' + esc(r.n_conteneur) + '</a>' : '<span style="color:var(--muted)">—</span>'}</td>
           <td style="font-size:12px;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer"
@@ -2340,7 +2340,7 @@ function renderQualite(rows, warning) {
       <td>${inspBadge(r.resultat_inspection)} <small>${esc(r.date_inspection)||''}</small></td>
       <td class="mono">${r.ref_rapport ? (r.drive_url ? `<a href="${esc(r.drive_url)}" target="_blank" rel="noopener" title="Ouvrir le rapport dans Drive">${esc(r.ref_rapport)} 📎</a>` : (r.drive_file_id ? `<a href="https://drive.google.com/file/d/${esc(r.drive_file_id)}/view" target="_blank" rel="noopener" title="Ouvrir le rapport dans Drive">${esc(r.ref_rapport)} 📎</a>` : esc(r.ref_rapport))) : '-'}</td>
       <td>${esc(r.conformite)||'-'}</td>
-      <td>${esc(r.reception)||'-'}</td>
+      <td>${esc(r.reception)||'-'}${r.date_reception_sylob ? ` <span class="badge badge-green" style="margin-left:4px;" title="Réceptionné en magasin Sylob le ${fmt(r.date_reception_sylob, 'date')}">📦 ${fmt(r.date_reception_sylob, 'date')}</span>` : ''}</td>
       <td class="mono">${esc(r.ncr)||'-'}</td>
     </tr>`).join('')}</tbody></table></div>`;
 }
