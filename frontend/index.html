@@ -756,7 +756,7 @@ function filterPromo() {
   const promos = _commandes.filter(r => r.op_client_appro && /^\s*(OP|NOUVEAU)/i.test(r.op_client_appro));
   
   const filtered = promos.filter(r => {
-    const matchQ = !q || (r.op_client_appro || '').toLowerCase().includes(q) || (r.fournisseur || '').toLowerCase().includes(q);
+    const matchQ = !q || (r.op_client_appro || '').toLowerCase().includes(q) || (r.fournisseur || '').toLowerCase().includes(q) || (r.ean_edi || '').toLowerCase().includes(q) || (r.code_article || '').toLowerCase().includes(q);
     const isLivre = r.statut === 'Livrée';
     let matchStat = true;
     if (stat === 'Livrées') matchStat = isLivre;
@@ -771,6 +771,7 @@ function filterPromo() {
       <th>Fournisseur</th>
       <th>PO#</th>
       <th>Article</th>
+      <th title="EAN 13 / Code GTIN / Code EDI d'identification de l'article">EAN / EDI</th>
       <th>Désignation</th>
       <th>Statut cde</th>
       <th>Prix</th>
@@ -784,6 +785,7 @@ function filterPromo() {
       <td>${esc(r.fournisseur)}</td>
       <td class="mono">${esc(r.po_number)}</td>
       <td class="mono">${esc(r.code_article)}</td>
+      <td class="mono">${esc(r.ean_edi) || '—'}</td>
       <td>${esc(r.designation)}</td>
       <td>${badge(r.statut)}</td>
       <td>${r.prix_unitaire != null ? r.prix_unitaire + ' $' : '-'}</td>

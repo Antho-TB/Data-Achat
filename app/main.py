@@ -313,6 +313,7 @@ def get_commandes(
                     SELECT
                         c.po_number, c.code_article, c.fournisseur, c.designation,
                         c.prix_unitaire, c.quantite, c.statut, c.n_conteneur,
+                        COALESCE(p.ean13, n.ean13, p.ean14_pcb, '') AS ean_edi,
                         {SQL_ETD_EFF}              AS date_etd,
                         c.eta, c.date_livraison,
                         {SQL_STATUT_RETARD}        AS statut_retard,
@@ -346,6 +347,8 @@ def get_commandes(
                         ON a.po_number = c.po_number AND a.code_article = c.code_article
                     LEFT JOIN {SCHEMA}.acompte ac ON ac.po_number = c.po_number
                     LEFT JOIN {SCHEMA}.v_previsionnel v ON v.id = c.id
+                    LEFT JOIN {SCHEMA}.produit p ON p.code_article = c.code_article
+                    LEFT JOIN {SCHEMA}.article_nomenclature n ON n.code_article = c.code_article
                 ) q
                 {where}
             """
