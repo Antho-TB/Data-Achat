@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 [API]
 =============================================================================
@@ -546,6 +546,43 @@ def get_produit(code_article: str):
                 "cycle_vie": cycle_vie[0] if cycle_vie else None,
                 "qualite": qualite,
             }}
+        except Exception as e:
+            raise internal_error(e)
+
+@app.get("/api/search/article")
+def search_article(q: str = "", limit: int = 10):
+    """Recherche article transverse. Source SYLOB d'abord (public.articles3),
+    achat en complement. Accepte designation, EAN/EDI (code_gtin_13 /
+    identifiant_edi / EAN14 PCB-SPCB) et code article, dans l'ordre d'usage
+    reel (designation > EAN > code). Retourne des candidats distincts."""
+    q = (q or "").strip()
+    if not q:
+        return {"data": [], "count": 0}
+    lim = max(1, min(int(limit or 10), 50))
+    like = "%" + q + "%"
+    conds = ["code_article = :q"]
+    if len(q) >= 3:
+        conds.append("(designation ILIKE :like OR libelle ILIKE :like)")
+    if q.isdigit() and len(q) >= 6:
+        conds.append("(code_gtin_13 = :q OR identifiant_edi = :q OR identifiant_edi2 = :q "
+                     "OR sup_ean14_pcb = :q OR sup_ean14_spcb = :q OR sup_ean14_palette = :q)")
+    where = " OR ".join(conds)
+    sql = text(
+        "SELECT code_article, "
+        "COALESCE(MAX(designation) FILTER (WHERE libelle_langue ILIKE 'fran%'), MAX(designation)) AS designation, "
+        "MAX(code_gtin_13) AS ean13, MAX(identifiant_edi) AS edi, "
+        "MAX(sup_ean14_pcb) AS ean14_pcb, MAX(sup_ean14_spcb) AS ean14_spcb, "
+        "bool_or(code_article = :q OR code_gtin_13 = :q OR identifiant_edi = :q "
+        "OR identifiant_edi2 = :q OR sup_ean14_pcb = :q OR sup_ean14_spcb = :q "
+        "OR sup_ean14_palette = :q) AS exact "
+        "FROM public.articles3 WHERE " + where + " "
+        "GROUP BY code_article ORDER BY exact DESC, designation LIMIT :lim"
+    )
+    engine = get_engine()
+    with engine.connect() as conn:
+        try:
+            rows = rows_to_dicts(conn.execute(sql, {"q": q, "like": like, "lim": lim}))
+            return {"data": rows, "count": len(rows)}
         except Exception as e:
             raise internal_error(e)
 
