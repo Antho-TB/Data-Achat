@@ -686,6 +686,12 @@ button { cursor: pointer; }
     <div id="prev-mesures" class="artwork-stats"></div>
     <div class="section-header"><span class="section-title">B/L en attente ou bloqués — par conteneur puis fournisseur</span><span class="badge badge-green" style="margin-left:8px;" title="Source : Suivi Maritime Transitaire (Qualitairsea) + PJ Gmail (BL)">Suivi Maritime + Gmail BL</span></div>
     <p style="font-size:12px;color:var(--muted);margin:4px 0 8px;">« Bloqué » = en retard de livraison ET pas encore parti. Paiement : même logique que l'onglet Conteneurs (Payé / À payer / À payer en retard), ventilée ici par fournisseur au sein de chaque conteneur.</p>
+    <div class="toolbar" style="margin-bottom:8px;">
+      <input id="f-prev-conteneur" type="text" placeholder="N° conteneur, BL ou fournisseur…"
+             oninput="filterBlBloques()" style="min-width:280px;">
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('f-prev-conteneur').value='';filterBlBloques();">Effacer</button>
+      <span id="prev-bl-count" style="margin-left:auto;font-size:12px;color:var(--muted);"></span>
+    </div>
     <div id="prev-bl-bloques"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
     <div class="section-header"><span class="section-title">Par fournisseur (à payer / inspection / parti / retard)</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : Commandes d'importation ventilées par fournisseur">Commandes Import</span></div>
     <div id="prev-frs"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
@@ -1862,6 +1868,81 @@ function conteneurPayBadge(r) {
   if ((r.nb_a_payer || 0) > 0)        return '<span class="badge badge-orange">À payer</span>';
   return '<span class="badge badge-green">Payé</span>';
 }
+
+// ── Paiement éditable (demande métier 28/07) ────────────────────────────────
+// Marlène raisonne par conteneur : elle solde un BL entier auprès d'un
+// fournisseur, pas ligne article par ligne article. La saisie porte donc sur un
+// bloc (conteneur, fournisseur), le fournisseur pouvant être omis sur l'onglet
+// Conteneurs pour solder tout le conteneur d'un coup.
+//
+// Ce qui est saisi, c'est une DATE de paiement, pas un statut : « À payer en
+// retard » se déduit de cette date par rapport à l'ETD du BL + 15 j. Laisser
+// choisir le statut à la main produirait des lignes qui contredisent
+// l'échéancier de cash affiché juste au-dessus.
+//
+// La saisie va dans achat.commande_annotation et prime sur la valeur de l'ETL :
+// achat.commande est en full-refresh, une écriture directe serait effacée la
+// nuit suivante. Effacer la date rend la main à l'ETL.
+function paiementCell(r, fournisseur) {
+  const cle = `${r.n_conteneur || ''}|${fournisseur || ''}`;
+  const dateVal = r.date_paiement ? String(r.date_paiement).slice(0, 10) : '';
+  const marqueur = r.paiement_saisi
+    ? ' <span title="Date saisie manuellement dans FUSEAU, elle prime sur le fichier IMPORT." style="color:var(--muted);font-size:11px;">✎</span>'
+    : '';
+  const titre = dateVal ? `Payé le ${dateVal}` : 'Cliquer pour saisir la date de paiement';
+  return `<td class="editable-cell" data-pay-cle="${esc(cle)}">
+      <span class="view-mode" title="${esc(titre)}" onclick="editPaiement(this)">${conteneurPayBadge(r)}${marqueur}</span>
+      <span class="edit-mode">
+        <input type="date" value="${esc(dateVal)}">
+        <button class="save-btn" title="Enregistrer la date de paiement" onclick="savePaiement(this)">✓</button>
+        <button class="cancel-btn" title="Annuler" onclick="cancelEdit(this)">✕</button>
+        <button class="btn btn-ghost btn-sm" title="Effacer la saisie et revenir à la date du fichier IMPORT" onclick="savePaiement(this, true)">Effacer</button>
+      </span>
+    </td>`;
+}
+
+function editPaiement(span) {
+  editCell(span, 'date');
+}
+
+async function savePaiement(btn, effacer = false) {
+  const cell = btn.closest('.editable-cell');
+  const [n_conteneur, fournisseur] = (cell.dataset.payCle || '').split('|');
+  const input = cell.querySelector('input[type=date]');
+  const date_paiement = effacer ? null : (input.value || null);
+
+  if (!n_conteneur) { toast('Conteneur inconnu sur cette ligne.', true); return; }
+  if (!effacer && !date_paiement) {
+    toast('Saisir une date, ou utiliser Effacer pour revenir à la valeur du fichier.', true);
+    return;
+  }
+
+  btn.disabled = true;
+  try {
+    const r = await apiFetch(`/api/paiement/conteneur/${encodeURIComponent(n_conteneur)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fournisseur: fournisseur || null, date_paiement }),
+    });
+    toast(effacer
+      ? `Saisie effacée sur ${r.lignes_maj} ligne(s), retour à la valeur du fichier.`
+      : `Paiement du ${date_paiement} enregistré sur ${r.lignes_maj} ligne(s).`);
+    // Les deux onglets partagent l'axe paiement : on invalide les deux caches
+    // pour éviter d'afficher une valeur périmée en changeant d'onglet.
+    loaded.delete('previsionnel');
+    loaded.delete('conteneurs');
+    await loadPrevisionnel();
+    loaded.add('previsionnel');
+    if (document.getElementById('tab-conteneurs')?.classList.contains('active')) {
+      await loadConteneurs();
+      loaded.add('conteneurs');
+    }
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
 const _LOGI_ORDER = ['Pas parti', 'En transit', 'Livré'];
 
 function renderCommandesCharts(rows) {
@@ -2761,9 +2842,43 @@ async function loadPrevisionnel() {
 // 23/07). Sert aussi la vue "deja-paye" croisee fournisseur x conteneur : les
 // colonnes Paiement sont ventilees ligne par ligne (1 ligne = 1 fournisseur au
 // sein d'un conteneur), la ligne d'en-tete conteneur agrege le total.
-function renderBlBloques(rows) {
+// Jeu de lignes complet, conserve pour filtrer sans rappeler l'API.
+let _blBloquesRows = [];
+
+// Recherche libre sur le conteneur, le BL ou le fournisseur (demande metier
+// 28/07 : retrouver un conteneur precis sans faire defiler tout le tableau).
+function filterBlBloques() {
+  const q = (document.getElementById('f-prev-conteneur')?.value || '')
+    .trim().toLowerCase();
+  const rows = !q ? _blBloquesRows : _blBloquesRows.filter(r =>
+    [r.n_conteneur, r.n_bl, r.fournisseur]
+      .some(v => String(v || '').toLowerCase().includes(q)));
+  const nb = new Set(rows.map(r => r.n_conteneur)).size;
+  const total = new Set(_blBloquesRows.map(r => r.n_conteneur)).size;
+  const compteur = document.getElementById('prev-bl-count');
+  if (compteur) {
+    compteur.textContent = q
+      ? `${nb} conteneur(s) sur ${total}`
+      : `${total} conteneur(s)`;
+  }
+  renderBlBloques(rows, true);
+}
+
+function renderBlBloques(rows, filtre = false) {
+  if (!filtre) { _blBloquesRows = rows; }
   const el = document.getElementById('prev-bl-bloques');
-  if (!rows.length) { el.innerHTML = '<div class="empty">Aucun B/L en attente</div>'; return; }
+  if (!rows.length) {
+    el.innerHTML = filtre
+      ? '<div class="empty">Aucun conteneur ne correspond à cette recherche</div>'
+      : '<div class="empty">Aucun B/L en attente</div>';
+    if (!filtre) filterBlBloques();
+    return;
+  }
+  if (!filtre) {
+    const total = new Set(rows.map(r => r.n_conteneur)).size;
+    const compteur = document.getElementById('prev-bl-count');
+    if (compteur) compteur.textContent = `${total} conteneur(s)`;
+  }
   const byConteneur = {};
   rows.forEach(r => {
     const k = r.n_conteneur || '—';
@@ -2776,7 +2891,7 @@ function renderBlBloques(rows) {
       <th title="Valeur des lignes, en USD.">Valeur · USD</th>
       <th>ETD</th><th>ETA</th>
       <th title="En retard de livraison ET pas encore parti.">Bloqué</th>
-      <th title="Payé / À payer / À payer en retard, ventilé pour ce fournisseur au sein de ce conteneur.">Paiement</th>
+      <th title="Payé / À payer / À payer en retard, ventilé pour ce fournisseur au sein de ce conteneur. Cliquer sur un badge pour saisir la date de paiement du bloc.">Paiement ✎</th>
     </tr></thead><tbody>`;
   Object.entries(byConteneur).forEach(([cont, frsRows]) => {
     const totPo = new Set(), totArt = frsRows.reduce((s,r)=>s+(r.nb_articles||0),0);
@@ -2799,7 +2914,7 @@ function renderBlBloques(rows) {
         <td>${fmt(r.etd, 'date')}</td>
         <td>${fmt(r.eta, 'date')}</td>
         <td>${r.est_bloque ? `<span class="badge badge-red">${r.nb_bloques}</span>` : '<span class="badge badge-gray">-</span>'}</td>
-        <td>${conteneurPayBadge(r)}</td>
+        ${paiementCell(r, r.fournisseur)}
       </tr>`;
     });
   });
@@ -2927,7 +3042,7 @@ function renderConteneursTable(rows) {
       <th title="Nombre de PO regroupés dans le conteneur.">PO · nb</th>
       <th title="Nombre de lignes article.">Art. · nb</th>
       <th title="Valeur des lignes du conteneur, en USD.">Valeur · USD</th>
-      <th title="Statut de paiement du conteneur : Payé (toutes les lignes) / À payer (au moins une ligne non payée) / À payer EN RETARD (au moins une ligne dont l'échéance BL+15j est dépassée).">Paiement</th>
+      <th title="Statut de paiement du conteneur : Payé (toutes les lignes) / À payer (au moins une ligne non payée) / À payer EN RETARD (au moins une ligne dont l'échéance BL+15j est dépassée). Cliquer sur un badge pour saisir la date de paiement de tout le conteneur.">Paiement ✎</th>
     </tr></thead>
     <tbody>${rows.map(r => `<tr>
       <td class="mono">${esc(r.n_conteneur) || '—'}</td>
@@ -2941,7 +3056,7 @@ function renderConteneursTable(rows) {
       <td style="text-align:right">${r.nb_po ?? 0}</td>
       <td style="text-align:right">${r.nb_articles ?? 0}</td>
       <td style="text-align:right">${fmt(r.valeur, 'money')}</td>
-      <td>${conteneurPayBadge(r)}</td>
+      ${paiementCell(r, null)}
     </tr>`).join('')}</tbody></table></div>`;
   if (_pendingConteneurFocus) setTimeout(applyConteneurFocus, 60);
 }

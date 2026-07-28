@@ -379,6 +379,80 @@ def get_commandes(
             raise internal_error(e)
 
 
+class PaiementConteneur(BaseModel):
+    """Saisie de la date de paiement pour un conteneur, eventuellement restreinte
+    a un fournisseur."""
+    # Omis = tout le conteneur, tous fournisseurs confondus (onglet Conteneurs).
+    # Renseigne = un seul bloc fournisseur (onglet Previsionnel).
+    fournisseur: Optional[str] = None
+    # None = effacer la saisie et revenir a la date remontee par l'ETL.
+    date_paiement: Optional[date] = None
+
+
+@app.put("/api/paiement/conteneur/{n_conteneur}", dependencies=[Depends(require_api_key)])
+def set_paiement_conteneur(n_conteneur: str, payload: PaiementConteneur):
+    """
+    Renseigne la date de paiement de toutes les lignes d'un conteneur pour un
+    fournisseur donne.
+
+    Marlene raisonne par conteneur : elle solde un BL entier aupres d'un
+    fournisseur, pas ligne article par ligne article. La saisie se fait donc au
+    grain conteneur x fournisseur, mais le STOCKAGE reste au grain ligne
+    (po_number, code_article) dans achat.commande_annotation, comme l'ETD et le
+    commentaire. On garde ainsi un seul modele d'annotation, et un paiement
+    partiel reste corrigeable ligne a ligne plus tard.
+
+    achat.commande n'est jamais modifiee ici : elle appartient a l'ETL
+    (full-refresh). C'est achat.v_previsionnel qui arbitre, via
+    COALESCE(saisie, valeur ETL).
+
+    Envoyer date_paiement = null efface la saisie et redonne la main a l'ETL.
+    """
+    engine = get_engine()
+    params: dict[str, Any] = {"cont": n_conteneur}
+    filtre_frs = ""
+    if payload.fournisseur:
+        filtre_frs = " AND fournisseur = :frs"
+        params["frs"] = payload.fournisseur
+
+    with engine.begin() as conn:
+        try:
+            lignes = conn.execute(text(f"""
+                SELECT po_number, code_article FROM {SCHEMA}.commande
+                WHERE n_conteneur = :cont
+                  AND statut <> 'Annulée'
+                  {filtre_frs}
+            """), params).fetchall()
+
+            if not lignes:
+                cible = payload.fournisseur or "tous fournisseurs"
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Aucune ligne active pour {cible} "
+                           f"sur le conteneur {n_conteneur}.")
+
+            conn.execute(text(f"""
+                INSERT INTO {SCHEMA}.commande_annotation
+                    (po_number, code_article, date_paiement, updated_at)
+                VALUES (:po, :art, :dt, NOW())
+                ON CONFLICT (po_number, code_article)
+                DO UPDATE SET date_paiement = EXCLUDED.date_paiement,
+                              updated_at    = NOW()
+            """), [{"po": po, "art": art, "dt": payload.date_paiement}
+                   for po, art in lignes])
+
+            logger.info("[SUCCES] Paiement %s sur %d ligne(s) du conteneur %s / %s.",
+                        payload.date_paiement or "efface", len(lignes),
+                        n_conteneur, payload.fournisseur or "tous fournisseurs")
+            return {"ok": True, "lignes_maj": len(lignes),
+                    "n_conteneur": n_conteneur, "fournisseur": payload.fournisseur,
+                    "date_paiement": payload.date_paiement}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise internal_error(e)
+
+
 @app.put("/api/commandes/{po_number}/{code_article}", dependencies=[Depends(require_api_key)])
 def annotate_commande(po_number: str, code_article: str, payload: CommandeAnnotation):
     """
@@ -877,8 +951,18 @@ def get_previsionnel():
             # FOURNISSEUR (retours metier : "groupes par conteneur puis fournisseur"
             # ET "vue deja-paye par fournisseur ET conteneur/BL" -- une seule vue
             # groupee sert les 2 besoins, pas 2 requetes redondantes). "En attente" =
-            # pas encore livre ; "bloque" = en retard ET pas encore parti (meme
-            # definition que la carte Actions prioritaires du Dashboard).
+            # pas encore livre OU pas encore paye ; "bloque" = en retard ET pas
+            # encore parti (meme definition que la carte Actions prioritaires).
+            #
+            # Correction 28/07 : le filtre excluait tout ce qui etait 'Livree', donc
+            # une marchandise recue mais NON PAYEE disparaissait du tableau alors
+            # que l'histogramme de cash au-dessus l'affichait toujours, et que la
+            # carte Actions prioritaires du dashboard la citait nommement. Cas
+            # rencontre : CMAU8355260, PO 165368 GUANGWEI, livre le 08/06 et
+            # 103 059 $US encore dus. Le trou s'est elargi le jour ou le
+            # rapprochement des receptions Sylob a bascule 47 PO de plus en
+            # 'Livree'. On garde donc une ligne des qu'elle n'est pas livree OU
+            # qu'il reste a payer.
             bl_bloques = rows_to_dicts(conn.execute(text(f"""
                 SELECT
                     c.n_conteneur,
@@ -895,13 +979,18 @@ def get_previsionnel():
                     COUNT(*) FILTER (WHERE v.est_a_payer_en_retard)                       AS nb_a_payer_retard,
                     COUNT(*) FILTER (WHERE v.est_a_payer AND NOT v.est_a_payer_en_retard) AS nb_a_payer,
                     COUNT(*) FILTER (WHERE NOT v.est_a_payer)                             AS nb_paye,
-                    ROUND(SUM(CASE WHEN v.est_a_payer THEN v.montant ELSE 0 END), 2)      AS valeur_a_payer
+                    ROUND(SUM(CASE WHEN v.est_a_payer THEN v.montant ELSE 0 END), 2)      AS valeur_a_payer,
+                    -- Date de paiement du bloc, pour pre-remplir la saisie inline.
+                    -- NULL si le bloc n'est pas integralement solde.
+                    MAX(v.date_paiement) FILTER (WHERE NOT v.est_a_payer)  AS date_paiement,
+                    BOOL_OR(v.paiement_saisi_manuellement)                 AS paiement_saisi
                 FROM {SCHEMA}.commande c
                 LEFT JOIN {SCHEMA}.ot_transport ot ON ot.n_conteneur = c.n_conteneur
                 LEFT JOIN {SCHEMA}.v_previsionnel v ON v.id = c.id
                 WHERE c.n_conteneur IS NOT NULL AND c.n_conteneur <> ''
-                  AND c.statut NOT IN ('Livrée', 'Annulée')
+                  AND c.statut <> 'Annulée'
                 GROUP BY c.n_conteneur, c.fournisseur
+                HAVING BOOL_OR(c.statut <> 'Livrée' OR v.est_a_payer)
                 ORDER BY c.n_conteneur, nb_bloques DESC
             """)))
 
@@ -992,7 +1081,12 @@ def get_conteneurs():
                                       ELSE COALESCE(c.prix_unitaire * c.quantite, 0) END), 2) AS valeur,
                        COUNT(*) FILTER (WHERE v.est_a_payer_en_retard)          AS nb_a_payer_retard,
                        COUNT(*) FILTER (WHERE v.est_a_payer AND NOT v.est_a_payer_en_retard) AS nb_a_payer,
-                       COUNT(*) FILTER (WHERE NOT v.est_a_payer)               AS nb_paye
+                       COUNT(*) FILTER (WHERE NOT v.est_a_payer)               AS nb_paye,
+                       -- Date de paiement du conteneur, pour pre-remplir la
+                       -- saisie inline. NULL si le conteneur n'est pas
+                       -- integralement solde.
+                       MAX(v.date_paiement) FILTER (WHERE NOT v.est_a_payer)    AS date_paiement,
+                       BOOL_OR(v.paiement_saisi_manuellement)                   AS paiement_saisi
                 FROM {SCHEMA}.commande c
                 LEFT JOIN {SCHEMA}.v_previsionnel v ON v.id = c.id
                 WHERE c.statut <> 'Annulée' AND c.n_conteneur IS NOT NULL AND c.n_conteneur <> ''
@@ -1007,6 +1101,8 @@ def get_conteneurs():
                        COALESCE(a.nb_a_payer_retard, 0) AS nb_a_payer_retard,
                        COALESCE(a.nb_a_payer, 0)        AS nb_a_payer,
                        COALESCE(a.nb_paye, 0)           AS nb_paye,
+                       a.date_paiement,
+                       COALESCE(a.paiement_saisi, FALSE) AS paiement_saisi,
                        COALESCE(s.nb_changements_eta, 0)       AS nb_changements_eta,
                        COALESCE(s.nb_changements_livraison, 0) AS nb_changements_livraison,
                        s.couleur_eta, s.couleur_livraison

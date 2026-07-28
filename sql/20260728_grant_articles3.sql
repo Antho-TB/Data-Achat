@@ -1,0 +1,75 @@
+-- =============================================================================
+-- FUSEAU -- GRANT SELECT sur public.articles3
+-- Redige le 28/07/2026
+-- =============================================================================
+-- PROBLEME
+-- L'API FUSEAU tente de lire public.articles3 dans /api/search/article et dans
+-- l'auto-completion de la Fiche Achat (recherche article dite "Sylob-first").
+-- La requete echoue avec "permission denied for table articles3", l'exception
+-- est rattrapee et l'application retombe sur achat.produit. La recherche
+-- fonctionne donc, mais elle n'a JAMAIS interroge le referentiel Sylob.
+--
+-- CAUSE
+-- Toutes les tables du schema public appartiennent a dtpf_sylob_myreport_prod
+-- (l'ETL MyReport). public.receptions_detaillees2 dispose d'un GRANT SELECT
+-- explicite vers group_dtpf_sylob_admin_prod, ce qui explique qu'elle soit
+-- lisible ; articles3 n'en a aucun. Les droits sont donc accordes table par
+-- table, il n'y a pas de regle globale sur le schema.
+--
+-- QUI PEUT EXECUTER CE SCRIPT
+-- PAS dtpf_sylob_anthony_bezille_prod : ce role est membre de
+-- group_dtpf_sylob_admin_prod mais n'est ni superutilisateur, ni proprietaire
+-- des tables, il ne peut donc pas s'auto-accorder le droit.
+-- Il faut ouvrir la connexion pgAdmin avec le role PROPRIETAIRE :
+--     login    : dtpf_sylob_myreport_prod
+--     password : secret Key Vault "psql-prod-sylob-myreport-password"
+--                (kv-dtpf-prod)
+--     serveur  : psql-dtpf-psql-prod.postgres.database.azure.com:5432
+--     base     : dtpf_sylob_prod   (SSL requis)
+--
+-- Recuperation du mot de passe en ligne de commande :
+--     az keyvault secret show --vault-name kv-dtpf-prod \
+--        --name psql-prod-sylob-myreport-password --query value -o tsv
+--
+-- PORTEE
+-- On accorde au GROUPE et non a une personne : tout compte ajoute plus tard au
+-- groupe (compte de service svc-dataachat prevu) heritera du droit sans nouvelle
+-- intervention. Lecture seule uniquement, jamais d'ecriture sur le schema public,
+-- qui reste la propriete de l'ETL MyReport.
+-- =============================================================================
+
+-- 1. Le droit qui debloque la recherche article Sylob-first
+GRANT SELECT ON TABLE public.articles3 TO group_dtpf_sylob_admin_prod;
+
+-- 2. Tables Sylob voisines dont FUSEAU aura besoin a court terme
+--    (referentiel article etendu et designations etrangeres pour la Fiche Achat).
+--    Decommenter si vous voulez eviter un second aller-retour.
+-- GRANT SELECT ON TABLE public.a_designation_etrangere            TO group_dtpf_sylob_admin_prod;
+-- GRANT SELECT ON TABLE public.articles_caracteristiques_et_valeurs TO group_dtpf_sylob_admin_prod;
+-- GRANT SELECT ON TABLE public.caracteristiques_articles2         TO group_dtpf_sylob_admin_prod;
+-- GRANT SELECT ON TABLE public.fournisseurs2                      TO group_dtpf_sylob_admin_prod;
+
+-- 3. Option la plus large : lecture sur tout le schema public, present et futur.
+--    A n'utiliser que si c'est une decision assumee : cela expose aussi les
+--    tables comptables alz_* (balance, budget, primes) au groupe.
+-- GRANT USAGE ON SCHEMA public TO group_dtpf_sylob_admin_prod;
+-- GRANT SELECT ON ALL TABLES IN SCHEMA public TO group_dtpf_sylob_admin_prod;
+-- ALTER DEFAULT PRIVILEGES FOR ROLE dtpf_sylob_myreport_prod IN SCHEMA public
+--     GRANT SELECT ON TABLES TO group_dtpf_sylob_admin_prod;
+
+-- =============================================================================
+-- VERIFICATION (a executer avec VOTRE compte anthony_bezille, pas myreport)
+-- =============================================================================
+-- Doit retourner une ligne articles3 / group_dtpf_sylob_admin_prod / SELECT :
+--
+-- SELECT table_name, grantee, privilege_type
+-- FROM information_schema.role_table_grants
+-- WHERE table_schema = 'public'
+--   AND table_name IN ('articles3', 'receptions_detaillees2')
+-- ORDER BY 1, 2;
+--
+-- Puis, le test qui compte :
+-- SELECT count(*) FROM public.articles3;
+--
+-- Cote application, le log doit cesser d'afficher
+-- "[ATTENTION] public.articles3 inaccessible, repli sur achat.produit".
