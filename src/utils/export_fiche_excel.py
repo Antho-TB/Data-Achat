@@ -12,8 +12,13 @@ import io
 from typing import Any
 
 import openpyxl
+from openpyxl.cell.cell import MergedCell
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+
+# Bornes de largeur de colonne, en caracteres.
+LARGEUR_COLONNE_MIN = 14
+LARGEUR_COLONNE_MAX = 45
 
 
 def generate_fiche_excel_bytes(data: dict[str, Any], items: list[dict[str, Any]]) -> bytes:
@@ -220,11 +225,23 @@ def generate_fiche_excel_bytes(data: dict[str, Any], items: list[dict[str, Any]]
     ws.cell(row=current_row, column=1, value=agec_text).font = font_small
     ws.cell(row=current_row, column=1).alignment = align_left
 
-    # Largeurs de colonnes automatiques
+    # Largeurs de colonnes automatiques.
+    #
+    # Deux garde-fous : on ignore les cellules fusionnees et on plafonne la
+    # largeur. Sans cela, le pave juridique AGEC (300 caracteres dans une
+    # cellule fusionnee sur 7 colonnes) donnait une colonne A de 300 de large,
+    # et la fiche etait inexploitable a l'impression comme a l'ecran.
     for col in ws.columns:
-        max_len = max(len(str(cell.value or "")) for cell in col)
+        longueurs = [
+            len(str(cell.value))
+            for cell in col
+            if cell.value is not None and not isinstance(cell, MergedCell)
+            and not any(cell.coordinate in plage for plage in ws.merged_cells.ranges)
+        ]
         col_letter = get_column_letter(col[0].column)
-        ws.column_dimensions[col_letter].width = max(max_len + 3, 14)
+        ws.column_dimensions[col_letter].width = min(max(max(longueurs, default=0) + 3,
+                                                         LARGEUR_COLONNE_MIN),
+                                                     LARGEUR_COLONNE_MAX)
 
     output = io.BytesIO()
     wb.save(output)

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Tests unitaires pour le parser d'emails de rejets et non-conformités (Eric Tarrerias / Qualité).
+[TEST] Parser d'emails de rejets et non-conformités (Eric Tarrerias / Qualité).
 """
 
 from src.scripts.gmail.parse_email_ncr import is_ncr_email, parse_email_ncr

@@ -194,6 +194,9 @@ def main() -> int:
         Path(args.out).write_text(payload, encoding="utf-8")
         logger.info("[SUCCES] %d enregistrement(s) -> %s", len(records), args.out)
     else:
+        # print assume ici : c'est la SORTIE DE DONNEES du CLI, pas un log.
+        # Elle doit rester redirigeable (| jq, > fichier). Les logs, eux,
+        # partent sur stderr via logger.
         print(payload)
     return 0
 

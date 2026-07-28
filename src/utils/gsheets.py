@@ -19,21 +19,29 @@ import logging
 from pathlib import Path
 from typing import Any, Optional
 
-from src.utils.config_manager import Config
+from src.utils.config_manager import get_base_path
 from src.utils.google_auth import get_credentials
 
-logger = logging.getLogger("gsheets")
+logger = logging.getLogger(__name__)
 
 
 def get_sheets_service(
     credentials_path: Optional[Path] = None,
     token_path: Optional[Path] = None,
 ):
-    """Initialise le client API Google Sheets v4."""
+    """
+    Initialise le client API Google Sheets v4.
+
+    Ce module referencait Config.BASE_DIR, attribut qui n'existe pas : l'appel
+    levait un AttributeError, avale par le except de read_sheet_values, qui
+    renvoyait donc toujours une liste vide. Le connecteur n'avait jamais pu
+    fonctionner. On passe par get_base_path(), la fonction reellement exposee.
+    """
     from googleapiclient.discovery import build
 
-    c_path = credentials_path or (Config.BASE_DIR / "config" / "credentials.json")
-    t_path = token_path or (Config.BASE_DIR / "config" / "token.json")
+    racine = get_base_path()
+    c_path = credentials_path or (racine / "config" / "credentials.json")
+    t_path = token_path or (racine / "config" / "token.json")
 
     creds = get_credentials(c_path, t_path)
     return build("sheets", "v4", credentials=creds)
@@ -52,7 +60,10 @@ def read_sheet_values(
         result = sheet.values().get(spreadsheetId=spreadsheet_id, range=range_name).execute()
         return result.get("values", [])
     except Exception as e:
-        logger.warning("[GSHEETS] Erreur lors de la lecture du gsheet %s (%s) : %s", spreadsheet_id, range_name, e)
+        # Une liste vide est indiscernable d'un onglet reellement vide : le log
+        # en ATTENTION est le seul moyen de voir passer une panne d'auth Google.
+        logger.warning("[ATTENTION] Lecture du gsheet %s (%s) impossible : %s",
+                       spreadsheet_id, range_name, e)
         return []
 
 

@@ -42,6 +42,16 @@ logger = logging.getLogger(__name__)
 
 SCHEMA = Config.PG_SCHEMA
 
+# Bornes des endpoints de rapports qualite : sans LIMIT, la requete balayait
+# les tables entieres jointes a achat.commande.
+RAPPORTS_LIMIT_DEFAUT = 200
+RAPPORTS_LIMIT_MAX = 1000
+
+# Au-dela, un retard n'est plus un retard mais une anomalie de donnee (ETD mal
+# saisi, commande fantome). On les isole dans un seau dedie au lieu de les
+# faire disparaitre du classement : ce sont justement les cas a regarder.
+SEUIL_RETARD_ABERRANT_JOURS = 180
+
 # Expression SQL de l'ETD effectif et du statut retard calcule
 SQL_ETD_EFF = "COALESCE(c.etd_reel, c.etd_confirme)"
 SQL_STATUT_RETARD = f"""
@@ -221,19 +231,24 @@ def get_kpis():
             # retard MAXI constate a la commande (v_retard_expedition, figue,
             # grain PO x article) -- "quel est le pire retard vu chez ce fournisseur ?".
             # nb_articles_en_retard conserve en info secondaire (tooltip).
+            # Le classement reste calcule hors valeurs aberrantes (un retard de
+            # 3 ans ecrase tout le graphe), mais on remonte leur nombre pour que
+            # le front puisse les signaler au lieu de les cacher.
             r = conn.execute(text(f"""
                 SELECT
                     e.fournisseur,
-                    MAX(e.jours_retard)                                   AS retard_max_jours,
-                    COUNT(*) FILTER (WHERE a.statut_retard = 'EN RETARD')  AS nb_articles_en_retard
+                    MAX(e.jours_retard) FILTER (WHERE e.jours_retard <= :seuil) AS retard_max_jours,
+                    COUNT(*) FILTER (WHERE a.statut_retard = 'EN RETARD')       AS nb_articles_en_retard,
+                    COUNT(*) FILTER (WHERE e.jours_retard > :seuil)             AS nb_retards_aberrants
                 FROM {SCHEMA}.v_retard_expedition e
                 LEFT JOIN {SCHEMA}.v_retard_article a
                     ON a.code_article = e.code_article AND a.fournisseur = e.fournisseur
-                WHERE e.fournisseur IS NOT NULL AND e.jours_retard <= 180
+                WHERE e.fournisseur IS NOT NULL
                 GROUP BY e.fournisseur
+                HAVING MAX(e.jours_retard) FILTER (WHERE e.jours_retard <= :seuil) IS NOT NULL
                 ORDER BY retard_max_jours DESC
                 LIMIT 5
-            """))
+            """), {"seuil": SEUIL_RETARD_ABERRANT_JOURS})
             kpis["top_retards_fournisseurs"] = rows_to_dicts(r)
         except Exception as e:
             conn.rollback()
@@ -447,38 +462,37 @@ def get_fournisseurs():
 
 @app.get("/api/fournisseurs/{fournisseur}/historique-prix")
 def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
-    """Historique des prix : table dediee si presente, sinon fallback achat.commande."""
+    """Historique des prix d'achat, calculé depuis achat.commande.
+
+    C'est le besoin numéro 1 d'Andréa : savoir en deux secondes combien on a
+    payé la dernière fois avant de négocier avec le fournisseur.
+
+    Le code tentait d'abord une table achat.historique_prix qui n'a jamais
+    existé, échouait, faisait un rollback puis retombait sur achat.commande.
+    Une exception PostgreSQL par appel, invisible car loguée en INFO. La
+    branche morte a été supprimée le 28/07.
+
+    Le chemin d'appel réel du front est /api/fournisseurs/all/historique-prix
+    avec un code_article : le segment "all" est alors ignoré, la recherche est
+    volontairement globale, tous fournisseurs confondus (retour métier 07/07),
+    pour permettre la comparaison de prix entre fournisseurs.
+    """
     engine = get_engine()
     params: dict[str, Any] = {}
-    
+
     if code_article:
-        # Recherche globale par article, tous fournisseurs confondus (retour metier 07/07)
-        where_clause_h = "WHERE h.code_article = :code_article"
         where_clause = "WHERE code_article = :code_article"
         params["code_article"] = code_article
+    elif fournisseur.lower() == "all":
+        raise HTTPException(
+            status_code=400,
+            detail="Le fournisseur 'all' exige un code_article : préciser ?code_article=...",
+        )
     else:
-        # Recherche limitee au fournisseur
-        where_clause_h = "WHERE h.fournisseur = :fournisseur"
         where_clause = "WHERE fournisseur = :fournisseur"
         params["fournisseur"] = fournisseur
 
     with engine.connect() as conn:
-        try:
-            # LEFT JOIN produit : libelle metier (designation) au lieu du seul
-            # code article brut -- retour utilisateur demo du 07/07 (Antho).
-            r = conn.execute(text(f"""
-                SELECT h.po_number, h.code_article, COALESCE(p.designation_fr, p.designation_en) AS designation, h.fournisseur, h.prix, h.date_mail
-                FROM {SCHEMA}.historique_prix h
-                LEFT JOIN {SCHEMA}.produit p ON p.code_article = h.code_article
-                {where_clause_h}
-                ORDER BY h.date_mail DESC
-                LIMIT 100
-            """), params)
-            return {"source": "historique_prix", "data": rows_to_dicts(r)}
-        except Exception as e:
-            conn.rollback()
-            logger.info("[INFO] historique_prix indisponible -- fallback commande (%s)", str(e).splitlines()[0])
-
         try:
             # 3 dernieres commandes PAR ARTICLE (besoin metier : evolution recente du prix).
             # ROW_NUMBER fenetre par code_article, on garde les 3 plus recentes.
@@ -542,18 +556,23 @@ def get_produit(code_article: str):
                 FROM {SCHEMA}.qualite WHERE code_article = :c
                 ORDER BY date_inspection DESC NULLS LAST
             """), {"c": code_article}))
+            # LIKE ancré : voir /api/qualite/rapports, un motif '%code%' ramenait
+            # les rapports d'autres articles dont le nom de fichier contenait la
+            # séquence de chiffres.
+            params_doc = {"c": code_article, "c_prefix": f"{code_article}%",
+                          "limit": RAPPORTS_LIMIT_DEFAUT}
             qualite_docs = rows_to_dicts(conn.execute(text(f"""
                 SELECT DISTINCT d.* FROM {SCHEMA}.qualite_doc d
                 LEFT JOIN {SCHEMA}.commande c ON c.po_number = d.po_number
-                WHERE c.code_article = :c OR d.fichier LIKE :c_like
-                ORDER BY d.charge_le DESC
-            """), {"c": code_article, "c_like": f"%{code_article}%"}))
+                WHERE c.code_article = :c OR d.fichier LIKE :c_prefix
+                ORDER BY d.charge_le DESC LIMIT :limit
+            """), params_doc))
             qualite_analyses = rows_to_dicts(conn.execute(text(f"""
                 SELECT DISTINCT a.* FROM {SCHEMA}.qualite_analyse a
                 LEFT JOIN {SCHEMA}.commande c ON c.po_number = a.po_number
-                WHERE c.code_article = :c OR a.sample_name LIKE :c_like
-                ORDER BY a.charge_le DESC
-            """), {"c": code_article, "c_like": f"%{code_article}%"}))
+                WHERE c.code_article = :c OR a.sample_name LIKE :c_prefix
+                ORDER BY a.charge_le DESC LIMIT :limit
+            """), params_doc))
 
             if not (produit or nomenclature or artwork or cycle_vie or qualite or qualite_docs or qualite_analyses):
                 return {"data": None, "warning": "Article introuvable (aucune donnee produit/nomenclature/artwork/qualite)."}
@@ -576,36 +595,50 @@ def get_produit(code_article: str):
 def get_qualite_rapports(
     code_article: Optional[str] = Query(None),
     po_number: Optional[str] = Query(None),
+    limit: int = Query(RAPPORTS_LIMIT_DEFAUT, ge=1, le=RAPPORTS_LIMIT_MAX),
 ):
-    """Recherche des rapports d'inspection et d'analyse qualite rattachés par code_article ou po_number."""
+    """Rapports d'inspection et d'analyse qualite rattachés à un code_article ou un po_number.
+
+    Au moins un des deux filtres est obligatoire : sans filtre, la requête
+    balayait les deux tables entières jointes à achat.commande, sans LIMIT.
+    """
+    if not code_article and not po_number:
+        raise HTTPException(
+            status_code=400,
+            detail="Préciser au moins un filtre : code_article ou po_number.",
+        )
+
     engine = get_engine()
     with engine.connect() as conn:
         try:
             filters_doc = []
             filters_ana = []
-            params: dict[str, Any] = {}
+            params: dict[str, Any] = {"limit": limit}
             if code_article:
-                filters_doc.append("(c.code_article = :code_article OR d.fichier LIKE :code_like)")
-                filters_ana.append("(c.code_article = :code_article OR a.sample_name LIKE :code_like)")
+                # LIKE ancré en début de chaîne : un '%code%' non ancré ramenait
+                # les rapports d'articles sans rapport dès que le code était
+                # court, et interdisait tout usage d'index (seq scan).
+                filters_doc.append("(c.code_article = :code_article OR d.fichier LIKE :code_prefix)")
+                filters_ana.append("(c.code_article = :code_article OR a.sample_name LIKE :code_prefix)")
                 params["code_article"] = code_article
-                params["code_like"] = f"%{code_article}%"
+                params["code_prefix"] = f"{code_article}%"
             if po_number:
                 filters_doc.append("d.po_number = :po_number")
                 filters_ana.append("a.po_number = :po_number")
                 params["po_number"] = po_number
 
-            where_doc = ("WHERE " + " AND ".join(filters_doc)) if filters_doc else ""
-            where_ana = ("WHERE " + " AND ".join(filters_ana)) if filters_ana else ""
+            where_doc = "WHERE " + " AND ".join(filters_doc)
+            where_ana = "WHERE " + " AND ".join(filters_ana)
 
             docs = rows_to_dicts(conn.execute(text(f"""
                 SELECT DISTINCT d.* FROM {SCHEMA}.qualite_doc d
                 LEFT JOIN {SCHEMA}.commande c ON c.po_number = d.po_number
-                {where_doc} ORDER BY d.charge_le DESC
+                {where_doc} ORDER BY d.charge_le DESC LIMIT :limit
             """), params))
             analyses = rows_to_dicts(conn.execute(text(f"""
                 SELECT DISTINCT a.* FROM {SCHEMA}.qualite_analyse a
                 LEFT JOIN {SCHEMA}.commande c ON c.po_number = a.po_number
-                {where_ana} ORDER BY a.charge_le DESC
+                {where_ana} ORDER BY a.charge_le DESC LIMIT :limit
             """), params))
             return {"docs": docs, "analyses": analyses}
         except Exception as e:
@@ -671,7 +704,13 @@ def search_article(q: str = "", limit: int = 10):
                     results[r["code_article"]] = r
         except Exception as e:
             conn.rollback()
-            logger.info("[INFO] public.articles3 non accessible pour search (%s)", str(e).splitlines()[0])
+            # Verifie le 28/07 : le role applicatif n'a PAS le droit SELECT sur
+            # public.articles3 ("permission denied for table articles3"). La
+            # recherche annoncee "Sylob-first" retombe donc systematiquement sur
+            # achat.produit. C'etait logue en INFO, donc invisible : passe en
+            # WARNING pour que le manque de GRANT se voie dans les logs.
+            logger.warning("[ATTENTION] public.articles3 inaccessible, repli sur achat.produit (%s)",
+                           str(e).splitlines()[0])
 
         # 2. Complément achat.produit
         try:

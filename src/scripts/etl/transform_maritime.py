@@ -212,6 +212,7 @@ def main() -> int:
         Path(args.out).write_text(payload, encoding="utf-8")
         logger.info("[SUCCÈS] %d record(s) -> %s", len(records), args.out)
     else:
+        # print assume ici : sortie de donnees du CLI, pas un log (cf. parse_bl).
         print(payload)
     return 0
 

@@ -15,7 +15,7 @@ jamais effectuer d'I/O (lecture fichier ou écriture DB).
 """
 import logging
 import re
-from typing import Optional
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 # Regex pour extraire une date au format JJ/MM/AAAA depuis un champ texte libre
 # Utilisé pour parser "Livrée le 18/09/2025" et en extraire la date
 _DATE_PATTERN = re.compile(r"(\d{2})/(\d{2})/(\d{4})")
+
+# Ecart au-dela duquel un ETD anterieur a sa propre commande est considere
+# comme une faute de frappe sur l'annee, et non comme une date legitime.
+# Un an : aucun import Chine n'expedie plus d'un an avant sa commande.
+ECART_ETD_FAUTE_FRAPPE_JOURS = 365
 
 # Mapping des mots-clés vers les statuts normalisés
 # Clés en minuscules car on applique .lower() avant la recherche
@@ -396,20 +401,40 @@ def transform_commande(df_import: pd.DataFrame) -> pd.DataFrame:
         "volume_m3_ref_total": pd.to_numeric(df.get("Volume m3 réfernce total"), errors="coerce"),
     })
 
-    # Garde-fou permanent ETL : correction des fautes de frappe sur l'année de l'ETD confirmé
-    # (ex. PO 145862 WANXIN : etd_confirme 2024-09-05 alors que la commande date de 2025-01-08)
-    def _fix_etd_confirme_year(row):
+    # Garde-fou permanent ETL : correction des fautes de frappe sur l'année de
+    # l'ETD confirmé (ex. PO 145862 WANXIN : etd_confirme 2024-09-05 alors que
+    # la commande date de 2025-01-08).
+    #
+    # La règle était "etd.year < 2025 et cmd.year >= 2025", un seuil figé qui
+    # allait vieillir et réécrire silencieusement toute donnée antérieure à
+    # 2025 pourtant légitime. On raisonne désormais en écart relatif : un ETD
+    # antérieur de plus d'un an à sa propre commande est nécessairement une
+    # faute de frappe sur l'année, un ETD simplement passé ne l'est pas.
+    corrections: list[str] = []
+
+    def _fix_etd_confirme_year(row: "pd.Series") -> Any:
         etd = row.get("etd_confirme")
         cmd = row.get("date_commande")
-        if pd.notna(etd) and pd.notna(cmd) and hasattr(etd, "year") and hasattr(cmd, "year"):
-            if etd.year < 2025 and cmd.year >= 2025:
-                try:
-                    return etd.replace(year=cmd.year)
-                except Exception:
-                    pass
-        return etd
+        if not (pd.notna(etd) and pd.notna(cmd)
+                and hasattr(etd, "year") and hasattr(cmd, "year")):
+            return etd
+        if (cmd - etd).days <= ECART_ETD_FAUTE_FRAPPE_JOURS:
+            return etd
+        try:
+            corrige = etd.replace(year=cmd.year)
+        except ValueError:
+            # 29 février d'une année bissextile reporté sur une année qui ne
+            # l'est pas : on garde la valeur d'origine plutôt que d'inventer.
+            logger.warning("[ATTENTION] ETD %s non reportable sur %s (PO %s), valeur conservée.",
+                           etd, cmd.year, row.get("po_number"))
+            return etd
+        corrections.append(f"{row.get('po_number')}:{etd.date()}->{corrige.date()}")
+        return corrige
 
     result["etd_confirme"] = result.apply(_fix_etd_confirme_year, axis=1)
+    if corrections:
+        logger.warning("[ATTENTION] %d ETD confirmé corrigé(s) (faute de frappe sur l'année) : %s",
+                       len(corrections), ", ".join(corrections[:10]))
 
     # Convertir code_article en str propre -- même nettoyage que PO#/MEN#
     # (float Excel 12345.0 -> "12345", valeurs poubelle "/" -> None)

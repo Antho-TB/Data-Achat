@@ -32,12 +32,21 @@ Write-Log "Répertoire projet : $ProjectDir"
 Set-Location $ProjectDir
 
 # 2. Sync Git automatique
+# Le pull cible explicitement le repertoire du depot et refuse d'ecraser des
+# modifications locales. Un --ff-only garantit qu'on n'invente pas un merge
+# automatique sur un poste serveur sans personne pour le resoudre.
+$Branche = if ($env:BRANCHE_DEPLOIEMENT) { $env:BRANCHE_DEPLOIEMENT } else { "main" }
 try {
-    Write-Log "Exécution du git pull origin main..."
-    $GitOutput = & git pull origin main 2>&1
-    Write-Log "Git result: $GitOutput"
+    $Modifs = & git -C $ProjectDir status --porcelain
+    if ($Modifs) {
+        Write-Log "[ATTENTION] Modifications locales non commitees, pull annule. ETL lance sur le code local."
+    } else {
+        Write-Log "Synchronisation sur $Branche..."
+        $GitOutput = & git -C $ProjectDir pull origin $Branche --ff-only 2>&1
+        Write-Log "Git result: $GitOutput"
+    }
 } catch {
-    Write-Log "[ATTENTION] Problème lors du git pull (tentative de continuation avec le code existant) : $_"
+    Write-Log "[ATTENTION] Probleme lors du git pull (poursuite avec le code existant) : $_"
 }
 
 # 3. Détection de l'environnement virtuel Python

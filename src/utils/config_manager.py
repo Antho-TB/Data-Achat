@@ -59,8 +59,11 @@ class Config:
     # sslmode : "require" pour Azure (defaut), "disable" pour un PostgreSQL local de secours.
     PG_SSLMODE: str = os.getenv("PG_SSLMODE", "require")
 
-    # DWH Sylob On-Premise V25 (SRV_ERP_DATA -- tarrerias_production_dwh)
-    SYLOB_HOST: str = os.getenv("SYLOB_HOST", "192.168.102.41")
+    # DWH Sylob On-Premise V25 (SRV_ERP_DATA -- tarrerias_production_dwh).
+    # Pas de valeur par defaut sur l'hote : une variable oubliee doit echouer
+    # a la connexion, pas taper silencieusement l'ancien serveur. L'adresse
+    # attendue est documentee dans config/.env.example.
+    SYLOB_HOST: str = os.getenv("SYLOB_HOST", "")
     SYLOB_PORT: int = int(os.getenv("SYLOB_PORT", "5432"))
     SYLOB_DB: str = os.getenv("SYLOB_DB", "tarrerias_production_dwh")
     SYLOB_USER: str = os.getenv("SYLOB_USER", "")
@@ -85,6 +88,13 @@ class Config:
     # Hot-reload uvicorn (dev uniquement). Désactivé par défaut : WatchFiles
     # s'est montré non fiable sous Windows (workers orphelins, reloads manqués).
     API_RELOAD: bool = os.getenv("API_RELOAD", "0") == "1"
+    # Auto-sync GitHub au lancement (poste metier). Mettre API_AUTO_PULL=0 pour
+    # figer le poste sur une version connue, par exemple pendant une demo.
+    API_AUTO_PULL: bool = os.getenv("API_AUTO_PULL", "1") == "1"
+    # Branche ou tag cible de l'auto-sync. Pointer un tag de release plutot que
+    # main evite qu'un commit casse pousse en journee casse le poste metier au
+    # prochain lancement.
+    BRANCHE_DEPLOIEMENT: str = os.getenv("BRANCHE_DEPLOIEMENT", "main")
     # Origines CORS autorisées (liste séparée par virgules). Le frontend est
     # servi par FastAPI (même origine) : seuls les accès cross-origin explicites
     # sont listés ici.
@@ -158,8 +168,8 @@ class Config:
             ValueError: Si SYLOB_USER est manquant dans .env.
         """
         from sqlalchemy.engine import URL
-        if not cls.SYLOB_USER:
-            raise ValueError("SYLOB_USER manquant dans .env")
+        if not cls.SYLOB_USER or not cls.SYLOB_HOST:
+            raise ValueError("SYLOB_HOST ou SYLOB_USER manquant dans config/.env")
         return URL.create(
             drivername="postgresql+psycopg2",
             username=cls.SYLOB_USER,
