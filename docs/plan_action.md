@@ -47,7 +47,7 @@ Toutes les questions ouvertes du plan de charge ont été clarifiées avec le m�
 | Q-A | Codes couleurs pour les statuts | **Ignorer les couleurs historiques d'Andréa** : priorité stricte au **Design System TB Groupe**. | ✅ Tranché |
 | Q-B | `etd_confirme` & groupage conteneur | ETD confirmé = date ferme. Le KPI retard se base sur cet écart. | ✅ Tranché |
 | Q-C | Champ « prioritaire » sur Promo/Opé | Choix métier direct : les règles de remplissage sont connues au sein du service Achats. | ✅ Tranché |
-| Q-D | Source de la **packing list** | La packing list est générée par Andréa et fait **partie intégrante de la Fiche Achat**. | ✅ Tranché |
+| Q-D | Source de la **packing list** | **Envoyée par TB China (Julia) par mail.** Ce n'est **pas** un élément de la Fiche Achat et elle n'est pas produite par Andréa. Corrige la réponse notée plus tôt le 28/07. | ✅ Tranché |
 | Q-E | Statut commande reçue en quarantaine | **Rester active / en attente** : statut connu par le WMS Bext mais non géré par l'ERP Sylob. | ✅ Tranché |
 | Q-F | Notion de PO **critique** | Déterminé par le caractère **conteneur bloquant**. | ✅ Tranché |
 | Q-G | Variantes template Fiche Achat | Modèles Produit unique vs Ménagère/Sets intégrés dans le générateur Fiche Achat. | ✅ Tranché |
@@ -173,6 +173,7 @@ peut attendre.
 - [ ] **Artwork : écriture depuis FUSEAU.** Demandé le 21/07 (« simulateur de gsheet »). ⚠️ **Contradiction à arbitrer avant de coder** : le modèle actuel est insert-only et pose que le statut appartient à Clarisse, que l'ETL n'écrase jamais. Autoriser l'écriture depuis FUSEAU crée un conflit d'autorité sur la donnée. Trancher avec Clarisse.
 - [ ] **Artwork : coller aux colonnes exactes du gsheet `LIS-CON-28-0`** et à ses formats de date.
 - [ ] **Étendre la détection qualité aux mails de validation.** `parse_email_ncr.py` ne reconnaît que les rejets. Règle corrigée le 28/07 : la conformité est elle aussi validée par mail (voir §6), les deux décisions sont donc captables.
+- [ ] **Capter la packing list depuis les mails de TB China.** Tranché le 28/07 : elle vient de Julia par mail, pas de la Fiche Achat. C'est la troisième pièce de la liasse de paiement (BL + facture + packing list), les deux premières étant déjà suivies. Même mécanisme que le BL (`fetch_attachments` puis un parseur dédié), et une colonne à ajouter côté `achat.*` : aucune ne la porte aujourd'hui.
 - [ ] **Flag promo modifiable** à plusieurs étapes du circuit (aujourd'hui figé à la création).
 - [ ] **HITL** : point de validation humaine quand deux sources se contredisent (date d'un mail contre Sylob, prix négocié qui bouge).
 - [ ] **Extractions régulières** (gsheet, Excel, PDF) au lieu d'exports manuels ponctuels.
@@ -205,7 +206,11 @@ la date du jour), avances plancheées à 0, garde-fou à 180 jours. Ce n'est pas
 ETD → ETA ≈ 60 jours.
 
 **Paiement.** Déclenché par le BL. Liasse complète = BL + facture + packing
-list. Retard de paiement au-delà de `ETD_BL + 15 jours`. Tous les montants sont
+list. **La packing list est envoyée par TB China (Julia) par mail** : elle ne
+fait pas partie de la Fiche Achat et n'est pas produite en interne. C'est donc
+une pièce jointe de mail, au même titre que le BL, et elle relève du même
+mécanisme de captation. Aucune colonne du schéma `achat.*` ne la porte à ce
+jour. Retard de paiement au-delà de `ETD_BL + 15 jours`. Tous les montants sont
 en **USD**, quelle que soit la source. Le conteneur est l'unité réelle
 d'expédition et de paiement. Montants calculés en `PU × quantité`, jamais via
 `total_prix`.
@@ -275,7 +280,7 @@ fin de pipeline.
 | **Andréa JAMET** | Assistante Achats — **part le 31/07** | Fiche achat, sourcing interne, codes couleurs |
 | **Maxence** | Reprend la boîte mail d'Andréa | Continuité des fils fournisseurs |
 | **Eric T.** | Commerce | Décision de non-conformité, choix fournisseur, marquage, pantone |
-| **Julia** | TB China | Fournisseur (plus fiable qu'Eric sur ce point), qualité acier, dimensions |
+| **Julia** | TB China | Fournisseur (plus fiable qu'Eric sur ce point), qualité acier, dimensions, **packing list** (envoyée par mail) |
 | **Clarisse** | Design / Artwork | Artworks, pantone officiel, emplacement de marquage, packaging existant |
 | **Emmanuelle** | Référentiel article | Création du code article |
 | **Jonathan** | Design produit | Plans, dimensions, visuels nouveaux produits |
@@ -360,4 +365,5 @@ dans `05_ARCHIVES/Versions_Anterieures/`.
 | 27/07 | Session Antigravity : Fiche Achat Phase B (export PDF et xlsx), ingestion des ETA transitaires, rapprochement des réceptions Sylob, badges de provenance |
 | 28/07 | Reprise et correction de la livraison Antigravity : 5 modules orphelins câblés, table `commande_enrichissement` (survit au full-refresh), étape ENRICH du pipeline. GRANT `public.articles3` obtenu, la recherche article voit enfin les 33 061 articles Sylob. Date de paiement saisissable. Fusion des trois traceurs dans ce document |
 | 28/07 (après-midi) | Branchement de l'ETL sur le partage réseau via le compte de service AD. Trois pannes silencieuses corrigées derrière : mauvais fichier IMPORT résolu par un motif trop large, fichier transitaire passé de 18 à 14 colonnes donc plus aucune mise à jour d'ETA, colonne de travail bloquant le chargement avant qualité et acompte. ETL rejoué en production. Refonte de la fiche Article 360 en cartes et grille alignée. Accès LAN d'Andréa préparé depuis le poste de Marlène, reste la règle de pare-feu qui exige des droits administrateur |
-| 28/07 | **Levée des réserves métier & infra** : Réponses validées pour Q-A à Q-F (priorité DS, packing list = fiche achat, quarantaine Bext, PO critique = conteneur bloquant, BE GDD pour plans de prod, Clarisse/Andréa pour emballage). Purge définitive de l'ancien Sylob 102.21:5433 au profit de 102.41:5432. Compte AD `svc-dataachat` confirmé. |
+| 28/07 | **Levée des réserves métier & infra** : réponses validées pour Q-A à Q-F (priorité DS, quarantaine Bext, PO critique = conteneur bloquant, BE GDD pour plans de prod, Clarisse/Andréa pour emballage). Purge définitive de l'ancien Sylob 102.21:5433 au profit de 102.41:5432. Compte AD `svc-dataachat` confirmé. |
+| 28/07 (soir) | Deux règles métier corrigées après relecture : la conformité qualité est actée **par mail** comme la non-conformité, et la packing list vient de **TB China par mail**, pas de la Fiche Achat. Les deux ont une conséquence directe sur le périmètre de captation Gmail |

@@ -60,7 +60,7 @@ alimentation incomplète/manuelle/pilote · **Non capté** = circule uniquement 
 | Type d'info | Émetteur | Étape | Destinataire | Table cible | Statut | Réf |
 |---|---|---|---|---|---|---|
 | N° facture fournisseur | Fournisseur | paiement | Andréa/Compta | `commande.n_facture`, `ot_transport.n_facture` | Partiel | achat_schema |
-| **Packing list** (3e pièce liasse) | Fournisseur | paiement | Andréa/Compta | aucune colonne | **Non capté** (source non identifiée) | questionnaire Q13 |
+| **Packing list** (3e pièce liasse) | **TB China (Julia), par mail** — tranché le 28/07 | paiement | Andréa/Compta | aucune colonne | **Non capté**, mais source désormais identifiée | questionnaire Q13, corrigé 28/07 |
 | Acompte / solde versé | **Marlène (saisie)** / Compta | paiement | — | `acompte.montant_acompte` | Partiel (absent de Sylob) | plan_action Lot 3 |
 | Réclamation fournisseur (oubli acompte) | Fournisseur | paiement | Andréa | `acompte` (à afficher UI) | Non capté | audit RetoursMetier |
 | Déclenchement paiement = BL+facture+packing | Compta / Andréa | paiement (Ph.4) | Compta | modèle à créer | Non capté | questionnaire Q13 |
@@ -102,7 +102,7 @@ alimentation incomplète/manuelle/pilote · **Non capté** = circule uniquement 
 1. **Décision de non-conformité d'Eric T** — seul signal de rejet qualité, par mail, asymétrique.
 2. **Raison / motif du retard** (dont imprévus grève/incident) — à parser du corps ; imprévu majeur = aucune source.
 3. **Changements successifs d'ETA / date livraison** — COALESCE garde la 1re valeur ; spec 22/07 non codée.
-4. **Packing list** — 3e pièce du paiement, aucune colonne dans le schéma.
+4. **Packing list** — 3e pièce du paiement, aucune colonne dans le schéma. Source identifiée le 28/07 : **TB China (Julia), par mail**, et non la Fiche Achat. Même mécanisme de captation que le BL.
 5. **Demande de code article / lien prototype↔code** — échanges informels boîte Eric T, N-N non résolue.
 
 **Priorité moyenne :**
@@ -125,7 +125,7 @@ alimentation incomplète/manuelle/pilote · **Non capté** = circule uniquement 
 | Write-path Gmail = pattern A découplé | BL Gmail → UPSERT `ot_transport` (jamais INSERT direct dans `commande` full-refresh). Annotations → `commande_annotation`. | plan_action 30/06 ; achat-gmail-dwh |
 | Vérité = dernière date transmise (abandon COALESCE) | ETA/livraison : valeur la plus récente gagne ; table événements + alerte couleur. | Spec ETA §2 |
 | Explorer le « code affaire » GDD comme modèle d'ID prototype | Demande code article = Gmail informel, N-N ; piste BDD GDD. | questionnaire Q10 |
-| Ne PAS inventer de colonne packing list | Identifier la source d'abord (parsing mail ? saisie ?). | questionnaire Q13 |
+| Colonne packing list désormais justifiée | Source tranchée le 28/07 : pièce jointe d'un mail de TB China (Julia). La contrainte « identifier la source d'abord » est levée. | questionnaire Q13, corrigé 28/07 |
 | Extraire échantillons DEKRA/labo (Drive+mail) | Index `qualite_doc` (FAIL→PDF) + mesures `qualite_analyse`. Priorité = décision conforme/non conforme > chrome brut. | plan_action #7 + 02/07 |
 | Convention nommage PDF qualité avec code article | Évolution process côté Qualité. | RetoursDemo14h §🟡-4 |
 | Règle retard paiement = ETD_BL + 15 j | Implémentée ; date de réf vient du BL (mail/PJ). | questionnaire Q15 |
