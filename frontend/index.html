@@ -669,6 +669,10 @@ button { cursor: pointer; }
         <option>CLOTUREE</option>
         <option>INCONNU</option>
       </select>
+      <select id="f-annee" onchange="filterCommandes()"
+              title="Par défaut, l'année en cours : les commandes en production, en cours de livraison et livrées cette année. Les livraisons des années précédentes restent accessibles en changeant l'année.">
+        <!-- Rempli par remplirFiltreAnnees() a partir des donnees reelles -->
+      </select>
       <button class="btn btn-ghost btn-sm" onclick="loadCommandes()">&#8635; Actualiser</button>
       <span id="cmd-count" style="font-size:12px;color:var(--muted);margin-left:auto;"></span>
     </div>
@@ -1921,12 +1925,44 @@ async function loadCommandes() {
     const r = await apiFetch('/api/commandes?limit=1000');
     _commandes = r.data;
     _commandesTotal = r.total;
-    renderCommandes(_commandes);
+    // Le filtre d'années est reconstruit à chaque chargement, à partir des
+    // données réellement présentes : une liste d'années codée en dur vieillirait.
+    remplirFiltreAnnees();
+    filterCommandes();
   } catch (e) {
     document.getElementById('table-commandes').innerHTML =
       `<div class="empty"><div class="empty-icon">⚠️</div>${esc(e.message)}</div>`;
     toast(e.message, true);
   }
+}
+
+// ── Filtre par année et priorité d'affichage (demande Andréa, 28/07) ────────
+// Le service travaille sur l'année en cours. Les 802 lignes chargées couvrent
+// plusieurs campagnes : sans filtre, une commande livrée en 2023 côtoie une
+// commande à expédier la semaine prochaine, et la liste devient un archivage
+// plutôt qu'un outil de pilotage. Les années antérieures restent accessibles
+// d'un clic pour retrouver une livraison passée.
+//
+// Junior Tip : l'année d'une ligne se déduit de la première date disponible,
+// dans l'ordre où le métier la connaît. L'ETD confirmé est l'ancrage le plus
+// fiable, mais il manque sur les commandes toutes récentes ; on retombe alors
+// sur l'ETA, puis sur la livraison réelle pour les lignes anciennes.
+function anneeCommande(r) {
+  const source = r.date_etd || r.eta || r.date_livraison || r.date_dernier_evenement;
+  const m = String(source || '').match(/^(\d{4})/);
+  return m ? m[1] : null;
+}
+
+function remplirFiltreAnnees() {
+  const sel = document.getElementById('f-annee');
+  if (!sel) return;
+  const annees = [...new Set(_commandes.map(anneeCommande).filter(Boolean))].sort().reverse();
+  const courante = String(new Date().getFullYear());
+  // Si l'année en cours n'a aucune ligne (début de campagne), on ne la
+  // présélectionne pas : le tableau paraîtrait vide et cassé.
+  const defaut = annees.includes(courante) ? courante : '';
+  sel.innerHTML = `<option value="">Toutes les années</option>` +
+    annees.map(a => `<option value="${a}"${a === defaut ? ' selected' : ''}>Année ${a}</option>`).join('');
 }
 
   function filterCommandes() {
@@ -1941,8 +1977,11 @@ async function loadCommandes() {
     const acompte = elAcompte ? elAcompte.value : '';
     const elPaiement = document.getElementById('f-paiement');
     const paiement = elPaiement ? elPaiement.value : '';
+    const elAnnee = document.getElementById('f-annee');
+    const annee = elAnnee ? elAnnee.value : '';
 
     const filtered = _commandes.filter(r => {
+      const matchAnnee = !annee || anneeCommande(r) === annee;
       const matchPo = !po || (r.po_number || '').toLowerCase().includes(po);
       const matchFrs = !frs || (r.fournisseur || '').toLowerCase().includes(frs);
       const matchArt = !art || (r.code_article || '').toLowerCase().includes(art);
@@ -1959,10 +1998,43 @@ async function loadCommandes() {
         matchPaiement = _payBucket(r) === paiement;
       }
 
-      return matchPo && matchFrs && matchArt && matchDes && matchStat && matchStatCde && matchAcompte && matchPaiement;
+      return matchAnnee && matchPo && matchFrs && matchArt && matchDes && matchStat && matchStatCde && matchAcompte && matchPaiement;
     });
-    renderCommandes(filtered);
+    renderCommandes(trierParPriorite(filtered));
   }
+
+// Priorité d'affichage (demande Andréa) : ce qui demande une action passe en
+// tête. En production puis en cours de livraison, car ce sont les lignes sur
+// lesquelles on peut encore agir ; livré ensuite, à titre de consultation ;
+// annulé en dernier. À rang égal, l'échéance la plus proche d'abord.
+const RANG_STATUT = {
+  'En production': 0,
+  'En cours': 0,
+  'En cours de livraison': 1,
+  'Livrée': 2,
+  'Payée': 3,
+  'Inconnu': 4,
+  'Annulée': 5,
+};
+
+function trierParPriorite(rows) {
+  return [...rows].sort((a, b) => {
+    // Une ligne en retard remonte toujours, quel que soit son statut : c'est
+    // l'anomalie qui doit sauter aux yeux, pas l'ordre théorique du cycle.
+    const retardA = a.statut_retard === 'EN RETARD' ? 0 : 1;
+    const retardB = b.statut_retard === 'EN RETARD' ? 0 : 1;
+    if (retardA !== retardB) return retardA - retardB;
+
+    const rangA = RANG_STATUT[a.statut] ?? 4;
+    const rangB = RANG_STATUT[b.statut] ?? 4;
+    if (rangA !== rangB) return rangA - rangB;
+
+    // Échéance la plus proche en premier ; les lignes sans date en dernier.
+    const dateA = a.date_etd || a.eta || '9999';
+    const dateB = b.date_etd || b.eta || '9999';
+    return String(dateA).localeCompare(String(dateB));
+  });
+}
 
 let chartCmdRetard = null, chartCmdStatut = null;
 // Buckets metier ORTHOGONAUX (axes exposes par /api/commandes via v_previsionnel).

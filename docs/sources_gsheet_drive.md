@@ -42,3 +42,22 @@
 ---
 
 **Règle transverse rappelée par Antho (02/07) :** le gsheet maritime est collaboratif avec le transitaire — **aucune modification, lecture seule**.
+
+> ⚠️ **Règle étendue le 28/07/2026, et elle renverse la décision du 30/06.**
+> Dès qu'un document est tenu **de façon collaborative avec un tiers**, c'est le
+> **gsheet qui fait foi**, pas la copie serveur : c'est là que le travail se
+> fait réellement. Cela vaut pour le suivi maritime (avec le transitaire) comme
+> pour le suivi des artworks (avec Clarisse). La mention « source prod (faisant
+> foi) : serveur » du §4 ci-dessus est donc **caduque**.
+>
+> Constat qui a déclenché la bascule : le fichier serveur lu par l'ETL depuis le
+> 28/07 ne compte que 14 colonnes et **aucune colonne BL**, quand le gsheet
+> qu'Andréa tient avec le transitaire en a au moins 17 — conteneur en J, BL en
+> M, date de livraison confirmée en P, heure en Q. Des BL signalés manquants en
+> démo étaient simplement dans une colonne qui n'existe pas côté serveur.
+>
+> Reste à confirmer avec Andréa **quel** classeur : elle cite « SUIVI MARITIME
+> TARRERIAS 2026 », nom différent du gsheet POC `1hP73oiv…` documenté ici.
+>
+> Lecture seule dans tous les cas : FUSEAU ne modifie jamais un document
+> partagé avec un tiers.

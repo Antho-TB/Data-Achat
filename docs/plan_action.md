@@ -200,6 +200,32 @@ Notes brutes de la séance, à trier avec Marlène. Andréa doit envoyer les sie
 
 ---
 
+## 3.6 Suite des retours d'Andréa — arbitré le 28/07 au soir
+
+### Livré
+
+- [x] **Format de date JJ/MM/AA** dans toute l'application. L'ISO reste la valeur stockée et triée, on ne formate qu'à l'affichage.
+- [x] **Date de livraison estimée = ETA + 7 jours** sur l'onglet Conteneurs, affichée en gris tant que le transitaire n'a pas confirmé, effacée dès que la date ferme est connue.
+- [x] **Filtre par année** sur le suivi de commande, année en cours présélectionnée, années antérieures accessibles d'un clic. 467 lignes affichées sur 802.
+- [x] **Priorité d'affichage** : les lignes en retard remontent en tête quel que soit leur statut, puis en production, en cours de livraison, livré, payé, annulé. À rang égal, l'échéance la plus proche d'abord.
+- [x] **Discrimination BL / conteneur** (ISO 6346) et purge des 27 lignes fautives.
+
+### Bloqué par la bascule sur le gsheet maritime
+
+- [ ] **Date et heure de livraison confirmées** (colonnes P et Q du gsheet). Les colonnes n'existent pas dans le fichier serveur actuellement lu.
+- [ ] **Plusieurs BL par conteneur** (colonne M). Demande une table fille `achat.ot_transport_bl`, le conteneur étant aujourd'hui la clé primaire avec une seule colonne `n_bl`.
+- [ ] **Basculer `transform_maritime` sur le gsheet**, comme cela vient d'être fait pour l'artwork. Le connecteur Sheets est en place, il reste à identifier le bon classeur : Andréa cite « SUIVI MARITIME TARRERIAS 2026 », nom différent du gsheet POC `1hP73oiv…` documenté le 30/06. **À confirmer avec elle avant le 31/07.**
+
+### À faire lors de la prochaine session sur le poste de Marlène
+
+- [ ] **Capter le mail DEKRA de réservation d'inspection.** Il arrive 2 à 7 jours avant l'inspection et n'est aujourd'hui capté nulle part. Il débloque trois demandes d'un coup : le statut « Inspection en cours » avec sa date réservée sur le suivi de commande, le statut « En attente de livraison » (rapport confirmé, BL pas encore reçu), et l'affichage de la date d'inspection réservée sur l'onglet Qualité, qui n'affiche aujourd'hui que les inspections passées ou du jour. C'est la tâche Cowork qui doit le lire, pas une expression régulière : le mail est en langage libre.
+
+### Autres retours en attente
+
+- [ ] **Alerte prioritaire pour sélectionner les références** sur le suivi de commande (même sujet que le champ « Prioritaire », §3.5).
+
+---
+
 ## 4. Priorité 3 — dette et incohérences à arbitrer
 
 ### 4.1 Bloqué par une action externe
@@ -335,12 +361,33 @@ IRON = JIT GLOBAL · HIAMEA = AOYAM · VICO = MINGHAO. Regroupement par `frn_cod
 Existant + packaging spécial : + Printing sample. Nouveau en vrac : + Compliance
 sample. Nouveau + packaging spécial : les 5. Port toujours payé par TB.
 
-**Sources de vérité.** EAN et PCB → Sylob. Marquage, matière, packaging détaillé
-→ fiche achat existante. Fiche achat → serveur `\\Srv-files-pom\...`. Qualité →
-serveur `ANALYSES ET INSPECTIONS` (le Drive est un POC). Maritime → serveur
-`TRANSITAIRE` (le gsheet est collaboratif avec le transitaire, **lecture seule,
-aucune modification**). Artwork → gsheet `LIS-CON-28-0`, statut saisi par
-Clarisse, jamais écrasé par l'ETL.
+**Sources de vérité. Règle générale, posée le 28/07 :** dès qu'un document est
+**tenu de façon collaborative avec un tiers**, c'est le **gsheet** qui fait foi,
+pas la copie serveur. C'est là que le travail se fait vraiment. Deux cas
+aujourd'hui : le suivi maritime, tenu avec le transitaire, et le suivi des
+artworks, tenu avec Clarisse. Dans les deux cas **lecture seule** : FUSEAU ne
+modifie jamais un document partagé.
+
+> ⚠️ **Ceci renverse la décision du 30/06** qui posait « serveur = source de
+> vérité, gsheet = POC » pour le maritime. Conséquence mesurée : l'ETL lit
+> depuis le 28/07 un fichier serveur de 14 colonnes **sans colonne BL**, alors
+> qu'Andréa et le transitaire travaillent sur un gsheet qui en a au moins 17
+> (conteneur en J, BL en M, date de livraison confirmée en P, heure en Q).
+> C'est ce qui explique les BL introuvables signalés en démo.
+
+EAN et PCB → Sylob. Marquage, matière, packaging détaillé → fiche achat
+existante. Fiche achat → serveur `\\Srv-files-pom\...`. Qualité → serveur
+`ANALYSES ET INSPECTIONS` (le Drive est un POC).
+
+**Un conteneur peut porter plusieurs BL** : ils sont édités par les
+fournisseurs, et un conteneur groupe plusieurs fournisseurs. Le modèle actuel ne
+le permet pas, `achat.ot_transport` ayant le conteneur pour clé primaire et une
+seule colonne `n_bl`.
+
+**Un numéro de BL n'est pas un numéro de conteneur**, même s'ils se ressemblent.
+La norme ISO 6346 impose que la 4e lettre d'un conteneur soit U, J ou Z :
+`TEMU2613140` est un conteneur, `SZSE2604053` est un BL. Sans ce discriminant,
+27 BL avaient été enregistrés comme conteneurs (corrigé le 28/07).
 
 **Architecture, règle absolue.** `achat.commande` et `achat.qualite` sont
 rechargées en full-refresh (TRUNCATE + INSERT). **Aucun module d'enrichissement
