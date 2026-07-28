@@ -158,9 +158,20 @@ button { cursor: pointer; }
 .tab-panel.active { display: block; }
 
 /* ── KPI cards ──────────────────────────────────────────────────────────── */
+/* Perf des grands tableaux (Suivi commandes : 798 lignes, chacune portant son
+   widget d'edition inline, soit ~1,8 Mo de DOM). content-visibility indique au
+   navigateur de ne calculer la mise en page et le rendu que des lignes
+   visibles. contain-intrinsic-size donne la hauteur presumee d'une ligne pour
+   que la barre de defilement reste juste. Aucun changement de comportement :
+   le tri, le filtrage et l'edition inline continuent de voir tout le DOM. */
+.table-wrap tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 38px;
+}
+
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -175,7 +186,18 @@ button { cursor: pointer; }
 .kpi-card.ok     { border-left-color: var(--green); }
 .kpi-card.warn   { border-left-color: var(--yellow); }
 .kpi-card.orange { border-left-color: var(--orange); }
-.kpi-value { font-family: var(--font-display); font-size: 28px; font-weight: 700; color: var(--blue); }
+/* clamp : la valeur des commandes en USD (5 076 099,00 $US) debordait de sa
+   carte et se retrouvait coupee. La taille s'adapte a la largeur disponible
+   au lieu de rester figee a 28px. */
+.kpi-value {
+  font-family: var(--font-display);
+  font-size: clamp(19px, 2.1vw, 28px);
+  font-weight: 700;
+  color: var(--blue);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .kpi-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
 .kpi-card.danger .kpi-value { color: var(--red); }
 .kpi-card.ok .kpi-value     { color: var(--green); }
@@ -900,6 +922,15 @@ function fmt(v, type) {
   if (v == null || v === '') return '—';
   if (type === 'date') return esc(String(v).slice(0, 10));
   if (type === 'money') return Number(v).toLocaleString('fr-FR', { style: 'currency', currency: 'USD' });
+  // Notation compacte pour les cartes KPI : "5,08 M $US" au lieu de
+  // "5 076 099,00 $US", qui debordait de sa carte et se retrouvait coupe.
+  // La valeur exacte reste accessible dans l'infobulle de la carte.
+  if (type === 'money-court') {
+    const n = Number(v) || 0;
+    if (Math.abs(n) >= 1e6) return (n / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 2 }) + ' M $US';
+    if (Math.abs(n) >= 1e3) return Math.round(n / 1e3).toLocaleString('fr-FR') + ' k $US';
+    return n.toLocaleString('fr-FR', { maximumFractionDigits: 0 }) + ' $US';
+  }
   if (type === 'num') return Number(v).toLocaleString('fr-FR');
   return esc(v);
 }
@@ -1676,8 +1707,8 @@ function renderKpis(k) {
       <div class="kpi-value">${k.lignes_livrees}</div><div class="kpi-label">Déjà livré · nb</div></div>
     <div class="kpi-card" title="Nombre de fournisseurs distincts sur les commandes en cours.">
       <div class="kpi-value">${k.nb_fournisseurs}</div><div class="kpi-label">Fournisseurs actifs · nb</div></div>
-    <div class="kpi-card orange" title="Somme (prix unitaire x quantité) hors commandes annulées. Devise : USD.">
-      <div class="kpi-value">${fmt(k.valeur_totale, 'money')}</div><div class="kpi-label">Valeur commandes · USD</div></div>
+    <div class="kpi-card orange" title="Somme (prix unitaire x quantité) hors commandes annulées. Devise : USD. Valeur exacte : ${fmt(k.valeur_totale, 'money')}">
+      <div class="kpi-value">${fmt(k.valeur_totale, 'money-court')}</div><div class="kpi-label">Valeur commandes · USD</div></div>
     <div class="kpi-card warn" title="Nombre d'artworks en attente de validation design.">
       <div class="kpi-value">${k.artwork_en_attente}</div><div class="kpi-label">Artworks en attente · nb</div></div>
     <div class="kpi-card ok" title="Nombre d'artworks validés par le design.">
@@ -1709,10 +1740,17 @@ function renderCharts(k) {
           callbacks: {
             label: (ctx) => {
               const row = top[ctx.dataIndex] || {};
-              return [
+              const lignes = [
                 `Retard maxi : ${ctx.parsed.y} jour(s)`,
                 `Articles actuellement EN RETARD : ${row.nb_articles_en_retard ?? '—'}`,
               ];
+              // Les retards de plus de 180 j sont exclus du calcul (ils
+              // ecraseraient le graphe) mais signales : ce sont en general des
+              // ETD mal saisis, donc de la donnee a corriger, pas a masquer.
+              if (row.nb_retards_aberrants > 0) {
+                lignes.push(`⚠ ${row.nb_retards_aberrants} retard(s) > 180 j exclu(s) du calcul (donnée à vérifier)`);
+              }
+              return lignes;
             }
           }
         }
