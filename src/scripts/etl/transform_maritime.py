@@ -143,7 +143,10 @@ MONTHS = {m: i for i, m in enumerate(
     ["january", "february", "march", "april", "may", "june", "july",
      "august", "september", "october", "november", "december"], start=1)}
 # ISO 6346 conteneur autonome.
-RE_CONTAINER = re.compile(r"(?<![A-Za-z0-9-])([A-Z]{4}\d{7})(?![A-Za-z0-9-])")
+# ISO 6346 : la 4e lettre est le code de categorie et vaut toujours U, J ou Z.
+# Sans cette contrainte, les numeros de BL du transitaire (SZSE2604053...) ont
+# exactement la meme forme qu'un conteneur et etaient ingeres comme tels.
+RE_CONTAINER = re.compile(r"(?<![A-Za-z0-9])([A-Z]{3}[UJZ]\d{7})(?![A-Za-z0-9])")
 RE_CAL_STOP = re.compile(r"\bSEM\b|^(janvier|février|mars|avril|mai|juin|juillet|"
                          r"ao[uû]t|septembre|octobre|novembre|décembre)\b", re.I)
 

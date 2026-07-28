@@ -80,7 +80,8 @@ RE_JUSTIFICATION_IMPLICITE = re.compile(
 MOTIF_PAR_DEFAUT = "Mise a jour transitaire (mail)"
 
 # ISO 6346 : 4 lettres + 7 chiffres (ex: TGBU2004021)
-RE_CONTAINER = re.compile(r"(?<![A-Za-z0-9-])([A-Z]{4}\d{7})(?![A-Za-z0-9-])")
+# ISO 6346 : la 4e lettre vaut toujours U, J ou Z (cf. parse_bl.py).
+RE_CONTAINER = re.compile(r"(?<![A-Za-z0-9])([A-Z]{3}[UJZ]\d{7})(?![A-Za-z0-9])")
 
 # PO TB : 6 a 8 chiffres precedes d'un libelle (ex: PO 176529, commande 00176529)
 RE_PO = re.compile(r"(?:P[\./ ]?O|purchase\s*order|commande)[^0-9]{0,12}(\d{6,8})", re.IGNORECASE)

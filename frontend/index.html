@@ -1006,9 +1006,41 @@ function badge(statut) {
   return `<span class="badge ${cls}">${esc(statut) || '—'}</span>`;
 }
 
+// Convertit une date ISO (YYYY-MM-DD, avec ou sans heure) en JJ/MM/AA.
+// Tolérant : si la valeur n'est pas une date ISO reconnaissable, on la rend
+// telle quelle plutôt que d'afficher une date fausse ou un tiret trompeur.
+function fmtDateFr(v) {
+  const s = String(v);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1].slice(2)}` : s.slice(0, 10);
+}
+
+// Date de livraison estimée = ETA + 7 jours (règle métier Andréa, 28/07).
+// Sert tant que le transitaire n'a pas confirmé de date ferme : le
+// dédouanement et l'acheminement jusqu'au site prennent une semaine.
+const DELAI_LIVRAISON_APRES_ETA_JOURS = 7;
+
+function livraisonEstimee(eta) {
+  if (!eta) return null;
+  const d = new Date(String(eta).slice(0, 10));
+  if (isNaN(d)) return null;
+  d.setDate(d.getDate() + DELAI_LIVRAISON_APRES_ETA_JOURS);
+  return d.toISOString().slice(0, 10);
+}
+
 function fmt(v, type) {
   if (v == null || v === '') return '—';
-  if (type === 'date') return esc(String(v).slice(0, 10));
+  // Format de date unique dans toute l'application : JJ/MM/AA (demande Andréa
+  // du 28/07). L'ISO YYYY-MM-DD était lisible pour un développeur, pas pour le
+  // service Achats qui lit des dates toute la journée. L'ISO reste la valeur
+  // stockée et triée : on ne formate qu'à l'affichage.
+  if (type === 'date') return esc(fmtDateFr(v));
+  // Date + heure, pour les livraisons confirmées : JJ/MM/AA HH:MM.
+  if (type === 'datetime') {
+    const jour = fmtDateFr(v);
+    const heure = String(v).length >= 16 ? String(v).slice(11, 16) : '';
+    return esc(heure ? `${jour} ${heure}` : jour);
+  }
   if (type === 'money') return Number(v).toLocaleString('fr-FR', { style: 'currency', currency: 'USD' });
   // Notation compacte pour les cartes KPI : "5,08 M $US" au lieu de
   // "5 076 099,00 $US", qui debordait de sa carte et se retrouvait coupe.
@@ -3188,7 +3220,8 @@ function renderConteneursTable(rows) {
       <th>N° conteneur</th><th>Navire</th><th>N° BL</th><th>Destinataire</th><th>Transitaire</th>
       <th title="Date de départ de Chine (ETD).">ETD</th>
       <th title="Date d'arrivée estimée à Fos (ETA).">ETA</th>
-      <th title="Date de livraison sur site (Pommier / GDD).">Livraison</th>
+      <th title="Estimation = ETA + 7 jours (dédouanement et acheminement). Affichée tant que le transitaire n'a pas confirmé de date ferme ; disparaît dès que la livraison confirmée est connue.">Livr. estimée</th>
+      <th title="Date et heure de livraison confirmées par le transitaire, sur site (Pommier / GDD).">Livraison confirmée</th>
       <th title="Nombre de PO regroupés dans le conteneur.">PO · nb</th>
       <th title="Nombre de lignes article.">Art. · nb</th>
       <th title="Valeur des lignes du conteneur, en USD.">Valeur · USD</th>
@@ -3202,7 +3235,10 @@ function renderConteneursTable(rows) {
       <td>${esc(r.transitaire) || '—'}</td>
       <td>${fmt(r.etd, 'date')}</td>
       <td>${fmt(r.eta, 'date')}${chgtDot(r.couleur_eta, r.nb_changements_eta)}</td>
-      <td>${fmt(r.date_livraison, 'date')}${chgtDot(r.couleur_livraison, r.nb_changements_livraison)}</td>
+      <td>${r.date_livraison
+            ? '<span style="color:var(--muted)">—</span>'
+            : `<span style="color:var(--muted)" title="Estimation ETA + ${DELAI_LIVRAISON_APRES_ETA_JOURS} j, non confirmée par le transitaire">${fmt(livraisonEstimee(r.eta), 'date')}</span>`}</td>
+      <td>${fmt(r.date_livraison, 'datetime')}${chgtDot(r.couleur_livraison, r.nb_changements_livraison)}</td>
       <td style="text-align:right">${r.nb_po ?? 0}</td>
       <td style="text-align:right">${r.nb_articles ?? 0}</td>
       <td style="text-align:right">${fmt(r.valeur, 'money')}</td>

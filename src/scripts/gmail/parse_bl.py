@@ -56,7 +56,27 @@ MONTHS = {
 # ISO 6346 : 4 lettres (3 owner + U/J/Z) + 7 chiffres. Ex : TGBU2004021.
 # Lookbehind/lookahead : token AUTONOME, pas collé par '-' ou alphanum (évite le
 # faux positif tiré d'un n° BL type "BL-SZSE2606480").
-RE_CONTAINER = re.compile(r"(?<![A-Za-z0-9-])([A-Z]{4}\d{7})(?![A-Za-z0-9-])")
+# ISO 6346 : 3 lettres de code proprietaire + 1 lettre de categorie, qui vaut
+# TOUJOURS U (conteneur de marchandises), J (equipement detachable) ou Z
+# (chassis). Le motif precedent acceptait n'importe quelle 4e lettre, donc
+# aussi les numeros de BL du transitaire, qui ont exactement la meme forme :
+# SZSE2604053, SZAE2601690, COMP0600002. Resultat constate le 28/07 : 27 lignes
+# sur 173 de achat.ot_transport portaient un numero de BL en guise de numero de
+# conteneur, extrait de noms de fichiers du type "BL-SZSE2604053.PDF".
+#
+# Le cas "PL-SZSE2603894-TEMU2613140.PDF" resume le probleme : les deux
+# references cohabitent dans le meme nom, et c'est le BL qui gagnait parce
+# qu'il apparaissait en premier.
+# Le tiret est volontairement ABSENT des gardes : le transitaire separe ses
+# references par des tirets ("PL-SZSE2603894-TEMU2613140.PDF"). L'ancien motif
+# excluait tout voisinage de tiret, donc ne voyait jamais le conteneur dans ce
+# nom pourtant explicite. Les gardes alphanumeriques suffisent a eviter de
+# ferrer une sous-chaine au milieu d'une reference plus longue.
+RE_CONTAINER = re.compile(r"(?<![A-Za-z0-9])([A-Z]{3}[UJZ]\d{7})(?![A-Za-z0-9])")
+
+# Prefixes de BL du transitaire, a exclure explicitement d'une detection de
+# conteneur meme si un jour l'un d'eux se terminait par U.
+PREFIXES_BL_CONNUS = ("SZSE", "SZAE", "SOFSI", "SOFAI")
 # PO TB : 8 chiffres zero-paddes (ex 00017281). On capture aussi les variantes
 # explicitement etiquetees "PO".
 RE_PO_LABELLED = re.compile(r"(?:P[\./ ]?O|purchase\s*order)[^0-9]{0,12}(\d{6,8})", re.I)
