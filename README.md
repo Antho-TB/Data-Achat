@@ -7,8 +7,10 @@ DWH Azure PostgreSQL (`achat.*`), API FastAPI + frontend, alimentation email-fir
 > **Statut (28/07/2026) : en production** sur le poste de Marlène depuis le
 > 23/07. Utilisatrices : Marlène (poste local) + Andréa (accès LAN bureau depuis
 > son propre poste). Antho reste en dev sur son poste (localhost uniquement).
-> API en Tâche Planifiée Windows (auto-restart), cf.
-> `docs/20260723_FUSEAU_RunbookServiceWindows_v1.md`. Migration vers un Windows
+> ⚠️ **L'API tourne en processus manuel, pas en tâche planifiée** : constaté le
+> 28/07, `deploy\install_service_windows.ps1` n'a jamais été joué sur ce poste.
+> Elle ne redémarre donc pas seule après un reboot ou une fermeture de session.
+> Cf. `docs/20260723_FUSEAU_RunbookServiceWindows_v1.md`. Migration vers un Windows
 > Server dédié en préparation (Samuel), cf. `docs/plan_action.md` §3.
 > Dépassé le stade POC (10 onglets opérationnels, cf. section Fonctionnalités).
 > Toute nouvelle fonctionnalité prod reste validée avec le métier avant
@@ -63,10 +65,13 @@ Python 3.11 (cible standard, cf. `CLAUDE.md`) via `.venv311` (uv) — migré le
 Laisser la fenêtre ouverte (dev). **VPN Stormshield requis** (accès DWH Azure).
 Vérifier avant toute démo : http://127.0.0.1:5050/api/health → `write_enabled: true`.
 
-**Poste Marlène (prod) :** ne pas lancer `run_api.py` à la main -- l'API tourne
-en Tâche Planifiée Windows (`FUSEAU-API`, auto-restart), installée via
-`deploy\install_service_windows.ps1`. Procédure complète, accès LAN Andréa,
-logs, dépannage : `docs/20260723_FUSEAU_RunbookServiceWindows_v1.md`.
+**Poste Marlène (prod) :** l'API y tourne aujourd'hui en **processus manuel**
+(`run_api.py`), la Tâche Planifiée `FUSEAU-API` n'ayant jamais été installée sur
+ce poste (constat du 28/07). Conséquence : pas de redémarrage automatique après
+reboot ou fermeture de session. Pour la rendre persistante, jouer
+`deploy\install_service_windows.ps1` en PowerShell administrateur.
+Procédure complète, logs, dépannage : `docs/20260723_FUSEAU_RunbookServiceWindows_v1.md`.
+Accès LAN d'Andréa : `docs/20260728_FUSEAU_AccesLAN_Andrea_Runbook.md`.
 
 ## Liens utiles
 

@@ -102,16 +102,55 @@ l'informatique.
 
 **À ne faire qu'avec l'accord d'Antho ou de Marlène, jamais pendant une démo.**
 
-L'API tourne en tâche planifiée Windows nommée `FUSEAU-API`, avec redémarrage
-automatique. On la relance par la tâche, jamais en tuant le processus à la main.
+> **Correction du 28/07 :** ce runbook affirmait initialement que l'API tournait
+> en tâche planifiée `FUSEAU-API`. **C'est faux sur le poste de Marlène** :
+> l'installation via `deploy\install_service_windows.ps1` n'y a jamais été jouée,
+> `run_api.py` tourne en processus manuel. Vérifier avant de choisir le cas.
+
+```powershell
+# Quelle situation ?
+Get-ScheduledTask -TaskName "FUSEAU-API" -ErrorAction SilentlyContinue
+```
+
+### Cas A — la tâche planifiée existe
 
 ```powershell
 Stop-ScheduledTask  -TaskName "FUSEAU-API"
 Start-Sleep -Seconds 3
 Start-ScheduledTask -TaskName "FUSEAU-API"
 Start-Sleep -Seconds 15
+```
 
-# Contrôle : l'API répond-elle et voit-elle la base ?
+### Cas B — pas de tâche planifiée (situation actuelle du poste de Marlène)
+
+L'API est un processus lancé à la main. L'arrêter puis le relancer :
+
+```powershell
+cd C:\Users\<utilisateur>\dev\Data-Achat
+
+# Arrêter le processus uvicorn en cours
+Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+    Where-Object { $_.CommandLine -like '*uvicorn*' -or $_.CommandLine -like '*run_api*' } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+Start-Sleep -Seconds 3
+
+# Relancer en arrière-plan
+Start-Process -FilePath ".\.venv311\Scripts\python.exe" `
+    -ArgumentList "run_api.py" -WindowStyle Minimized
+Start-Sleep -Seconds 15
+```
+
+⚠️ En cas B, **l'API s'arrête si Marlène ferme sa session ou redémarre son
+poste**, et personne ne la relance. À dire explicitement à Andréa. Pour rendre
+le service persistant, installer la tâche planifiée (PowerShell administrateur) :
+
+```powershell
+.\deploy\install_service_windows.ps1
+```
+
+### Contrôle, dans les deux cas
+
+```powershell
 Invoke-WebRequest http://127.0.0.1:5050/api/health -UseBasicParsing |
     Select-Object -ExpandProperty Content
 ```

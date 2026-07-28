@@ -25,7 +25,7 @@ Trois automatisations tournent :
 
 | Automatisation | Type | Fréquence | Point de fragilité |
 |---|---|---|---|
-| `FUSEAU-API` | Tâche planifiée Windows | À l'ouverture de session, auto-restart | S'arrête si Marlène se déconnecte |
+| `run_api.py` | **Processus manuel** (la tâche `FUSEAU-API` n'a jamais été installée sur ce poste, constat du 28/07) | Lancement à la main | Ne redémarre pas seule après reboot ou fermeture de session |
 | `FUSEAU_Gmail_ETL` | Tâche planifiée Windows | Toutes les 2 h, 08h-18h | Idem, mais ne dépend pas de Cowork |
 | `fuseau-gmail-threads-achat` | Tâche Cowork (extraction LLM) | Non fixée | S'arrête si l'app Claude est fermée |
 
@@ -97,10 +97,14 @@ corruption de données assurée.
 Procédure exécutable, écrite pour l'assistant du poste de Marlène :
 `docs/20260728_FUSEAU_AccesLAN_Andrea_Runbook.md`.
 
-- [ ] `API_HOST=0.0.0.0` dans le `config/.env` du poste de Marlène
-- [ ] Règle de pare-feu entrante sur le port 5050, profils Domain et Private
-- [ ] Redémarrage de la tâche `FUSEAU-API` (coupure de 20 s, hors démo)
-- [ ] Transmettre l'URL à Andréa et lui communiquer la clé API de vive voix
+- [x] `API_HOST=0.0.0.0` dans le `config/.env` du poste de Marlène — fait le 28/07, l'API écoute bien en `0.0.0.0:5050`
+- [ ] **Règle de pare-feu entrante port 5050, profils Domain et Private — BLOQUANT.** Échec le 28/07 : « Accès refusé », console non administrateur. Tant qu'elle n'existe pas, Andréa ne peut pas se connecter.
+- [ ] Transmettre l'URL à Andréa (`http://192.168.104.144:5050`, IP Wi-Fi susceptible de changer) et lui communiquer la clé API de vive voix
+- [ ] Décider : installer la tâche planifiée `FUSEAU-API` pour la persistance, ou assumer le lancement manuel jusqu'au serveur de Samuel
+
+⚠️ **L'IP du poste de Marlène est en Wi-Fi et peut changer** au prochain bail
+DHCP, ce qui casserait le favori d'Andréa. Réservation DHCP à demander, ou
+attendre le serveur.
 
 ### 3.2 Comptes de service et ownership
 
@@ -355,4 +359,5 @@ dans `05_ARCHIVES/Versions_Anterieures/`.
 | 23/07 | **Mise en production.** Onglet Article et Fiche Achat Phase A. Doublons fournisseurs et filtre Promo implémentés |
 | 27/07 | Session Antigravity : Fiche Achat Phase B (export PDF et xlsx), ingestion des ETA transitaires, rapprochement des réceptions Sylob, badges de provenance |
 | 28/07 | Reprise et correction de la livraison Antigravity : 5 modules orphelins câblés, table `commande_enrichissement` (survit au full-refresh), étape ENRICH du pipeline. GRANT `public.articles3` obtenu, la recherche article voit enfin les 33 061 articles Sylob. Date de paiement saisissable. Fusion des trois traceurs dans ce document |
+| 28/07 (après-midi) | Branchement de l'ETL sur le partage réseau via le compte de service AD. Trois pannes silencieuses corrigées derrière : mauvais fichier IMPORT résolu par un motif trop large, fichier transitaire passé de 18 à 14 colonnes donc plus aucune mise à jour d'ETA, colonne de travail bloquant le chargement avant qualité et acompte. ETL rejoué en production. Refonte de la fiche Article 360 en cartes et grille alignée. Accès LAN d'Andréa préparé depuis le poste de Marlène, reste la règle de pare-feu qui exige des droits administrateur |
 | 28/07 | **Levée des réserves métier & infra** : Réponses validées pour Q-A à Q-F (priorité DS, packing list = fiche achat, quarantaine Bext, PO critique = conteneur bloquant, BE GDD pour plans de prod, Clarisse/Andréa pour emballage). Purge définitive de l'ancien Sylob 102.21:5433 au profit de 102.41:5432. Compte AD `svc-dataachat` confirmé. |
