@@ -151,6 +151,29 @@ RE_CAL_STOP = re.compile(r"\bSEM\b|^(janvier|février|mars|avril|mai|juin|juille
 RE_ISO_DATE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})(?:[ T]\d{2}:\d{2}:\d{2})?$")
 
 
+def _date_livraison_effective(date_iso: Optional[str]) -> Optional[str]:
+    """
+    Ne retient une date de livraison que si elle est deja passee.
+
+    Le fichier transitaire porte des dates de livraison planifiees, parfois a
+    plusieurs semaines. Les enregistrer telles quelles reviendrait a declarer
+    livre un conteneur encore en mer.
+
+    Args:
+        date_iso: date confirmee au format YYYY-MM-DD, ou None.
+    Returns:
+        La date si elle est passee ou du jour, None si elle est future.
+    """
+    if not date_iso:
+        return None
+    try:
+        if date.fromisoformat(date_iso) > date.today():
+            return None
+    except ValueError:
+        return None
+    return date_iso
+
+
 def _safe_maritime(y: int, mo: int, d: int) -> Optional[str]:
     try:
         return date(y, mo, d).isoformat()
@@ -275,8 +298,18 @@ def transform_rows(rows: list[list[str]], campaign_year: int = 2026,
                         or parse_maritime_date(_col(row, "etd"), campaign_year),
             "eta": parse_maritime_date(_col(row, "eta2"), campaign_year)
                    or parse_maritime_date(_col(row, "eta1"), campaign_year),
-            "date_livraison": parse_maritime_date(_col(row, "date_confirmee"), campaign_year)
-                              or parse_maritime_date(_col(row, "ddl_estimee"), campaign_year),
+            # date_livraison = livraison REELLEMENT effectuee sur site. Toute
+            # l'application lit ce champ comme un booleen "livre" : l'onglet
+            # Conteneurs en deduit le nombre et la valeur des conteneurs en
+            # transit, v_previsionnel s'en sert pour est_parti et est_en_retard.
+            #
+            # On ne retient donc QUE la date confirmee, jamais la date estimee,
+            # et seulement si elle est deja passee. Alimenter ce champ avec une
+            # date previsionnelle future faisait passer pour livres tous les
+            # conteneurs encore en mer : "Valeur en transit" tombait a 0 alors
+            # que 4 conteneurs valant 270 000 $US naviguaient.
+            "date_livraison": _date_livraison_effective(
+                parse_maritime_date(_col(row, "date_confirmee"), campaign_year)),
             "transport": _col(row, "navire"),
             "transitaire": "QUALITAIR",
             "n_facture": None,

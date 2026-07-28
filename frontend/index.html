@@ -2969,7 +2969,7 @@ function renderConteneursKpis(liste) {
   document.getElementById('conteneurs-kpis').innerHTML = `
     <div class="kpi-card" title="Nombre total de conteneurs suivis."><div class="kpi-value">${liste.length}</div><div class="kpi-label">Conteneurs · nb</div></div>
     <div class="kpi-card orange" title="Conteneurs sans date de livraison sur site (encore en mer / en cours)."><div class="kpi-value">${enTransit.length}</div><div class="kpi-label">En transit · nb</div></div>
-    <div class="kpi-card" title="Valeur des lignes des conteneurs en transit, en USD."><div class="kpi-value">${fmt(val, 'money')}</div><div class="kpi-label">Valeur en transit · USD</div></div>
+    <div class="kpi-card" title="Valeur des lignes des conteneurs en transit, en USD. Valeur exacte : ${fmt(val, 'money')}"><div class="kpi-value">${fmt(val, 'money-court')}</div><div class="kpi-label">Valeur en transit · USD</div></div>
     <div class="kpi-card ok" title="Conteneurs dont l'ETA tombe dans les 30 prochains jours."><div class="kpi-value">${arr30}</div><div class="kpi-label">Arrivées ≤ 30j · nb</div></div>`;
 }
 
