@@ -319,6 +319,75 @@ button { cursor: pointer; }
 .table-wrap tbody tr:nth-child(even) { background: #f7f9fb; }
 .table-wrap tr:hover td { background: #f8fafc; }
 .table-wrap td.mono { font-family: var(--font-mono); font-size: 12px; }
+
+/* ── Fiche Article 360° ──────────────────────────────────────────────────────
+   Les paires libelle/valeur etaient posees en flux (flex-wrap), chaque paire se
+   dimensionnant a son contenu : deux champs voisins ne tombaient jamais sur la
+   meme colonne et les valeurs se retrouvaient a des positions arbitraires d'une
+   ligne a l'autre. Retour metier du 28/07 : "l'onglet article fait fouillis".
+   On passe a une grille a colonnes fixes, libelle AU-DESSUS de la valeur :
+   l'alignement vertical est garanti quelle que soit la longueur du texte, et
+   chaque section devient une carte pour separer visuellement les blocs. */
+.a360-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px 20px 18px;
+  margin-bottom: 14px;
+}
+.a360-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.a360-head .a360-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.a360-head .spacer { flex: 1; }
+.a360-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 14px 24px;
+}
+.a360-field { min-width: 0; }
+.a360-field .k {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+.a360-field .v {
+  display: block;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--text);
+  word-break: break-word;
+}
+.a360-field .v .unit { color: var(--muted); font-size: 12px; margin-left: 2px; }
+.a360-field.mono .v { font-family: var(--font-mono); font-size: 12.5px; }
+/* Valeurs longues (liste de pantones, designations) : sur 2 colonnes. */
+.a360-field.wide { grid-column: span 2; }
+.a360-card .table-wrap { box-shadow: none; border: 1px solid var(--border); }
+.a360-titre-article {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  margin: 4px 0 12px;
+}
+.a360-titre-article .code { font-family: var(--font-mono); color: var(--tb-red); }
+
 .fiche-search-wrap { position: relative; display: inline-block; }
 .fiche-suggest { position: absolute; top: 100%; left: 0; z-index: 200; min-width: 320px; max-width: 560px; max-height: 300px; overflow-y: auto; background: #ffffff; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.12); margin-top: 2px; }
 .fiche-suggest .fs-item { padding: 7px 10px; cursor: pointer; border-bottom: 1px solid #f0f4f8; }
@@ -2275,9 +2344,40 @@ function closeFrsDetail() {
 // (Sylob V25 + Matrice), achat.article_nomenclature(+composants), v_artwork
 // (statut gsheet), cycle_vie (Carrefour) et l'historique qualite -- tout
 // deja en base, jamais expose avant par aucun onglet.
-function fieldRow(label, val, unit) {
+// Un champ de la fiche 360 : libellé au-dessus, valeur en dessous, dans une
+// cellule de grille. `opts.mono` pour les codes (EAN, HS code), `opts.wide`
+// pour les valeurs longues qui méritent deux colonnes.
+function fieldRow(label, val, unit, opts = {}) {
   if (val === null || val === undefined || val === '') return '';
-  return `<div class="fiche-row" style="margin-bottom:4px;"><label style="width:180px;">${esc(label)}</label><span>${esc(val)}${unit ? ' ' + unit : ''}</span></div>`;
+  const classes = ['a360-field'];
+  if (opts.mono) classes.push('mono');
+  if (opts.wide) classes.push('wide');
+  const unite = unit ? `<span class="unit">${esc(unit)}</span>` : '';
+  return `<div class="${classes.join(' ')}">
+    <span class="k">${esc(label)}</span>
+    <span class="v">${esc(val)}${unite}</span>
+  </div>`;
+}
+
+// Un champ dont la valeur est déjà du HTML (badge, lien) : pas d'échappement.
+function fieldRowHtml(label, html, opts = {}) {
+  if (!html) return '';
+  const classes = ['a360-field'];
+  if (opts.wide) classes.push('wide');
+  return `<div class="${classes.join(' ')}">
+    <span class="k">${esc(label)}</span>
+    <span class="v">${html}</span>
+  </div>`;
+}
+
+// En-tête de carte : titre + badge de provenance, sur une ligne séparée par un
+// filet. `extra` reçoit un bouton aligné à droite (lien Drive par exemple).
+function a360Head(titre, badgeTxt, badgeCls, badgeTitle, extra = '') {
+  return `<div class="a360-head">
+    <span class="a360-title">${esc(titre)}</span>
+    <span class="badge ${badgeCls}" title="${esc(badgeTitle)}">${esc(badgeTxt)}</span>
+    ${extra ? `<span class="spacer"></span>${extra}` : ''}
+  </div>`;
 }
 
 function renderProduitFiche(data) {
@@ -2292,57 +2392,68 @@ function renderProduitFiche(data) {
   const pick = (...vals) => vals.find(v => v !== null && v !== undefined && v !== '');
 
   const identite = `
-    <div class="section-header"><span class="section-title">Identité</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : DWH Sylob V25 + Matrice TB Import.xlsx">Sylob V25 + Matrice</span></div>
-    <div style="display:flex;flex-wrap:wrap;gap:0 24px;">
-      ${fieldRow('Désignation FR', pick(g(p,'designation_fr'), g(n,'description_fr')))}
-      ${fieldRow('Désignation EN (Name)', pick(g(p,'designation_en'), g(n,'description_en')))}
-      ${fieldRow('Marque', g(p,'marque'))}
-      ${fieldRow('Gamme', pick(g(p,'gamme'), g(n,'gamme')))}
-      ${fieldRow('Grande famille', g(p,'grande_famille'))}
-      ${fieldRow('Fournisseur', pick(g(p,'fournisseur'), g(n,'fournisseur')))}
-      ${fieldRow('Pays fournisseur', g(p,'pays_fournisseur'))}
-      ${fieldRow('Type de lot', pick(g(p,'type_lot'), g(n,'lot_vrac')))}
-      ${fieldRow('Code provisoire', g(p,'code_provisoire'))}
+    <div class="a360-card">
+      ${a360Head('Identité', 'Sylob V25 + Matrice', 'badge-blue',
+                 'Source : DWH Sylob V25 + Matrice TB Import.xlsx')}
+      <div class="a360-grid">
+        ${fieldRow('Désignation FR', pick(g(p,'designation_fr'), g(n,'description_fr')), null, {wide:true})}
+        ${fieldRow('Désignation EN (Name)', pick(g(p,'designation_en'), g(n,'description_en')), null, {wide:true})}
+        ${fieldRow('Fournisseur', pick(g(p,'fournisseur'), g(n,'fournisseur')))}
+        ${fieldRow('Pays fournisseur', g(p,'pays_fournisseur'))}
+        ${fieldRow('Marque', g(p,'marque'))}
+        ${fieldRow('Gamme', pick(g(p,'gamme'), g(n,'gamme')))}
+        ${fieldRow('Grande famille', g(p,'grande_famille'))}
+        ${fieldRow('Type de lot', pick(g(p,'type_lot'), g(n,'lot_vrac')))}
+        ${fieldRow('Code provisoire', g(p,'code_provisoire'), null, {mono:true})}
+      </div>
     </div>`;
 
   const logistique = `
-    <div class="section-header" style="margin-top:14px;"><span class="section-title">Logistique & EAN</span>
-      <span class="badge badge-green" style="margin-left:8px;" title="Dimensions/packaging et EAN issus du pull direct Sylob V25 (source de vérité) ou Matrice Excel.">${p.source_dimensions === 'sylob_v25' ? 'Sylob V25' : 'Matrice TB Import'}</span>
-    </div>
-    <div style="display:flex;flex-wrap:wrap;gap:0 24px;">
-      ${fieldRow('EAN13 (ITEM)', pick(g(p,'ean13'), g(n,'ean13')))}
-      ${fieldRow('EAN14 PCB (MASTER)', pick(g(p,'ean14_pcb'), g(n,'ean14_pcb')))}
-      ${fieldRow('EAN14 SPCB (INNER)', pick(g(p,'ean14_spcb'), g(n,'ean14_spcb')))}
-      ${fieldRow('HS Code (douane)', g(n,'hs_code'))}
-      ${fieldRow('PCB', g(p,'pcb'))}
-      ${fieldRow('SPCB', g(p,'spcb'))}
-      ${fieldRow('Qté inner', g(p,'inner_qty'))}
-      ${fieldRow('Qté master', g(p,'master_qty'))}
-      ${fieldRow('Dimensions PCB (L×l×H cm)', [g(p,'longueur_pcb_cm'), g(p,'largeur_pcb_cm'), g(p,'hauteur_pcb_cm')].filter(Boolean).join(' × '))}
-      ${fieldRow('Poids PCB', g(p,'poids_pcb_kg'), 'kg')}
-      ${fieldRow('Volume', g(p,'volume_m3'), 'm³')}
-      ${fieldRow('Poids UVC', g(p,'poids_uvc_g'), 'g')}
-      ${fieldRow('Délai réappro', g(p,'delai_reappro_jours'), 'j')}
+    <div class="a360-card">
+      ${a360Head('Logistique & EAN',
+                 p.source_dimensions === 'sylob_v25' ? 'Sylob V25' : 'Matrice TB Import',
+                 'badge-green',
+                 'Dimensions/packaging et EAN issus du pull direct Sylob V25 (source de vérité) ou Matrice Excel.')}
+      <div class="a360-grid">
+        ${fieldRow('EAN13 (ITEM)', pick(g(p,'ean13'), g(n,'ean13')), null, {mono:true})}
+        ${fieldRow('EAN14 SPCB (INNER)', pick(g(p,'ean14_spcb'), g(n,'ean14_spcb')), null, {mono:true})}
+        ${fieldRow('EAN14 PCB (MASTER)', pick(g(p,'ean14_pcb'), g(n,'ean14_pcb')), null, {mono:true})}
+        ${fieldRow('HS Code (douane)', g(n,'hs_code'), null, {mono:true})}
+        ${fieldRow('PCB', g(p,'pcb'))}
+        ${fieldRow('SPCB', g(p,'spcb'))}
+        ${fieldRow('Qté inner', g(p,'inner_qty'))}
+        ${fieldRow('Qté master', g(p,'master_qty'))}
+        ${fieldRow('Dimensions PCB', [g(p,'longueur_pcb_cm'), g(p,'largeur_pcb_cm'), g(p,'hauteur_pcb_cm')].filter(Boolean).join(' × '), 'cm')}
+        ${fieldRow('Poids PCB', g(p,'poids_pcb_kg'), 'kg')}
+        ${fieldRow('Volume', g(p,'volume_m3'), 'm³')}
+        ${fieldRow('Poids UVC', g(p,'poids_uvc_g'), 'g')}
+        ${fieldRow('Délai réappro', g(p,'delai_reappro_jours'), 'jours')}
+      </div>
     </div>`;
 
   const matiere = `
-    <div class="section-header" style="margin-top:14px;"><span class="section-title">Matière, marquage & packaging</span><span class="badge badge-gray" style="margin-left:8px;" title="Source : Matrice TB Import.xlsx + Nomenclature Sylob">Matrice TB + Sylob</span></div>
-    <div style="display:flex;flex-wrap:wrap;gap:0 24px;">
-      ${fieldRow('Matière lame', pick(g(p,'matiere_lame'), g(n,'matiere_lame')))}
-      ${fieldRow('Chrome %', pick(g(p,'chrome_pct'), g(n,'chrome_pct')))}
-      ${fieldRow('Traitement thermique', g(p,'traitement_thermique'))}
-      ${fieldRow('Finition', pick(g(p,'finition'), g(n,'finition')))}
-      ${fieldRow('Matière manche', pick(g(p,'matiere_manche'), g(n,'matiere_manche')))}
-      ${fieldRow('Pantone manche', g(n,'pantone_manche'))}
-      ${fieldRow('Marquage', pick(g(p,'marquage_libelle'), g(n,'marquage')))}
-      ${fieldRow('Dimensions marquage', g(n,'dim_marquage'))}
-      ${fieldRow('Emplacement marquage', g(n,'emplacement_marquage'))}
-      ${fieldRow('Épaisseur', pick(g(p,'epaisseur_mm'), g(n,'epaisseur_mm')), 'mm')}
-      ${fieldRow('Longueur', pick(g(p,'longueur_mm'), g(n,'longueur_mm')), 'mm')}
+    <div class="a360-card">
+      ${a360Head('Matière, marquage & packaging', 'Matrice TB + Sylob', 'badge-gray',
+                 'Source : Matrice TB Import.xlsx + Nomenclature Sylob')}
+      <div class="a360-grid">
+        ${fieldRow('Matière lame', pick(g(p,'matiere_lame'), g(n,'matiere_lame')))}
+        ${fieldRow('Chrome', pick(g(p,'chrome_pct'), g(n,'chrome_pct')), '%')}
+        ${fieldRow('Traitement thermique', g(p,'traitement_thermique'))}
+        ${fieldRow('Finition', pick(g(p,'finition'), g(n,'finition')))}
+        ${fieldRow('Épaisseur', pick(g(p,'epaisseur_mm'), g(n,'epaisseur_mm')), 'mm')}
+        ${fieldRow('Longueur', pick(g(p,'longueur_mm'), g(n,'longueur_mm')), 'mm')}
+        ${fieldRow('Matière manche', pick(g(p,'matiere_manche'), g(n,'matiere_manche')))}
+        ${fieldRow('Pantone manche', g(n,'pantone_manche'), null, {wide:true})}
+        ${fieldRow('Marquage', pick(g(p,'marquage_libelle'), g(n,'marquage')))}
+        ${fieldRow('Dimensions marquage', g(n,'dim_marquage'))}
+        ${fieldRow('Emplacement marquage', g(n,'emplacement_marquage'))}
+      </div>
     </div>`;
 
   const composantsBlock = composants.length ? `
-    <div class="section-header" style="margin-top:14px;"><span class="section-title">Composants (lot multiple, ${composants.length})</span><span class="badge badge-gray" style="margin-left:8px;" title="Source : Matrice TB Import.xlsx (Feuille Nomenclatures)">Matrice TB (Nomenclatures)</span></div>
+    <div class="a360-card">
+      ${a360Head(`Composants (lot multiple, ${composants.length})`, 'Matrice TB (Nomenclatures)', 'badge-gray',
+                 'Source : Matrice TB Import.xlsx (Feuille Nomenclatures)')}
     <div class="table-wrap"><table>
       <thead><tr><th>#</th><th>Composant</th><th>Matière</th><th>Chrome %</th><th>Finition</th><th>Manche</th><th>Marquage</th></tr></thead>
       <tbody>${composants.map(c => `<tr>
@@ -2353,32 +2464,48 @@ function renderProduitFiche(data) {
         <td>${esc(c.finition)||'-'}</td>
         <td>${esc(c.matiere_manche)||'-'}</td>
         <td>${esc(c.marquage)||'-'}</td>
-      </tr>`).join('')}</tbody></table></div>` : '';
+      </tr>`).join('')}</tbody></table></div></div>` : '';
+
+  const lienArtwork = aw && (aw.drive_url || aw.drive_file_id)
+    ? `<a href="${esc(aw.drive_url || 'https://drive.google.com/file/d/' + aw.drive_file_id + '/view')}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="Ouvrir le fichier original dans Google Drive">🎨 Ouvrir l'artwork (Drive) 🔗</a>`
+    : '';
 
   const artworkBlock = aw ? `
-    <div class="section-header" style="margin-top:14px;"><span class="section-title">Artwork (design)</span><span class="badge badge-yellow" style="margin-left:8px;" title="Source : Google Sheet 'Suivi des artworks-import' (Clarisse)">GSheet Artwork (Clarisse)</span></div>
-    <div style="display:flex;flex-wrap:wrap;gap:0 24px;align-items:center;">
-      <div class="fiche-row" style="margin-bottom:4px;"><label style="width:180px;">Statut</label>${badge(aw.statut_artwork)}</div>
-      ${fieldRow('Priorité', aw.priorite)}
-      ${fieldRow('Valideur', aw.valideur)}
-      ${fieldRow('Dernière version', aw.derniere_version)}
-      ${fieldRow('Dernière validation', aw.date_validation)}
-      ${(aw.drive_url || aw.drive_file_id) ? `<a href="${esc(aw.drive_url || 'https://drive.google.com/file/d/' + aw.drive_file_id + '/view')}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="margin-left:auto" title="Ouvrir le fichier original dans Google Drive">🎨 Ouvrir l'artwork (Drive) 🔗</a>` : ''}
+    <div class="a360-card">
+      ${a360Head('Artwork (design)', 'GSheet Artwork (Clarisse)', 'badge-yellow',
+                 "Source : Google Sheet 'Suivi des artworks-import' (Clarisse)", lienArtwork)}
+      <div class="a360-grid">
+        ${fieldRowHtml('Statut', badge(aw.statut_artwork))}
+        ${fieldRow('Priorité', aw.priorite)}
+        ${fieldRow('Valideur', aw.valideur)}
+        ${fieldRow('Dernière version', aw.derniere_version)}
+        ${fieldRow('Dernière validation', aw.date_validation)}
+      </div>
     </div>` : `
-    <div class="section-header" style="margin-top:14px;"><span class="section-title">Artwork (design)</span><span class="badge badge-gray" style="margin-left:8px;" title="Source : Google Sheet 'Suivi des artworks-import' (Clarisse)">GSheet Artwork (Clarisse)</span></div>
-    <div class="fiche-row"><label style="width:180px;">Artwork</label><span class="badge badge-gray">Non</span></div>`;
+    <div class="a360-card">
+      ${a360Head('Artwork (design)', 'GSheet Artwork (Clarisse)', 'badge-gray',
+                 "Source : Google Sheet 'Suivi des artworks-import' (Clarisse)")}
+      <div class="a360-grid">
+        ${fieldRowHtml('Artwork', '<span class="badge badge-gray">Non</span>')}
+      </div>
+    </div>`;
 
   const cycleBlock = cv ? `
-    <div class="section-header" style="margin-top:14px;"><span class="section-title">Cycle de vie (Carrefour)</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : Commentaire Sylob V25 (HO Code / Distributeur)">Sylob V25</span></div>
-    <div style="display:flex;flex-wrap:wrap;gap:0 24px;">
-      ${fieldRow('Statut', cv.statut)}
-      ${fieldRow('Qté en commande', cv.quantite_en_commande)}
+    <div class="a360-card">
+      ${a360Head('Cycle de vie (Carrefour)', 'Sylob V25', 'badge-blue',
+                 'Source : Commentaire Sylob V25 (HO Code / Distributeur)')}
+      <div class="a360-grid">
+        ${fieldRow('Statut', cv.statut)}
+        ${fieldRow('Qté en commande', cv.quantite_en_commande)}
+      </div>
     </div>` : '';
 
   const qdocs = data?.qualite_docs || [];
   const qana = data?.qualite_analyses || [];
   const docsBlock = (qdocs.length || qana.length) ? `
-    <div class="section-header" style="margin-top:14px;"><span class="section-title">Rapports & Analyses Qualité (${qdocs.length + qana.length})</span><span class="badge badge-yellow" style="margin-left:8px;" title="Source : Drive 'ANALYSES ET INSPECTIONS' (Rapports DEKRA / SPECTRO)">Drive Qualité (Drive)</span></div>
+    <div class="a360-card">
+      ${a360Head(`Rapports & analyses qualité (${qdocs.length + qana.length})`, 'Drive Qualité', 'badge-yellow',
+                 "Source : Drive 'ANALYSES ET INSPECTIONS' (Rapports DEKRA / SPECTRO)")}
     <div class="table-wrap"><table>
       <thead><tr><th>Type</th><th>Réf / Nom</th><th>PO#</th><th>Date / Stade</th><th>Conformité</th><th>Document</th></tr></thead>
       <tbody>
@@ -2398,10 +2525,12 @@ function renderProduitFiche(data) {
           <td>${badge(a.conformite)}</td>
           <td><a href="${esc(a.drive_url || 'https://drive.google.com/file/d/' + a.drive_file_id + '/view')}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="Ouvrir le rapport dans Google Drive">📎 Ouvrir Rapport 🔗</a></td>
         </tr>`).join('')}
-      </tbody></table></div>` : '';
+      </tbody></table></div></div>` : '';
 
   const qualiteBlock = qhist.length ? `
-    <div class="section-header" style="margin-top:14px;"><span class="section-title">Historique qualité (${qhist.length})</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : Inspections à l'arrivée et enregistrements NCR">Inspections & NCR</span></div>
+    <div class="a360-card">
+      ${a360Head(`Historique qualité (${qhist.length})`, 'Inspections & NCR', 'badge-blue',
+                 "Source : Inspections à l'arrivée et enregistrements NCR")}
     <div class="table-wrap"><table>
       <thead><tr><th>PO#</th><th>Fournisseur</th><th>Inspection</th><th>N° rapport</th><th>Réception</th><th>NCR</th></tr></thead>
       <tbody>${qhist.slice(0,10).map(q => `<tr>
@@ -2411,7 +2540,7 @@ function renderProduitFiche(data) {
         <td class="mono">${q.ref_rapport ? (q.drive_url ? `<a href="${esc(q.drive_url)}" target="_blank" rel="noopener" title="Ouvrir dans Drive">${esc(q.ref_rapport)} 📎</a>` : (q.drive_file_id ? `<a href="https://drive.google.com/file/d/${esc(q.drive_file_id)}/view" target="_blank" rel="noopener" title="Ouvrir dans Drive">${esc(q.ref_rapport)} 📎</a>` : esc(q.ref_rapport))) : '-'}</td>
         <td>${esc(q.reception)||'-'}</td>
         <td class="mono">${esc(q.ncr)||'-'}</td>
-      </tr>`).join('')}</tbody></table></div>` : '';
+      </tr>`).join('')}</tbody></table></div></div>` : '';
 
   if (!p.code_article && !n.code_article && !aw && !cv && !qhist.length && !qdocs.length && !qana.length) {
     return '<div class="empty">Aucune fiche 360° trouvée (ni Sylob/Matrice, ni artwork, ni qualité) pour cet article.</div>';
@@ -2503,12 +2632,20 @@ async function loadArticle() {
     const nomDesignation = prod.data?.produit?.designation_fr || prod.data?.nomenclature?.description_fr || histRows[0]?.designation || '';
 
     el.innerHTML = `
-      <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Article <strong>${esc(targetCode)}</strong> - ${esc(nomDesignation)}</p>
+      <div class="a360-titre-article">
+        <span class="code">${esc(targetCode)}</span> · ${esc(nomDesignation)}
+      </div>
       ${renderProduitFiche(prod.data)}
-      <div class="section-header" style="margin-top:16px;"><span class="section-title">Commandes en cours</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : IMPORT 2026.xlsx (Excel Andréa) + DWH Sylob V25">IMPORT 2026.xlsx + Sylob</span></div>
-      ${cmdTable}
-      <div class="section-header" style="margin-top:16px;"><span class="section-title">3 derniers prix (tous fournisseurs confondus)</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : Commandes historiques Sylob V25 / IMPORT 2026.xlsx">Commandes Sylob V25</span></div>
-      ${histTable}`;
+      <div class="a360-card">
+        ${a360Head(`Commandes en cours (${enCours.length})`, 'IMPORT 2026.xlsx + Sylob', 'badge-blue',
+                   'Source : IMPORT 2026.xlsx (Excel Andréa) + DWH Sylob V25')}
+        ${cmdTable}
+      </div>
+      <div class="a360-card">
+        ${a360Head('3 derniers prix (tous fournisseurs confondus)', 'Commandes Sylob V25', 'badge-blue',
+                   'Source : Commandes historiques Sylob V25 / IMPORT 2026.xlsx')}
+        ${histTable}
+      </div>`;
   } catch (e) {
     el.innerHTML = `<div class="empty"><div class="empty-icon">!</div>${esc(e.message)}</div>`;
     toast(e.message, true);
