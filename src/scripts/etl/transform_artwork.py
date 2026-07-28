@@ -219,13 +219,54 @@ def _read_rows(path: str) -> list[tuple[str, list[str]]]:
     return [("csv", r) for r in df.fillna("").astype(str).values.tolist()]
 
 
+# Classeur "LIS-CON-28-0 Suivi des artworks-import" (Drive Design et Achat).
+# Source de verite du statut artwork, tenue par Clarisse.
+GSHEET_ARTWORK_ID = "1FTr2nloJGIgLELjbEVkODVhLz4oaAjhaqtrWqXJ4Jrc"
+
+
+def _read_rows_gsheet(spreadsheet_id: str) -> list[tuple[str, list[str]]]:
+    """
+    Lit le classeur Google Sheets en direct, sans passer par un export XLSX.
+
+    Jusqu'au 28/07 il fallait exporter le gsheet a la main puis lancer ce
+    script sur le fichier : une etape humaine qui n'a pas sa place dans une
+    tache quotidienne, et qui explique que achat.artwork_statut soit reste fige
+    au 22/07. On lit desormais le classeur directement.
+
+    Args:
+        spreadsheet_id: identifiant du classeur.
+    Returns:
+        Lignes taguees (nom d'onglet, cellules), meme format que _read_rows.
+    """
+    from src.utils.gsheets import read_all_tabs
+
+    rows: list[tuple[str, list[str]]] = []
+    for nom_onglet, grille in read_all_tabs(spreadsheet_id):
+        for ligne in grille:
+            rows.append((nom_onglet, [str(c) if c is not None else "" for c in ligne]))
+    logger.info("[SUCCES] Classeur artwork lu : %d ligne(s) sur %s.",
+                len(rows), spreadsheet_id)
+    return rows
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Transform Suivi artworks -> JSON artwork_statut.")
-    ap.add_argument("--file", required=True)
+    source = ap.add_mutually_exclusive_group(required=True)
+    source.add_argument("--file", help="Export XLSX/CSV du classeur (mode historique).")
+    source.add_argument("--gsheet", nargs="?", const=GSHEET_ARTWORK_ID,
+                        help="Lecture directe du classeur Google Sheets. "
+                             "Sans valeur, utilise le classeur artwork par defaut.")
     ap.add_argument("--out", default="")
     args = ap.parse_args()
-    rows = _read_rows(args.file)
-    records = transform_rows(rows, source_fichier=args.file.split("/")[-1])
+
+    if args.gsheet:
+        rows = _read_rows_gsheet(args.gsheet)
+        nom_source = f"gsheet:{args.gsheet[:12]}"
+    else:
+        rows = _read_rows(args.file)
+        nom_source = args.file.split("/")[-1]
+
+    records = transform_rows(rows, source_fichier=nom_source)
     payload = json.dumps(records, ensure_ascii=False, indent=2)
     if args.out:
         from pathlib import Path

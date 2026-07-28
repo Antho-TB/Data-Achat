@@ -24,6 +24,20 @@ Junior Tip : une ETA fausse en base est pire qu'une ETA absente. Marlene
 planifie le dechargement et previent le client sur cette date ; mieux vaut une
 case vide qu'elle ira verifier qu'un chiffre faux auquel elle fait confiance.
 
+=============================================================================
+!! MODULE NON RETENU -- NE PAS ORDONNANCER (decision du 28/07/2026)
+=============================================================================
+Les reestimations de date depuis le corps des mails sont captees en production
+par la TACHE COWORK (toutes les 2 h, poste de Marlene), qui alimente
+achat.transport_evenement via load_evenements.py avec les types "retard" et
+"imprevu" sur les champs eta et etd.
+
+Ce module est une seconde implementation a base de regex, jamais executee. Elle
+est conservee comme repli documente pour le jour ou l'on voudra sortir de la
+dependance a l'application Claude ouverte, mais **l'ordonnancer en parallele du
+Cowork produirait des evenements en double** sur la meme table.
+Cf. docs/plan_action.md section 3.4.
+
 Usage :
     python -m src.scripts.gmail.parse_email_eta --file data/sample_mail.txt
 """

@@ -84,6 +84,71 @@ def grid_to_dicts(values: list[list[Any]]) -> list[dict[str, Any]]:
     return result
 
 
+def list_tabs(
+    spreadsheet_id: str,
+    credentials_path: Optional[Path] = None,
+    token_path: Optional[Path] = None,
+) -> list[str]:
+    """
+    Liste les noms d'onglets d'un classeur Google Sheets.
+
+    Args:
+        spreadsheet_id: identifiant du classeur (portion de l'URL).
+    Returns:
+        Noms des onglets, dans l'ordre du classeur.
+    """
+    service = get_sheets_service(credentials_path, token_path)
+    meta = service.spreadsheets().get(
+        spreadsheetId=spreadsheet_id, fields="sheets.properties.title").execute()
+    return [s["properties"]["title"] for s in meta.get("sheets", [])]
+
+
+def read_all_tabs(
+    spreadsheet_id: str,
+    credentials_path: Optional[Path] = None,
+    token_path: Optional[Path] = None,
+) -> list[tuple[str, list[list[Any]]]]:
+    """
+    Lit tous les onglets d'un classeur et renvoie leur grille brute.
+
+    Sert a remplacer un export XLSX manuel par une lecture directe : le suivi
+    des artworks de Clarisse est un classeur a plusieurs onglets, et le
+    transformateur a besoin de savoir de quel onglet vient chaque ligne.
+
+    Junior Tip : contrairement au reste du module, cette fonction LEVE en cas
+    d'echec au lieu de renvoyer une liste vide. Elle est destinee a une tache
+    planifiee : un classeur vide et une panne d'authentification doivent se
+    distinguer, sinon la tache se termine en succes en ayant tout efface.
+
+    Args:
+        spreadsheet_id: identifiant du classeur.
+    Returns:
+        Liste de couples (nom d'onglet, grille de cellules).
+    Raises:
+        RuntimeError: si le classeur est inaccessible ou ne contient aucun onglet.
+    """
+    try:
+        onglets = list_tabs(spreadsheet_id, credentials_path, token_path)
+    except Exception as e:
+        raise RuntimeError(
+            f"Classeur {spreadsheet_id} inaccessible : {e}. "
+            "Verifier le partage du fichier et le scope spreadsheets.readonly "
+            "du token (supprimer config/token.json pour reconsentir)."
+        ) from e
+
+    if not onglets:
+        raise RuntimeError(f"Classeur {spreadsheet_id} sans onglet exploitable.")
+
+    service = get_sheets_service(credentials_path, token_path)
+    resultat: list[tuple[str, list[list[Any]]]] = []
+    for onglet in onglets:
+        valeurs = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id, range=onglet).execute().get("values", [])
+        logger.info("[INFO] Onglet '%s' : %d ligne(s).", onglet, len(valeurs))
+        resultat.append((onglet, valeurs))
+    return resultat
+
+
 def read_sheet_as_dicts(
     spreadsheet_id: str,
     range_name: str,

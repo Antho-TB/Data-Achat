@@ -9,12 +9,26 @@ Eric T. signale les rejets qualite par mail. Ce module lit l'objet et le corps
 du message pour en extraire de facon deterministe : le numero de PO, le code
 article, la reference du rapport (NCR..., CA...) et le motif du refus.
 
-LIMITE CONNUE (regle metier corrigee le 28/07/2026) : ce parser ne reconnait
-que les REJETS. Le questionnaire de demo du 07/07 posait que la conformite
-etait validee implicitement, sans mail, d'ou une detection volontairement
-asymetrique. C'est faux : conformite et non-conformite sont l'une comme l'autre
-validees par mail. Le module reste donc a etendre pour capter les deux
-decisions, cf. docs/plan_action.md section 5.2.
+=============================================================================
+!! MODULE NON RETENU -- NE PAS ORDONNANCER (decision du 28/07/2026)
+=============================================================================
+La captation des decisions qualite depuis les mails est assuree en production
+par la TACHE COWORK, qui tourne toutes les 2 heures sur le poste de Marlene et
+alimente achat.qualite_decision via load_evenements.py. Elle fonctionne : 45
+decisions captees entre le 22 et le 28/07, conformes comme non conformes,
+ventilees par stade (BAT, SP, reception, MAT).
+
+Ce module-ci est une seconde implementation du meme besoin, a base de regex,
+qui n'a jamais tourne. Elle est conservee pour deux raisons : elle documente
+les motifs de reconnaissance, et elle constitue le repli si l'on doit un jour
+sortir de la dependance a l'application Claude ouverte. Mais **l'ordonnancer en
+parallele du Cowork creerait des doublons dans deux tables differentes**
+(achat.commande_enrichissement ici, achat.qualite_decision la-bas).
+
+Limite si le module devait etre repris : il ne reconnait que les REJETS
+(KEYWORDS_REJET). Le questionnaire du 07/07 posait a tort que la conformite
+etait validee implicitement, sans mail. Il faudrait donc l'etendre aux deux
+decisions avant tout usage. Cf. docs/plan_action.md sections 3.4 et 5.3.
 
 Strategie : le parser reste PUR, sans acces base. Il se contente d'extraire et
 de refuser les valeurs douteuses ; c'est load_email_ncr qui ecrit. Cette

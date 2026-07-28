@@ -135,32 +135,48 @@ fraîcheur réelle des tables. **Deux chaînes sur huit sont automatisées.**
 | **Fichiers du partage réseau** (IMPORT 2026, Matrice, dimensions, SUIVI MARITIME) → `pipeline.py` puis étape ENRICH | `run_etl_scheduled.ps1` ⚠️ **vérifier que la tâche est bien installée sur le poste de Marlène** | `commande`, `produit`, `qualite`, `acompte`, `ot_transport`, `artwork` | 28/07 |
 | **Pièces jointes Gmail (BL)** : `preflight_gmail` → `fetch_attachments` → `parse_bl` → `load_ot_gmail` | Tâche `FUSEAU_Gmail_ETL`, toutes les 2 h, 8h-18h, poste de Marlène | `ot_transport` (n° BL) | 28/07 |
 
-### Non automatisé — aucun appelant, exécution manuelle uniquement
+| **Décisions métier depuis le corps des mails** : tâche Cowork → `load_evenements` | Tâche Cowork, toutes les 2 h, poste de Marlène | `qualite_decision`, `transport_evenement`, `commerce_decision`, `design_evenement` | 28/07 |
 
-| Source | Modules concernés | Conséquence mesurée |
-|---|---|---|
-| **ETA réestimées depuis le corps des mails transitaires** | `parse_email_eta`, `load_email_eta` | Livrés le 27/07, **jamais exécutés**. `transport_evenement` : 4 lignes |
-| **Non-conformités depuis les mails d'Eric T** | `parse_email_ncr`, `load_email_ncr` | Corrigés le 28/07, **jamais exécutés** sur des mails réels |
-| **Rapports qualité du Drive** | `crawl_drive_qualite`, `load_qualite_doc_drive`, `load_qualite_analyse_ocr` | `qualite_doc` et `qualite_analyse` : 8 lignes chacune, **figées au 02/07** |
-| **Gsheet Artwork (Clarisse)** | `load_artwork`, `gsheets` | `artwork_statut` figé au **22/07** |
-| **CA fournisseur 3 ans** | `enrich_ca` | `fournisseur_ca` : 21 lignes, one-shot |
-| **Référentiel article Sylob** | `enrich_from_sylob` | One-shot |
-| **MIF, STOP REF, lots multiples, nomenclature** | `transform_mif`, `transform_stop_ref`, `transform_lot_multiples`, `transform_nomenclature` | `mif_suivi` 16 lignes, `article_cycle_vie` 9 lignes, **copies de mars** |
-| **Événements métier email-first** | `load_evenements` | Tâche Cowork : ne tourne que si l'application Claude est ouverte |
+**Correction du 28/07 au soir.** J'avais d'abord conclu que l'email-first ne
+tournait pas. C'est faux : la tâche Cowork fonctionne et produit. Vérifié en
+base — 45 décisions qualité entre le 22 et le 28/07, dont 38 conformes et 7 non
+conformes ventilées par stade (BAT, SP, réception, MAT), plus les retards et
+imprévus transport avec leurs nouvelles ETA et ETD. La table a d'ailleurs gagné
+des lignes entre deux requêtes espacées de quelques minutes. Ce qui n'a jamais
+tourné, ce sont les **modules Python** qui font le même travail en double.
 
-### Ce qu'il faut en retenir
+### Non automatisé
 
-Le socle quotidien est couvert : les commandes, la qualité, les acomptes, les
-conteneurs et les BL se rafraîchissent seuls. **Tout l'email-first livré depuis
-le 22/07 ne tourne pas** : les modules existent, sont testés, et attendent un
-ordonnanceur. C'est le même défaut de raccordement que celui corrigé le matin
-du 28/07, à une échelle plus large.
+| Source | Modules concernés | Conséquence mesurée | Décision |
+|---|---|---|---|
+| **Rapports qualité du Drive** | `crawl_drive_qualite`, `load_qualite_doc_drive` | `qualite_doc` et `qualite_analyse` : 8 lignes chacune, **figées au 02/07** | ✅ **À planifier 1×/jour** |
+| **Gsheet Artwork (Clarisse)** | `transform_artwork`, `load_artwork` | `artwork_statut` figé au **22/07** | ✅ **À planifier 1×/jour** |
+| CA fournisseur 3 ans, référentiel Sylob, MIF, STOP REF, lots multiples, nomenclature | `enrich_ca`, `enrich_from_sylob`, `transform_mif`, `transform_stop_ref`, `transform_lot_multiples`, `transform_nomenclature` | Copies one-shot, certaines de mars | ⛔ **Abandonné** (arbitrage Antho du 28/07) : reprise manuelle assumée |
+
+### Doublon d'implémentation tranché
+
+`parse_email_ncr` / `load_email_ncr` et `parse_email_eta` / `load_email_eta`
+sont une **seconde implémentation, à base de regex, de ce que la tâche Cowork
+fait déjà**. Ils n'ont jamais tourné.
+
+**Décision du 28/07 : le Cowork reste la référence.** Un LLM lit une formulation
+libre d'Eric T ou d'un transitaire bien mieux qu'une expression régulière, et il
+est en production avec de la donnée réelle. Les modules Python sont conservés
+comme repli documenté — le jour où l'on voudra sortir de la dépendance à
+l'application Claude ouverte — mais portent désormais un avertissement en tête :
+**ne pas les ordonnancer**. Les lancer en parallèle du Cowork créerait des
+doublons dans deux tables différentes.
+
+Fragilité assumée en contrepartie : **la captation s'arrête si l'application
+Claude est fermée sur le poste de Marlène.** À surveiller, et à reconsidérer au
+passage sur le serveur de Samuel, où le repli Python reprendra du sens.
+
+### Actions
 
 - [ ] Vérifier que la tâche ETL fichiers est installée sur le poste de Marlène (la tâche Gmail l'est, l'API ne l'est pas : ne rien supposer)
-- [ ] Ordonnancer les deux chaînes mail (ETA, NCR) : il leur manque un producteur de messages, `fetch_attachments` ne couvre que les pièces jointes
-- [ ] Ordonnancer le crawl Drive qualité, ou acter que la qualité reste alimentée par l'IMPORT seul
-- [ ] Ordonnancer la relecture du gsheet Artwork
-- [ ] Décider pour les sources one-shot (CA, MIF, STOP REF, nomenclature) : rafraîchissement périodique ou reprise manuelle assumée
+- [ ] **Installer `FUSEAU_Daily_ETL`** (`deploy/run_daily_etl.ps1`, 07h00) : artwork gsheet + Drive qualité
+- [ ] **Avant l'installation : consentement OAuth à refaire une fois à la main.** Le scope `spreadsheets.readonly` a été ajouté après la création du `token.json` existant ; Google ne le signale qu'à la première requête Sheets. Supprimer `config\token.json`, lancer le script manuellement, valider dans le navigateur. Impossible depuis une tâche planifiée.
+- [ ] Vérifier que le classeur `LIS-CON-28-0` est bien partagé avec le compte Google utilisé par FUSEAU
 
 ---
 
