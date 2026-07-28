@@ -62,3 +62,6 @@ docs/*.zip
 
 # Transcripts de session Antigravity deposes a la racine
 page*.html
+
+# Logs runtime API (locaux au poste, jamais versionnes)
+deploy/logs/

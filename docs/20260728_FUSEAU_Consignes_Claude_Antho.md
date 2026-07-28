@@ -6,10 +6,11 @@
 ## Contexte
 Session du 28/07 sur le poste de Marlène : `git pull` de `dd5d57f` → `cb8404b` (48 commits), 3 migrations appliquées, API redémarrée, accès LAN Andréa préparé. Restent des actions qui exigent soit le rôle propriétaire DWH, soit des droits admin Windows, soit une correction à la source du dépôt.
 
-## 1. `.gitignore` — corriger à la source (sinon auto-pull bloqué)
-L'API écrit `deploy/logs/api_AAAAMMJJ.log.err`. L'extension `.log.err` n'est **pas** couverte par le motif `*.log`, donc `git status` n'est jamais vide → l'auto-pull de `run_api.py` s'annule à chaque redémarrage (`[GIT] [ECHEC] Modifications locales`).
-- **Contournement déjà en place sur le poste Marlène** : `/deploy/logs/` ajouté à `.git/info/exclude` (local, non versionné).
-- **À faire côté dépôt** : ajouter au `.gitignore` versionné une ligne `deploy/logs/` (ou `*.log.err`) pour que tous les postes (Andréa, serveur Samuel) en bénéficient.
+## 1. `.gitignore` — FAIT (corrigé à la source le 28/07)
+L'API écrit `deploy/logs/api_AAAAMMJJ.log.err`. L'extension `.log.err` n'est **pas** couverte par le motif `*.log`, donc `git status` n'était jamais vide → l'auto-pull de `run_api.py` s'annulait à chaque redémarrage (`[GIT] [ECHEC] Modifications locales`).
+- **Corrigé** : `deploy/logs/` ajouté au `.gitignore` **versionné** et poussé sur `main` — tous les postes (Andréa, serveur Samuel) en bénéficient désormais.
+- Le contournement local `.git/info/exclude` du poste Marlène devient redondant (sans effet de bord, peut rester).
+- Rien à faire ici, point conservé pour traçabilité.
 
 ## 2. Migration SQL restante — `sql/20260728_grant_articles3.sql`
 Non appliquée : elle exige le rôle **propriétaire** `dtpf_sylob_myreport_prod`, pas `dtpf_sylob_anthony_bezille_prod`.
@@ -34,7 +35,12 @@ Tant qu'elle n'existe pas, Andréa ne peut pas ouvrir `http://192.168.104.144:50
 ## 5. Persistance de l'API (tâche planifiée absente)
 Le runbook `docs/20260728_FUSEAU_AccesLAN_Andrea_Runbook.md` suppose une tâche planifiée `FUSEAU-API` avec redémarrage auto. Sur le poste de Marlène **elle n'existe pas** : `run_api.py` tourne en process manuel (relancé à la main aujourd'hui). Conséquence : l'API ne redémarre pas seule après reboot / fermeture de session. À installer si on veut la persistance décrite (sinon documenter que l'accès dépend de la session ouverte de Marlène).
 
+## 6. Fichiers locaux sortis du dépôt (poste Marlène)
+Déplacés dans `C:\Users\mmontbrizon\Documents\Claude\_FUSEAU_hors_depot\` (ils bloquaient l'auto-pull car non suivis) :
+- `config/.env.bak_20260727` : sauvegarde d'un `.env` (contient des secrets en clair) → à supprimer avant restitution du poste si plus utile.
+- `deploy/install_service_v2.ps1` : script d'install v2 non versionné → à réviser puis committer dans `deploy/` s'il fait référence, sinon écarter.
+
 ## Rappels
-- Ne jamais committer depuis le poste de Marlène (casse le `pull --ff-only`).
+- Ne jamais committer **sans pousser** depuis le poste de Marlène (un commit local non poussé casse le `pull --ff-only` ; un commit poussé est sûr).
 - `achat.commande` / `achat.qualite` en full-refresh : écrire uniquement via `commande_annotation` / `commande_enrichissement`.
 - IP LAN actuelle du poste Marlène : `192.168.104.144` (Wi-Fi) — peut changer ; envisager une réservation DHCP ou le passage serveur.
