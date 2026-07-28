@@ -59,3 +59,6 @@ data/
 # Design system (reference, non versionne)
 docs/_tbds/
 docs/*.zip
+
+# Transcripts de session Antigravity deposes a la racine
+page*.html
