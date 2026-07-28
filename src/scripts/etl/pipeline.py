@@ -19,6 +19,7 @@ Usage :
 """
 import argparse
 import logging
+import re
 import sys
 from pathlib import Path
 
@@ -53,50 +54,103 @@ def _get_data_dir() -> Path:
     return data_dir
 
 
-import os
+# Emplacements des sources Excel sur le partage réseau
+# \\<serveur>\partage\ADA\METIER\SUIVI CDES IMPORT (compte de service AD).
+#
+# Chaque source déclare des chemins relatifs EXPLICITES, essayés dans l'ordre,
+# puis un motif de repli. Le repli est volontairement strict et ancré en début
+# de nom de fichier.
+#
+# Junior Tip : le motif large "*IMPORT*.xlsx" semblait pratique, mais le glob
+# Windows est insensible à la casse : il attrapait aussi
+# "LIS-ACH-53-0-Matrice TB Import.xlsx", plus récemment modifié, donc classé
+# premier. Le pipeline lisait la Matrice en croyant lire l'IMPORT et mourait
+# sur "Aucun onglet 'IMPORT <annee>'". Une recherche floue sur un partage
+# réseau de plusieurs milliers de fichiers finit toujours par trouver le
+# mauvais : on nomme les chemins attendus, et le flou ne sert que de secours.
+SOURCES_EXCEL: dict[str, dict[str, object]] = {
+    "import": {
+        "libelle": "IMPORT de l'année",
+        "chemins": ["2026/IMPORT 2026.xlsx", "IMPORT 2026.xlsx"],
+        "motif": r"^IMPORT \d{4}\.xlsx$",
+        "dossiers": ["2026", "."],
+    },
+    "matrice": {
+        "libelle": "Matrice TB Import",
+        "chemins": ["PRODUITS/LIS-ACH-53-0-Matrice TB Import.xlsx",
+                    "Matrice TB Import.xlsx"],
+        "motif": r"^(LIS-ACH-\d+-\d+-)?Matrice TB Import\.xlsx$",
+        "dossiers": ["PRODUITS", "."],
+    },
+    "dimensions": {
+        "libelle": "Base article dimensions volume",
+        "chemins": ["PRODUITS/Base article dimensions volume.xlsx",
+                    "Base article dimensions volume.xlsx"],
+        "motif": r"^Base article dimensions volume\.xlsx$",
+        "dossiers": ["PRODUITS", "."],
+    },
+}
+
+# Fichiers à ignorer quel que soit le motif : verrous Excel et copies de travail.
+PREFIXES_IGNORES = ("~$",)
+MOTIFS_IGNORES = ("copie de", "copy of", " - copie", "ancien", "old", "backup", "sauvegarde")
 
 
-def _find_file(data_dir: Path, filename: str, fallback_pattern: str) -> Path:
-    target = data_dir / filename
-    if target.exists():
-        return target
+def _fichier_ignorable(nom: str) -> bool:
+    """Ecarte les verrous Excel et les copies de travail laissées sur le partage."""
+    minuscule = nom.lower()
+    return (nom.startswith(PREFIXES_IGNORES)
+            or any(motif in minuscule for motif in MOTIFS_IGNORES))
 
-    # 1. Recherche directe dans le dossier racine
-    matches = [p for p in data_dir.glob(fallback_pattern) if not p.name.startswith("~$")]
-    if matches:
-        latest = sorted(matches, key=lambda p: p.stat().st_mtime, reverse=True)[0]
-        logger.info("[INFO] Fichier '%s' localise : '%s'", filename, latest)
-        return latest
 
-    # 2. Recherche ciblée dans les sous-dossiers actifs du partage (PRODUITS, 2026, etc.)
-    candidates: list[Path] = []
-    for sub in (data_dir / "PRODUITS", data_dir / "2026", data_dir / "2026" / "TRANSITAIRE"):
-        if sub.exists():
-            for p in sub.glob(fallback_pattern):
-                if not p.name.startswith("~$"):
-                    candidates.append(p)
+def _find_file(data_dir: Path, cle_source: str) -> Path:
+    """
+    Localise une source Excel sur le partage réseau.
 
-    # 3. Fallback : os.walk avec arrêt à profondeur max 2 pour éviter d'explorer les archives historiques profondes (MAX_PATH Windows)
-    if not candidates and data_dir.exists():
-        base_depth = len(data_dir.parts)
-        try:
-            for root, dirs, files in os.walk(data_dir, onerror=lambda _: None):
-                curr_depth = len(Path(root).parts) - base_depth
-                if curr_depth > 2:
-                    dirs.clear()  # Ne pas s'enfoncer dans les archives profondes
-                    continue
-                for f in files:
-                    if not f.startswith("~$") and Path(f).match(fallback_pattern):
-                        candidates.append(Path(root) / f)
-        except Exception as err:
-            logger.warning("[ATTENTION] Parcours de dossier limite par erreur : %s", err)
+    Args:
+        data_dir: racine du partage (`Config.DATA_DIR`).
+        cle_source: clé de `SOURCES_EXCEL` ("import", "matrice", "dimensions").
+    Returns:
+        Chemin du fichier retenu.
+    Raises:
+        FileNotFoundError: si aucun candidat ne correspond au motif attendu.
+    """
+    source = SOURCES_EXCEL[cle_source]
+    libelle = source["libelle"]
+    motif = re.compile(source["motif"], re.IGNORECASE)
 
-    if candidates:
-        latest = sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True)[0]
-        logger.info("[INFO] Fichier '%s' localise : '%s'", filename, latest)
-        return latest
+    # 1. Chemins explicites, dans l'ordre de préférence.
+    for relatif in source["chemins"]:
+        candidat = data_dir / relatif
+        if candidat.exists() and not _fichier_ignorable(candidat.name):
+            logger.info("[INFO] %s : %s", libelle, candidat)
+            return candidat
 
-    raise FileNotFoundError(f"Fichier '{filename}' (motif '{fallback_pattern}') introuvable dans {data_dir}")
+    # 2. Repli : balayage des seuls dossiers attendus, filtré par motif strict.
+    #    Pas de parcours récursif du partage : les archives des années
+    #    précédentes contiennent des IMPORT 2023, 2024, 2025 qui matcheraient.
+    candidats: list[Path] = []
+    for dossier in source["dossiers"]:
+        racine = (data_dir / dossier).resolve() if dossier != "." else data_dir
+        if not racine.exists():
+            continue
+        for fichier in racine.glob("*.xlsx"):
+            if not _fichier_ignorable(fichier.name) and motif.match(fichier.name):
+                candidats.append(fichier)
+
+    if candidats:
+        retenu = max(candidats, key=lambda p: p.stat().st_mtime)
+        if len(candidats) > 1:
+            logger.warning("[ATTENTION] %d fichiers correspondent pour %s, le plus récent est "
+                           "retenu : %s", len(candidats), libelle, retenu)
+        logger.info("[INFO] %s : %s", libelle, retenu)
+        return retenu
+
+    raise FileNotFoundError(
+        f"{libelle} introuvable. Cherché aux emplacements "
+        f"{source['chemins']} puis par motif {source['motif']} dans "
+        f"{source['dossiers']}, sous {data_dir}."
+    )
 
 
 def run(dry_run: bool = False) -> dict[str, int]:
@@ -137,9 +191,9 @@ def run(dry_run: bool = False) -> dict[str, int]:
     # ── EXTRACT ──────────────────────────────────────────────────────────────
     logger.info("[INFO] === EXTRACT ===")
     try:
-        f_matrice = _find_file(data_dir, "Matrice TB Import.xlsx", "*Matrice*.xlsx")
-        f_dimensions = _find_file(data_dir, "Base article dimensions volume.xlsx", "*dimensions*.xlsx")
-        f_import = _find_file(data_dir, "IMPORT 2026.xlsx", "*IMPORT*.xlsx")
+        f_matrice = _find_file(data_dir, "matrice")
+        f_dimensions = _find_file(data_dir, "dimensions")
+        f_import = _find_file(data_dir, "import")
 
         df_matrice = extract_matrice(f_matrice)
         df_dimensions = extract_dimensions(f_dimensions)

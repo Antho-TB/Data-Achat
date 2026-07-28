@@ -39,12 +39,106 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(name)s -- %(message)s")
 logger = logging.getLogger("transform_maritime")
 
-# Positions (0-based) dans la zone données, en-tête réel "FOURNISSEUR,...".
-COL = {
+# Positions de repli (0-based), correspondant a l'ancienne mise en page a 18
+# colonnes. Elles ne servent QUE si la resolution par nom d'en-tete echoue.
+COL_DEFAUT = {
     "fournisseur": 0, "commande": 1, "ref_qualitair": 2, "navire": 6,
     "etd": 7, "eta1": 8, "conteneur": 9, "atd": 10, "eta2": 11,
     "bl": 12, "date_confirmee": 15, "site": 17,
 }
+
+# Resolution des colonnes par NOM d'en-tete plutot que par position.
+#
+# Le fichier du transitaire est passe de 18 a 14 colonnes le 28/07/2026 : la
+# colonne conteneur a glisse de l'index 9 a l'index 5, l'ATD de 10 a 8, l'ETA
+# de 11 a 9, et la colonne BL a purement disparu. Avec des positions figees, le
+# parser lisait "NAVIRE" la ou il croyait lire un numero de conteneur, ne
+# trouvait aucun code ISO 6346 valide, et ecartait les 113 lignes une par une
+# en silence. achat.ot_transport a cesse d'etre rafraichie sans qu'aucune
+# erreur ne remonte.
+#
+# Junior Tip : sur un fichier tenu par un tiers, on ne se repere jamais a la
+# position d'une colonne. On lit l'en-tete et on cherche les intitules. Le
+# transitaire peut inserer une colonne quand il veut, ca ne casse plus rien.
+#
+# Chaque cle liste ses intitules acceptes, du plus precis au plus general.
+ENTETES = {
+    "fournisseur":    ("FRS", "FOURNISSEUR"),
+    "commande":       ("REF COMMANDE", "COMMANDE", "PO"),
+    "ref_qualitair":  ("REF QUALITAIR", "REF TRANSITAIRE", "DOSSIER"),
+    "conteneur":      ("N° CONTENEUR", "N CONTENEUR", "CONTENEUR"),
+    "navire":         ("NAVIRE", "VESSEL", "BATEAU"),
+    "etd":            ("ETD",),
+    "atd":            ("ATD",),
+    "eta1":           ("ETA",),
+    "eta2":           ("ETA CONFIRMEE", "ETA REELLE"),
+    "bl":             ("N° BL", "N BL", "BL", "B/L", "CONNAISSEMENT"),
+    "date_confirmee": ("DDL CONFIRMEE", "DATE CONFIRMEE", "LIVRAISON CONFIRMEE"),
+    "ddl_estimee":    ("DDL ESTIMEE", "DATE ESTIMEE", "LIVRAISON ESTIMEE"),
+    "site":           ("SITE", "DESTINATAIRE", "LIEU"),
+}
+
+
+def _normaliser(libelle: str) -> str:
+    """Majuscules, espaces comprimes, degres et ponctuation neutralises."""
+    texte = str(libelle).upper().replace("°", "").replace("N ", "N")
+    return " ".join(texte.split())
+
+
+def resoudre_colonnes(entete: list[str]) -> dict[str, Optional[int]]:
+    """
+    Associe chaque champ metier a son index de colonne, d'apres la ligne d'en-tete.
+
+    Args:
+        entete: ligne d'en-tete brute du fichier transitaire.
+    Returns:
+        Dictionnaire champ -> index, avec None quand la colonne est absente
+        (cas du BL, disparu de la mise en page de juillet 2026).
+    """
+    normalises = [_normaliser(c) for c in entete]
+    colonnes: dict[str, Optional[int]] = {}
+
+    for champ, libelles in ENTETES.items():
+        trouve: Optional[int] = None
+        # Egalite stricte d'abord : evite que "ETA" attrape "DDL ESTIMEE".
+        for libelle in libelles:
+            cible = _normaliser(libelle)
+            if cible in normalises:
+                trouve = normalises.index(cible)
+                break
+        if trouve is None:
+            for libelle in libelles:
+                cible = _normaliser(libelle)
+                for i, nom in enumerate(normalises):
+                    if nom and cible in nom and i not in colonnes.values():
+                        trouve = i
+                        break
+                if trouve is not None:
+                    break
+        colonnes[champ] = trouve
+
+    # Cas des DEUX colonnes intitulees "ETA" : la mise en page historique du
+    # transitaire porte une ETA previsionnelle puis une ETA confirmee, sans les
+    # distinguer autrement que par leur position. Regle metier (profilage du
+    # 30/06) : c'est la CONFIRMEE, donc la derniere, qui fait foi.
+    indices_eta = [i for i, nom in enumerate(normalises)
+                   if nom == "ETA" or nom.startswith("ETA ")]
+    if len(indices_eta) >= 2:
+        colonnes["eta1"] = indices_eta[0]
+        colonnes["eta2"] = indices_eta[-1]
+
+    manquants = [c for c in ("conteneur", "etd", "eta1") if colonnes.get(c) is None]
+    if manquants:
+        logger.warning("[ATTENTION] Colonnes essentielles absentes de l'en-tete (%s), "
+                       "repli sur les positions historiques.", ", ".join(manquants))
+        for champ in manquants:
+            colonnes[champ] = COL_DEFAUT.get(champ)
+
+    absentes = [c for c, i in colonnes.items() if i is None]
+    if absentes:
+        logger.info("[INFO] Colonnes non fournies par le transitaire, ignorees : %s",
+                    ", ".join(absentes))
+    return colonnes
 MONTHS = {m: i for i, m in enumerate(
     ["january", "february", "march", "april", "may", "june", "july",
      "august", "september", "october", "november", "december"], start=1)}
@@ -122,34 +216,72 @@ def transform_rows(rows: list[list[str]], campaign_year: int = 2026,
     chronologique et decide si un changement doit etre historise.
     """
     # 1) localiser l'en-tête réel
-    start = next((i for i, r in enumerate(rows)
-                  if r and "FOURNISSEUR" in str(r[0]).upper()), None)
+    #
+    # Le transitaire a renomme la 1re colonne "FOURNISSEUR" en "FRS" (constate
+    # le 28/07/2026 sur le fichier serveur). Le parser ne trouvait plus
+    # l'en-tete, renvoyait 0 record sans erreur, et achat.ot_transport cessait
+    # silencieusement d'etre rafraichie : plus aucune mise a jour d'ETA, de BL
+    # ni de navire, alors que les logs affichaient "113 lignes" en amont.
+    #
+    # Junior Tip : on valide desormais l'en-tete sur PLUSIEURS colonnes plutot
+    # que sur un seul libelle. Un fichier tenu par un tiers voit ses intitules
+    # changer sans preavis ; s'accrocher a un seul mot rend l'ETL muet au lieu
+    # de bruyant. Et si rien ne matche, on leve au lieu de renvoyer une liste
+    # vide, pour que l'echec se voie.
+    entetes_attendus = ("FRS", "FOURNISSEUR")
+    marqueurs_ligne = ("CONTENEUR", "NAVIRE", "ETD", "ETA")
+
+    def _est_entete(ligne: list[str]) -> bool:
+        if not ligne:
+            return False
+        premiere = str(ligne[0]).strip().upper()
+        if not any(premiere.startswith(e) for e in entetes_attendus):
+            return False
+        contenu = " ".join(str(c).upper() for c in ligne)
+        return sum(m in contenu for m in marqueurs_ligne) >= 2
+
+    start = next((i for i, r in enumerate(rows) if _est_entete(r)), None)
     if start is None:
-        logger.warning("[ATTENTION] En-tête 'FOURNISSEUR' introuvable.")
-        return []
+        raise ValueError(
+            "En-tete du SUIVI MARITIME introuvable. Attendu une ligne commencant par "
+            f"{entetes_attendus} et contenant au moins 2 de {marqueurs_ligne}. "
+            "Le transitaire a probablement renomme ses colonnes : verifier le fichier "
+            "et mettre a jour entetes_attendus / la table COL de ce module."
+        )
+
+    # 2) resoudre les colonnes d'apres l'en-tete reel, jamais par position figee
+    COL = resoudre_colonnes(rows[start])
+
+    def _col(row: list[str], champ: str) -> Optional[str]:
+        """Lit une cellule par nom de champ ; None si la colonne n'existe pas."""
+        index = COL.get(champ)
+        return _cell(row, index) if index is not None else None
 
     records: list[dict] = []
     skipped_no_cont = 0
     for row in rows[start + 1:]:
         col0 = _cell(row, 0) or ""
-        # 2) stop au calendrier hebdo
+        # 3) stop au calendrier hebdo
         if RE_CAL_STOP.search(col0):
             break
-        conteneurs = RE_CONTAINER.findall((_cell(row, COL["conteneur"]) or ""))
+        conteneurs = RE_CONTAINER.findall((_col(row, "conteneur") or "").upper())
         if not conteneurs:
             skipped_no_cont += 1   # booking futur sans conteneur -> hors ot_transport
             continue
-        bls = (_cell(row, COL["bl"]) or "").split()
+        bls = (_col(row, "bl") or "").split()
         rec_base = {
             "n_bl": bls[0] if bls else None,
-            "etd_reel": parse_maritime_date(_cell(row, COL["atd"]), campaign_year)
-                        or parse_maritime_date(_cell(row, COL["etd"]), campaign_year),
-            "eta": parse_maritime_date(_cell(row, COL["eta2"]), campaign_year)
-                   or parse_maritime_date(_cell(row, COL["eta1"]), campaign_year),
+            "etd_reel": parse_maritime_date(_col(row, "atd"), campaign_year)
+                        or parse_maritime_date(_col(row, "etd"), campaign_year),
+            "eta": parse_maritime_date(_col(row, "eta2"), campaign_year)
+                   or parse_maritime_date(_col(row, "eta1"), campaign_year),
+            "date_livraison": parse_maritime_date(_col(row, "date_confirmee"), campaign_year)
+                              or parse_maritime_date(_col(row, "ddl_estimee"), campaign_year),
+            "transport": _col(row, "navire"),
             "transitaire": "QUALITAIR",
             "n_facture": None,
-            "lieu_livraison": _cell(row, COL["site"]),
-            "po_numbers": clean_pos(_cell(row, COL["commande"])) or None,
+            "lieu_livraison": _col(row, "site"),
+            "po_numbers": clean_pos(_col(row, "commande")) or None,
             "source_fichier": source_fichier,
             "date_transmission": date_transmission,
         }

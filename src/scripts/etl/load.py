@@ -274,6 +274,13 @@ def create_tables_if_not_exist(engine: Engine) -> None:
         conn.execute(text(DDL_OT_TRANSPORT))
         conn.execute(text(DDL_ACOMPTE))
         conn.execute(text(DDL_FOURNISSEUR_CA))
+        # DDL_QUALITE avait disparu de cette liste le 28/07 en meme temps qu'on
+        # ajoutait les DROP VIEW : sur une base neuve (le futur Windows Server),
+        # achat.qualite n'aurait pas ete creee et load_qualite aurait echoue.
+        conn.execute(text(DDL_QUALITE))
+        # Les vues sont supprimees avant recreation : CREATE OR REPLACE VIEW
+        # refuse tout changement d'ordre ou de type de colonne, et ces vues ont
+        # gagne des colonnes (paiement_saisi_manuellement, 28/07).
         conn.execute(text("DROP VIEW IF EXISTS achat.v_previsionnel CASCADE;"))
         conn.execute(text("DROP VIEW IF EXISTS achat.v_retard_article CASCADE;"))
         conn.execute(text("DROP VIEW IF EXISTS achat.v_qualite_fournisseur CASCADE;"))
