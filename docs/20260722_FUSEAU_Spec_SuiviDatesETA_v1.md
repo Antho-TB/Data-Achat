@@ -1,5 +1,7 @@
 # Spec — Suivi des dates ETD/ETA/livraison + alertes de changement
 
+> ⚠️ **SPEC DEPASSEE PAR LE CODE (note du 28/07/2026).** Cette spec prevoyait une table `achat.ot_transport_date_evenement` et affiche "a valider avant tout code". L'implementation livree les 23 et 27/07 reutilise `achat.transport_evenement` et tourne en production. Lire ce document pour l'intention metier, pas pour le modele de donnees. Reference a jour : `docs/modele_semantique.md`.
+
 > FUSEAU / Data-Achat · rédigé le 2026-07-22 · **à valider avant tout code**.
 > Origine : demande Anthony 22/07 + item backlog `plan_action.md` (« alertes changement ETA →
 > Dashboard, mise en forme progressive orange→rouge→violet selon nb de changements »).

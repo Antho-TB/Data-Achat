@@ -4,10 +4,12 @@ Dashboard/ERP Achats (suivi des imports Chine, Circuit B réappro) : ETL Excel/S
 DWH Azure PostgreSQL (`achat.*`), API FastAPI + frontend, alimentation email-first
 (Gmail). Projet data analytique en amont du DWH MyReport.
 
-> **Statut (23/07/2026) :** mise en prod prévue mardi 27/07 -- utilisatrices :
-> Marlène (poste local) + Andréa (accès LAN bureau depuis son propre poste).
-> Antho reste en dev sur son poste (localhost uniquement). API tournant en
-> Tâche Planifiée Windows (auto-restart), cf. `docs/20260723_FUSEAU_RunbookServiceWindows_v1.md`.
+> **Statut (28/07/2026) : en production** sur le poste de Marlène depuis le
+> 23/07. Utilisatrices : Marlène (poste local) + Andréa (accès LAN bureau depuis
+> son propre poste). Antho reste en dev sur son poste (localhost uniquement).
+> API en Tâche Planifiée Windows (auto-restart), cf.
+> `docs/20260723_FUSEAU_RunbookServiceWindows_v1.md`. Migration vers un Windows
+> Server dédié en préparation (Samuel), cf. `docs/plan_action.md` §3.
 > Dépassé le stade POC (10 onglets opérationnels, cf. section Fonctionnalités).
 > Toute nouvelle fonctionnalité prod reste validée avec le métier avant
 > généralisation. Coordination : e.georgeon@tb-groupe.fr (Supply Chain),
@@ -30,17 +32,20 @@ Dashboard · Commandes · Fournisseurs · Artwork · Prévisionnel (financier) �
 Conteneurs · Promo/Opé · Qualité · Article (fiche 360°) · Fiche Achat (Phase A,
 pré-rempli).
 
-Endpoints clés (`app/main.py`) : `/api/kpis`, `/api/commandes` (+ annotation),
+18 endpoints (`app/main.py`) : `/api/kpis`, `/api/commandes` (+ annotation),
 `/api/fournisseurs` (+ historique-prix), `/api/produit/{code_article}` (fiche
 Article 360°, fusionne produit + nomenclature + artwork + qualité),
+`/api/search/article` (recherche Sylob `public.articles3` puis `achat.produit`),
 `/api/artwork`, `/api/previsionnel` (cash_echeances + par_conteneur),
-`/api/conteneurs`, `/api/qualite` (+ fournisseurs), `/api/health`.
+`/api/paiement/conteneur/{n_conteneur}` (saisie de la date de paiement),
+`/api/conteneurs`, `/api/qualite` (+ fournisseurs, + rapports),
+`/api/fiche-achat/export-excel`, `/api/health`.
 Promo/Opé est dérivé côté frontend (filtre `op_client_appro` sur
 `/api/commandes`, pas d'endpoint dédié).
 
-Reste à faire (non couvert) : Fiche Achat Phase B (génération PDF/xlsx),
-détection non-conformité via mail Eric T, Design System TB pas encore
-appliqué au frontend (encore orange maison + Calibri/Segoe UI).
+Reste à faire : voir `docs/plan_action.md` §5.2. Les deux chantiers les plus
+visibles sont l'écriture Artwork depuis FUSEAU (conflit d'autorité à arbitrer
+avec Clarisse) et le flag promo modifiable en cours de circuit.
 
 ## Démarrage rapide
 
@@ -70,7 +75,8 @@ logs, dépannage : `docs/20260723_FUSEAU_RunbookServiceWindows_v1.md`.
 | ERP FUSEAU (UI) | http://127.0.0.1:5050 |
 | Health check | http://127.0.0.1:5050/api/health |
 | Workflow n8n PJ Gmail | http://192.168.102.36:5678/workflow/j2HdoDnRAFgG81w2 |
-| Plan d'action | `docs/plan_action.md` |
+| Plan d'action (source de vérité du pilotage) | `docs/plan_action.md` |
+| Procédure Windows Server (migration à venir) | `docs/20260727_FUSEAU_Procedure_Deploiement_WindowsServer_v1.md` |
 | Runbook OAuth Gmail | `docs/20260622_FUSEAU_RunbookOAuthGmail_v1.md` |
 | Déploiement poste Marlène + Gmail | `docs/20260629_FUSEAU_DeploiementPosteMarlene_Cowork_v1.md` |
 | Runbook service Windows (prod, accès LAN Andréa) | `docs/20260723_FUSEAU_RunbookServiceWindows_v1.md` |
@@ -103,20 +109,30 @@ Gmail (PJ fournisseurs : Plan A script / Plan B n8n) ─┘                    �
 - **BDD cible :** `dtpf_sylob_prod`, schéma `achat` (Azure PostgreSQL Flexible).
 - **Secrets :** Azure Key Vault (`kv-dtpf-prod`) via `DefaultAzureCredential`, fallback `config/.env`.
 - **Clé produit :** code article Sylob ; code provisoire `JJMMAAHHMM` avant création.
-- **Tables (27) + vues (6) :** `produit`, `commande`, `commande_annotation` (saisie
-  métier, hors ETL), `artwork`/`artwork_statut`, `ot_transport` (suivi maritime
-  par conteneur), `qualite`/`qualite_doc`/`qualite_analyse`/`qualite_suivi`/
-  `qualite_facturation`, 4 tables événements email-first (22/07) --
-  `qualite_decision`, `transport_evenement`, `commerce_decision`,
-  `design_evenement` --, vues `v_retard_article`/`v_retard_expedition`/
-  `v_retard_fournisseur`/`v_previsionnel`/`v_artwork`/`v_qualite_fournisseur`.
+- **Tables (22) + vues (7) :** `produit`, `commande`, `commande_annotation` (saisie
+  métier, hors ETL), `commande_enrichissement` (enrichissements automatiques hors
+  ETL Excel : réception Sylob, NCR mail), `artwork`/`artwork_statut`,
+  `ot_transport` (suivi maritime par conteneur), `qualite`/`qualite_doc`/
+  `qualite_analyse`/`qualite_suivi`/`qualite_facturation`, 4 tables événements
+  email-first (22/07) -- `qualite_decision`, `transport_evenement`,
+  `commerce_decision`, `design_evenement` --, vues `v_retard_article`/
+  `v_retard_expedition`/`v_retard_fournisseur`/`v_previsionnel`/`v_artwork`/
+  `v_qualite_fournisseur`/`v_ot_transport_suivi`.
   Détail complet : `docs/modele_semantique.md` (généré depuis `docs/achat_schema.yaml`).
+
+⚠️ **Règle d'écriture absolue.** `achat.commande` et `achat.qualite` sont
+rechargées en full-refresh (TRUNCATE + INSERT) par l'ETL. Aucun module ne doit y
+écrire directement : ce serait effacé la nuit suivante. Les saisies utilisateur
+vont dans `commande_annotation`, les enrichissements automatiques dans
+`commande_enrichissement`, et `src/scripts/etl/apply_enrichissement.py` les
+reprojette en étape ENRICH, à la fin du pipeline.
 
 ## Modèle de données `achat.*`
 
 Schéma visuel daté (généré via Graphviz, 23/07/2026, régénéré depuis
-l'introspection live -- `python -m src.scripts.etl.generate_schema_yaml`) —
-27 tables + 6 vues, dictionnaire complet dans `docs/modele_semantique.md`.
+l'introspection live -- `python -m src.scripts.etl.generate_schema_yaml`).
+Le schéma ci-dessous est antérieur à `commande_enrichissement` (28/07) :
+le dictionnaire à jour est `docs/modele_semantique.md`.
 
 ![Schéma achat.* — FUSEAU 2026-07-23](docs/20260723_schema_achat_erd.png)
 
@@ -133,11 +149,11 @@ Deux mécanismes ciblés :
 ## Structure
 
 ```
-app/            API FastAPI (main.py, 12 endpoints) + accès DB (database.py)
-frontend/       UI statique mono-fichier (index.html, 8 onglets) servie par l'API
-src/scripts/etl/    extract / transform / load / pipeline / enrich_from_sylob / generate_schema_yaml
-src/scripts/gmail/  fetch_attachments, load_evenements, load_artwork, load_ot_gmail, preflight (Plan A -- PJ Gmail)
-src/utils/      config_manager (Config, Key Vault, URL.create), google_auth
+app/            API FastAPI (main.py, 18 endpoints) + accès DB (database.py)
+frontend/       UI statique mono-fichier (index.html, 10 onglets) servie par l'API
+src/scripts/etl/    extract / transform / load / pipeline / enrich_* / apply_enrichissement / generate_schema_yaml
+src/scripts/gmail/  fetch_attachments, parse_bl, load_ot_gmail, parse/load_email_eta, parse/load_email_ncr, load_evenements, preflight
+src/utils/      config_manager (Config, Key Vault, URL.create), logging_setup, google_auth, gsheets, export_fiche_excel
 sql/            DDL versionné (ot_transport, tables événements 22/07...)
 deploy/n8n/     workflow n8n (Plan B)
 docs/           plan d'action, runbooks, modèle sémantique, schémas (générés)

@@ -1,5 +1,7 @@
 # FUSEAU — Passation mise en prod (poste Marlène) — 23/07
 
+> ⚠️ **DEUX POINTS OBSOLETES (note du 28/07/2026).** Le blocage `transport_evenement` decrit au §5 ("NE PAS essayer de reparer") a ete leve le 27/07. La question git contre robocopy du §2 est tranchee : le poste utilise git, confirme par le resync du 22/07. Le reste de la procedure reste valide.
+
 > **Pour un Claude/Cowork ouvert sur le poste de Marlène.** Tu n'as aucun contexte de la
 > session qui a produit ce document — lis-le en entier avant d'agir. Objectif : faire
 > arriver le code à jour (GitHub `main`, commit `f8fd29d`) sur le poste de Marlène, sans

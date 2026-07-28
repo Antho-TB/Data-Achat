@@ -1,5 +1,7 @@
 # Runbook — Créer les tables d'événements métier (à exécuter par Claude sur le poste Antho)
 
+> ⚠️ **DEJA EXECUTE (note du 28/07/2026).** Cette procedure DDL a ete jouee le 22/07, depuis le poste de Marlene et non celui d'Antho. Les 4 tables evenements existent en production. Document conserve a titre de reference sur la demarche, il n'y a rien a executer.
+
 > **Pour qui** : Claude sur le poste d'Anthony (`C:\Users\abezille\dev\Data-Achat`), avec l'identité
 > **owner/admin** (login perso `dtpf_sylob_anthony_bezille_prod` via `config/.env`).
 > **Pourquoi ici** : la création de tables (DDL) doit passer par ton identité contrôlée, pas par

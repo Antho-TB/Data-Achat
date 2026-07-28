@@ -4,8 +4,10 @@
 Dashboard Achats TB Groupe (nom de code **FUSEAU**) — reporting, KPIs achats, détection anomalies. Onglets Article (historique prix), Promo/Opé, Qualité, suivi conteneurs/maritime.
 
 ## Statut
-**Application déployée** (poste Marlène) — dépassé le stade POC (mise à jour 21/07/2026).
-Historique : démarré comme POC le 28/04/2026 ; l'app a depuis évolué vers un vrai backend/frontend avec déploiement sur le poste métier. Ne plus considérer ce projet comme un simple POC exploratoire — l'ancien statut "Streamlit/notebook" est obsolète.
+**En production** sur le poste de Marlène depuis le 23/07/2026 (mise à jour 28/07/2026).
+Démarré comme POC le 28/04, l'app a évolué en backend/frontend déployé sur le poste métier. Ne plus la considérer comme un POC exploratoire ; l'ancien statut "Streamlit/notebook" est obsolète.
+
+**Pilotage : `docs/plan_action.md` est la source de vérité unique.** Il remplace depuis le 28/07 les anciens `TASKS.md` et `TASKS_POSTE_MARLENE.md`, archivés. Ne pas recréer de traceur parallèle.
 
 ## Stack réelle
 - Backend : FastAPI (`app/main.py`, `run_api.py`, lancé via `uvicorn`)
@@ -25,5 +27,11 @@ Toute nouvelle fonctionnalité prod doit rester validée avec le métier avant g
 ## Standards TB Groupe (obligatoires sur tout fichier prod)
 - Python 3.11, type hints partout
 - Config centralisée via classe `Config`
-- `logger = logging.getLogger(__name__)` — jamais `print()`
+- `logger = logging.getLogger(__name__)` via `src.utils.logging_setup.setup_logging()` — jamais `print()`, sauf sortie de données d'un CLI pipeable
 - Connexion DB via Key Vault (réutiliser le pattern MyReport)
+
+## Règle d'écriture en base (à ne jamais enfreindre)
+`achat.commande` et `achat.qualite` sont rechargées en **full-refresh** (TRUNCATE + INSERT) par l'ETL. Aucun module ne doit y écrire directement : ce serait effacé au prochain run nocturne.
+- Saisies utilisateur → `achat.commande_annotation`
+- Enrichissements automatiques (réception Sylob, NCR mail) → `achat.commande_enrichissement`
+- Reprojection par `src/scripts/etl/apply_enrichissement.py`, étape ENRICH en fin de `pipeline.py`

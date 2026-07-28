@@ -1,5 +1,7 @@
 # Cartographie exhaustive de l'information circulant par Gmail — FUSEAU / Data-Achat
 
+> ⚠️ **PARTIELLEMENT DEPASSE (note du 28/07/2026).** Les changements successifs d'ETA et de date de livraison, marques "Non capte" dans ce document, sont implementes depuis (`src/scripts/gmail/parse_email_eta.py` et `load_email_eta.py`, transitaires QUALITAIRSEA, Bollore, Sealogis). Le reste de la cartographie reste valide.
+
 > Rédigé le 2026-07-22. Objectif : recenser **toute** l'information critique qui transite par le
 > flux Gmail informel (email-first TB Groupe), au-delà des seuls PO/prix/dates — retards imprévus,
 > décisions Commerce (Eric T, David), Supply Chain (Emmanuelle), Design (Clarisse), qualité, etc.
