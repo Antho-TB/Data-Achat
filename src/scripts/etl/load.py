@@ -142,6 +142,7 @@ CREATE TABLE IF NOT EXISTS achat.commande_annotation (
     code_article   TEXT NOT NULL,
     statut_retard  TEXT,
     date_etd       DATE,
+    date_paiement  DATE,
     commentaire    TEXT,
     updated_by     TEXT,
     updated_at     TIMESTAMPTZ DEFAULT now(),
@@ -521,11 +522,13 @@ CREATE OR REPLACE VIEW achat.v_previsionnel AS
 SELECT
     c.id, c.po_number, c.code_article, c.fournisseur, c.designation, c.statut,
     COALESCE(c.etd_reel, c.etd_confirme)                         AS etd_eff,
-    c.eta, c.date_livraison, c.date_paiement,
+    c.eta, c.date_livraison,
+    COALESCE(a.date_paiement, c.date_paiement)                   AS date_paiement,
     CASE WHEN c.code_article IS NULL THEN COALESCE(c.total_prix, 0)
          ELSE COALESCE(c.prix_unitaire * c.quantite, 0) END      AS montant,
     (c.statut <> 'Annulée')                                      AS est_achete,
-    (c.date_paiement IS NULL AND c.statut <> 'Annulée')          AS est_a_payer,
+    (COALESCE(a.date_paiement, c.date_paiement) IS NULL
+        AND c.statut <> 'Annulée')                               AS est_a_payer,
     (q.date_inspection IS NOT NULL
         AND c.statut NOT IN ('Livrée','Annulée'))                AS est_en_inspection,
     (c.statut = 'En cours de livraison'
@@ -537,12 +540,15 @@ SELECT
         AND c.statut NOT IN ('Livrée','Annulée'))                AS est_en_retard,
     (c.statut = 'Livrée')                                        AS est_livre,
     TO_CHAR(COALESCE(c.etd_reel, c.etd_confirme), 'YYYY-MM')      AS mois_etd,
-    (c.date_paiement IS NULL
+    (COALESCE(a.date_paiement, c.date_paiement) IS NULL
         AND COALESCE(c.etd_reel, c.etd_confirme) < CURRENT_DATE
-        AND c.statut <> 'Annulée')                               AS est_a_payer_en_retard
+        AND c.statut <> 'Annulée')                               AS est_a_payer_en_retard,
+    (a.date_paiement IS NOT NULL)                                AS paiement_saisi_manuellement
 FROM achat.commande c
 LEFT JOIN achat.qualite q
-    ON q.po_number = c.po_number AND q.code_article = c.code_article;
+    ON q.po_number = c.po_number AND q.code_article = c.code_article
+LEFT JOIN achat.commande_annotation a
+    ON a.po_number = c.po_number AND a.code_article = c.code_article;
 """
 
 
