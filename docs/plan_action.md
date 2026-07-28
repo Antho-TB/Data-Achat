@@ -124,7 +124,7 @@ nominatif**, ce qui est précisément le problème qu'on cherche à éliminer.
 | Sujet | Blocage | Qui peut lever |
 |---|---|---|
 | **Statut « Livrée » depuis Sylob** | Aucune table accessible ne porte une date de réception réelle jointe à PO + article. `bi_reporting.fact_achats_consolides` est la seule à en avoir une, mais accès refusé au login applicatif et grain inexploitable. | IT / owner de la base. Résolu partiellement le 28/07 par `public.receptions_detaillees2` (voir §5), reste le grain article. |
-| **Code article dans les rapports d'inspection Qualité** | Les PDF ne portent pas le code article. Proposition métier : que le service Qualité le mette dans le nom du fichier. | Service Qualité (décision de process, pas de dev) |
+| **Code article dans les rapports d'inspection Qualité** | Les PDF ne portent pas le code article, seul le PO permet de les raccrocher : un rapport ne peut donc pas être rattaché à une ligne précise d'une commande multi-articles. Proposition métier : que le service Qualité le mette dans le nom du fichier. | Service Qualité (décision de process, pas de dev) |
 | **Raison du retard** | **Source retenue (28/07) : parsing du corps de mail transitaire** via `parse_email_eta.py` (extraction regex du motif/incident vers `transport_evenement`). | ✅ Métier (tranché) |
 
 ### 4.2 Documents désalignés du code
@@ -168,6 +168,7 @@ peut attendre.
 
 - [ ] **Artwork : écriture depuis FUSEAU.** Demandé le 21/07 (« simulateur de gsheet »). ⚠️ **Contradiction à arbitrer avant de coder** : le modèle actuel est insert-only et pose que le statut appartient à Clarisse, que l'ETL n'écrase jamais. Autoriser l'écriture depuis FUSEAU crée un conflit d'autorité sur la donnée. Trancher avec Clarisse.
 - [ ] **Artwork : coller aux colonnes exactes du gsheet `LIS-CON-28-0`** et à ses formats de date.
+- [ ] **Étendre la détection qualité aux mails de validation.** `parse_email_ncr.py` ne reconnaît que les rejets. Règle corrigée le 28/07 : la conformité est elle aussi validée par mail (voir §6), les deux décisions sont donc captables.
 - [ ] **Flag promo modifiable** à plusieurs étapes du circuit (aujourd'hui figé à la création).
 - [ ] **HITL** : point de validation humaine quand deux sources se contredisent (date d'un mail contre Sylob, prix négocié qui bouge).
 - [ ] **Extractions régulières** (gsheet, Excel, PDF) au lieu d'exports manuels ponctuels.
@@ -209,11 +210,28 @@ d'expédition et de paiement. Montants calculés en `PU × quantité`, jamais vi
 le rapprochement des réceptions physiques bascule automatiquement le statut en
 « Livrée ». Le **paiement** relève du process Achats et se saisit dans FUSEAU.
 
-**Qualité.** Conforme = validé implicitement, aucun mail. Non conforme = décision
-explicite d'Eric T (Commerce) par mail. On ne détecte donc jamais une validation,
-seulement un rejet. Dureté HRC mesurée uniquement sur les couteaux : un NULL est
-une absence de test légitime. Chrome : 13 % sur les produits coupants, 16-18 %
-sur les autres couverts. Stades : `MAT`, `SP`, `BAT`, `RECEP`.
+**Qualité.** La conformité **comme** la non-conformité sont validées par mail :
+les deux décisions laissent une trace écrite, Eric T (Commerce) étant le
+décideur. Un mail existe donc dans les deux sens, ce qui rend la détection
+symétrique possible.
+
+> ⚠️ **Correction du 28/07 qui annule la règle du 07/07.** Le questionnaire de
+> démo (Q1-2) avait acté « conforme = validé par défaut, pas de mail formel »,
+> d'où une détection volontairement asymétrique : on ne captait qu'un rejet,
+> jamais une validation. C'est faux. Conséquence à traiter :
+> `src/scripts/gmail/parse_email_ncr.py` ne reconnaît aujourd'hui que les mails
+> de rejet (mots-clés `KEYWORDS_REJET`) et ignore les validations. Il faut
+> l'étendre pour capter les deux décisions.
+
+**En attente : identifier les rapports par code article.** C'est le point
+bloquant du rapprochement qualité, déjà listé au §4.1 : les PDF d'inspection ne
+portent pas le code article, seul le PO permet de les raccrocher. Tant que ce
+n'est pas résolu, un rapport ne peut pas être rattaché à une ligne article
+précise d'une commande multi-articles.
+
+Dureté HRC mesurée uniquement sur les couteaux : un NULL est une absence de test
+légitime. Chrome : 13 % sur les produits coupants, 16-18 % sur les autres
+couverts. Stades : `MAT`, `SP`, `BAT`, `RECEP`.
 
 **Codes et identifiants.** Code article créé par Emmanuelle **dès la commande
 fournisseur**, prérequis = la gamme ; avant, c'est un prototype avec un code
