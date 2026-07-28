@@ -370,6 +370,52 @@ def load_artwork(df: pd.DataFrame, engine: Engine) -> int:
     return result.rowcount
 
 
+def _load_ot_transport_bl(df: pd.DataFrame, engine: Engine) -> int:
+    """
+    Charge la liste complete des BL d'un conteneur dans achat.ot_transport_bl.
+
+    Un conteneur groupe plusieurs fournisseurs, chacun editant son propre BL :
+    la relation est 1-N (regle metier confirmee par Andrea le 28/07). La colonne
+    n_bl de achat.ot_transport ne retenait que le premier et perdait les autres.
+
+    Junior Tip : upsert et non full-refresh. Le gsheet du transitaire est une
+    photo de l'instant ; un BL disparu de la feuille ne doit pas disparaitre de
+    l'historique de paiement.
+
+    Args:
+        df: DataFrame issu de transform_ot_transport, avec une colonne bls.
+        engine: moteur SQLAlchemy.
+    Returns:
+        Nombre de couples (conteneur, BL) traites.
+    """
+    couples: list[dict[str, str]] = []
+    for _, ligne in df.iterrows():
+        conteneur = ligne.get("n_conteneur")
+        bls = ligne.get("bls") or []
+        if not conteneur or not isinstance(bls, (list, tuple)):
+            continue
+        for bl in bls:
+            couples.append({"cont": conteneur, "bl": bl,
+                            "src": ligne.get("source_fichier")})
+
+    if not couples:
+        logger.info("[INFO] Aucun BL multiple a charger.")
+        return 0
+
+    with engine.begin() as conn:
+        conn.execute(text("""
+            INSERT INTO achat.ot_transport_bl (n_conteneur, n_bl, source_fichier, charge_le)
+            VALUES (:cont, :bl, :src, NOW())
+            ON CONFLICT (n_conteneur, n_bl) DO UPDATE
+            SET source_fichier = EXCLUDED.source_fichier, charge_le = NOW()
+        """), couples)
+
+    multiples = sum(1 for _, l in df.iterrows() if len(l.get("bls") or []) > 1)
+    logger.info("[SUCCES] BL charges : %d couple(s) conteneur/BL, dont %d conteneur(s) "
+                "portant plusieurs BL.", len(couples), multiples)
+    return len(couples)
+
+
 def load_ot_transport(df: pd.DataFrame, engine: Engine) -> int:
     """
     UPSERT de achat.ot_transport par n_conteneur (table temporaire + ON CONFLICT).
@@ -407,6 +453,12 @@ def load_ot_transport(df: pd.DataFrame, engine: Engine) -> int:
             WHERE table_schema = 'achat' AND table_name = 'ot_transport'
         """)).fetchall()
     }
+    # Les BL multiples partent dans leur table fille avant le filtrage des
+    # colonnes : un conteneur groupe plusieurs fournisseurs, chacun editant son
+    # BL, et ot_transport n'a qu'une colonne n_bl (le principal).
+    if "bls" in df.columns:
+        _load_ot_transport_bl(df, engine)
+
     ignorees = [c for c in df.columns if c not in colonnes_table]
     if ignorees:
         logger.info("[INFO] Colonnes hors table ot_transport, ignorees : %s", ", ".join(ignorees))

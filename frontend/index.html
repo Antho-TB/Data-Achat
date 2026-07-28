@@ -3289,7 +3289,9 @@ function renderConteneursTable(rows) {
   }
   el.innerHTML = `<div class="table-wrap"><table>
     <thead><tr>
-      <th>N° conteneur</th><th>Navire</th><th>N° BL</th><th>Destinataire</th><th>Transitaire</th>
+      <th>N° conteneur</th><th>Navire</th>
+      <th title="Un conteneur groupe plusieurs fournisseurs, chacun éditant son propre BL : plusieurs numéros sont donc normaux.">N° BL</th>
+      <th>Destinataire</th><th>Transitaire</th>
       <th title="Date de départ de Chine (ETD).">ETD</th>
       <th title="Date d'arrivée estimée à Fos (ETA).">ETA</th>
       <th title="Estimation = ETA + 7 jours (dédouanement et acheminement). Affichée tant que le transitaire n'a pas confirmé de date ferme ; disparaît dès que la livraison confirmée est connue.">Livr. estimée</th>
@@ -3302,7 +3304,11 @@ function renderConteneursTable(rows) {
     <tbody>${rows.map(r => `<tr>
       <td class="mono">${esc(r.n_conteneur) || '—'}</td>
       <td>${esc(r.navire) || '—'}</td>
-      <td class="mono">${esc(r.n_bl) || '—'}</td>
+      <td class="mono">${r.n_bl
+          ? esc(r.n_bl) + (r.nb_bl > 1
+              ? ` <span class="badge badge-gray" title="${r.nb_bl} BL sur ce conteneur, un par fournisseur">${r.nb_bl}</span>`
+              : '')
+          : '—'}</td>
       <td>${esc(r.destinataire) || '—'}</td>
       <td>${esc(r.transitaire) || '—'}</td>
       <td>${fmt(r.etd, 'date')}</td>

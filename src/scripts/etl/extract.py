@@ -145,6 +145,24 @@ def extract_suivi_maritime(file_path: str | Path | None) -> pd.DataFrame | None:
     Returns:
         DataFrame de la feuille CONTENEUR PLEIN, ou None si la source est absente.
     """
+    # Source de verite depuis le 28/07 : le GSHEET tenu avec le transitaire, et
+    # non la copie serveur. Cette derniere s'est revelee etre une version
+    # reduite a 14 colonnes, SANS colonne BL, alors que le classeur partage en
+    # compte 18 : c'est ce qui rendait certains BL introuvables dans FUSEAU.
+    # Regle generale : un document collaboratif fait foi la ou il est tenu.
+    #
+    # Le chemin serveur reste accepte comme repli, notamment hors reseau ou si
+    # l'authentification Google est indisponible.
+    if str(file_path).strip().lower() in ("gsheet", "auto", ""):
+        from src.scripts.etl.transform_maritime import GSHEET_MARITIME_ID, _read_rows_gsheet
+        try:
+            lignes = _read_rows_gsheet(GSHEET_MARITIME_ID)
+            logger.info("[SUCCES] SUIVI MARITIME lu depuis le gsheet : %d ligne(s)", len(lignes))
+            return pd.DataFrame(lignes)
+        except Exception as exc:
+            logger.warning("[ATTENTION] Gsheet maritime illisible (%s) -- repli sur le fichier serveur", exc)
+            file_path = Config.SUIVI_MARITIME_PATH_FICHIER
+
     if not file_path:
         logger.warning("[ATTENTION] SUIVI_MARITIME_PATH non defini -- mode degrade")
         return None

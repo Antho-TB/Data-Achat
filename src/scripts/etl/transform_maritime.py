@@ -73,10 +73,73 @@ ENTETES = {
     "eta1":           ("ETA",),
     "eta2":           ("ETA CONFIRMEE", "ETA REELLE"),
     "bl":             ("N° BL", "N BL", "BL", "B/L", "CONNAISSEMENT"),
-    "date_confirmee": ("DDL CONFIRMEE", "DATE CONFIRMEE", "LIVRAISON CONFIRMEE"),
+    "date_confirmee": ("DATE CONFIRMEE", "DDL CONFIRMEE", "LIVRAISON CONFIRMEE"),
+    "heure":          ("HEURE", "HORAIRE", "H"),
     "ddl_estimee":    ("DDL ESTIMEE", "DATE ESTIMEE", "LIVRAISON ESTIMEE"),
     "site":           ("SITE", "DESTINATAIRE", "LIEU"),
 }
+
+# Separateurs possibles entre plusieurs BL dans une meme cellule.
+RE_SEPARATEUR_BL = re.compile(r"[\s,;/]+")
+
+# Un BL du transitaire : lettres puis chiffres, au moins 6 caracteres. Ecarte
+# le bruit historique de la colonne ("DHL", "ATTACH", "ACKTRAY", "-", "/").
+RE_BL = re.compile(r"^[A-Z0-9][A-Z0-9\-]{5,}$", re.IGNORECASE)
+
+
+def extraire_bls(cellule: Optional[str]) -> list[str]:
+    """
+    Extrait tous les BL d'une cellule, un conteneur pouvant en porter plusieurs.
+
+    Les BL sont edites par les FOURNISSEURS et un conteneur groupe plusieurs
+    fournisseurs : la cellule contient donc regulierement plusieurs numeros,
+    separes par un espace, une virgule ou un slash. Le code precedent prenait
+    le premier et jetait les autres en silence.
+
+    Args:
+        cellule: contenu brut de la colonne BL.
+    Returns:
+        Liste de BL nettoyes, sans doublon, dans l'ordre d'apparition.
+    """
+    if not cellule:
+        return []
+    vus: list[str] = []
+    for morceau in RE_SEPARATEUR_BL.split(str(cellule).strip()):
+        candidat = morceau.strip().upper()
+        if candidat and RE_BL.match(candidat) and any(c.isdigit() for c in candidat):
+            if candidat not in vus:
+                vus.append(candidat)
+    return vus
+
+
+def combiner_date_heure(date_iso: Optional[str], heure: Optional[str]) -> Optional[str]:
+    """
+    Assemble la date et l'heure de livraison confirmees en un horodatage.
+
+    Le transitaire renseigne la date en colonne P et l'heure en colonne Q. Les
+    deux comptent : Marlene organise le dechargement, un creneau du matin ou de
+    l'apres-midi ne se prepare pas pareil. achat.ot_transport.date_livraison est
+    un timestamp, l'heure y a donc sa place.
+
+    Args:
+        date_iso: date de livraison confirmee au format YYYY-MM-DD.
+        heure: contenu de la colonne HEURE ("08:00", "8h", "14h30"...).
+    Returns:
+        Horodatage ISO, la date seule si l'heure est absente ou illisible.
+    """
+    if not date_iso:
+        return None
+    if not heure:
+        return date_iso
+    texte = str(heure).strip().lower().replace("h", ":")
+    m = re.match(r"^(\d{1,2})(?::(\d{2}))?", texte)
+    if not m:
+        return date_iso
+    h = int(m.group(1))
+    mn = int(m.group(2) or 0)
+    if not (0 <= h <= 23 and 0 <= mn <= 59):
+        return date_iso
+    return f"{date_iso}T{h:02d}:{mn:02d}:00"
 
 
 def _normaliser(libelle: str) -> str:
@@ -170,7 +233,9 @@ def _date_livraison_effective(date_iso: Optional[str]) -> Optional[str]:
     if not date_iso:
         return None
     try:
-        if date.fromisoformat(date_iso) > date.today():
+        # La valeur peut porter une heure ("2026-09-08T08:00:00") depuis que la
+        # colonne HEURE du transitaire est exploitee : on ne compare que le jour.
+        if date.fromisoformat(str(date_iso)[:10]) > date.today():
             return None
     except ValueError:
         return None
@@ -294,9 +359,12 @@ def transform_rows(rows: list[list[str]], campaign_year: int = 2026,
         if not conteneurs:
             skipped_no_cont += 1   # booking futur sans conteneur -> hors ot_transport
             continue
-        bls = (_col(row, "bl") or "").split()
+        bls = extraire_bls(_col(row, "bl"))
         rec_base = {
+            # n_bl garde le BL principal pour l'affichage existant et les vues.
+            # La liste complete part dans bls, chargee dans achat.ot_transport_bl.
             "n_bl": bls[0] if bls else None,
+            "bls": bls,
             "etd_reel": parse_maritime_date(_col(row, "atd"), campaign_year)
                         or parse_maritime_date(_col(row, "etd"), campaign_year),
             "eta": parse_maritime_date(_col(row, "eta2"), campaign_year)
@@ -312,7 +380,9 @@ def transform_rows(rows: list[list[str]], campaign_year: int = 2026,
             # conteneurs encore en mer : "Valeur en transit" tombait a 0 alors
             # que 4 conteneurs valant 270 000 $US naviguaient.
             "date_livraison": _date_livraison_effective(
-                parse_maritime_date(_col(row, "date_confirmee"), campaign_year)),
+                combiner_date_heure(
+                    parse_maritime_date(_col(row, "date_confirmee"), campaign_year),
+                    _col(row, "heure"))),
             "transport": _col(row, "navire"),
             "transitaire": "QUALITAIR",
             "n_facture": None,
@@ -343,6 +413,31 @@ def transform_rows(rows: list[list[str]], campaign_year: int = 2026,
     logger.info("[SUCCÈS] SUIVI MARITIME : %d conteneur(s) transformé(s) (%d ligne(s) sans conteneur ignorée(s)).",
                 len(records), skipped_no_cont)
     return records
+
+
+# Classeur "SUIVI MARITIME TARRERIAS 2026", tenu avec le transitaire.
+# Source de verite depuis le 28/07 : c'est la que le travail se fait, le fichier
+# serveur n'en etant qu'une copie reduite (14 colonnes, sans BL).
+GSHEET_MARITIME_ID = "1hP73oivXrB8o8I7pkrGh7y6nPzn0ccfW"
+
+
+def _read_rows_gsheet(spreadsheet_id: str) -> list[list[str]]:
+    """
+    Lit le suivi maritime directement dans le classeur partage du transitaire.
+
+    Args:
+        spreadsheet_id: identifiant du classeur.
+    Returns:
+        Lignes brutes, meme format positionnel que _read_rows.
+    """
+    from src.utils.gsheets import read_all_tabs
+
+    lignes: list[list[str]] = []
+    for nom_onglet, grille in read_all_tabs(spreadsheet_id):
+        logger.info("[INFO] Onglet '%s' : %d ligne(s).", nom_onglet, len(grille))
+        for ligne in grille:
+            lignes.append([str(c) if c is not None else "" for c in ligne])
+    return lignes
 
 
 def _read_rows(path: str) -> list[list[str]]:

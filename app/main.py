@@ -1092,8 +1092,22 @@ def get_conteneurs():
                 WHERE c.statut <> 'Annulée' AND c.n_conteneur IS NOT NULL AND c.n_conteneur <> ''
                 GROUP BY c.n_conteneur
             """
+            # Un conteneur groupe plusieurs fournisseurs, chacun editant son BL :
+            # on agrege la table fille plutot que de n'exposer que le principal.
             liste = rows_to_dicts(conn.execute(text(f"""
-                SELECT ot.n_conteneur, ot.n_bl, ot.transport AS navire, ot.transitaire,
+                SELECT ot.n_conteneur,
+                       COALESCE(
+                           (SELECT string_agg(b.n_bl, ' · ' ORDER BY b.n_bl)
+                            FROM {SCHEMA}.ot_transport_bl b
+                            WHERE b.n_conteneur = ot.n_conteneur),
+                           ot.n_bl
+                       ) AS n_bl,
+                       COALESCE(
+                           (SELECT count(*) FROM {SCHEMA}.ot_transport_bl b
+                            WHERE b.n_conteneur = ot.n_conteneur),
+                           CASE WHEN ot.n_bl IS NULL THEN 0 ELSE 1 END
+                       ) AS nb_bl,
+                       ot.transport AS navire, ot.transitaire,
                        ot.lieu_livraison AS destinataire,
                        ot.etd_reel AS etd, ot.eta, ot.date_livraison,
                        COALESCE(a.nb_po, 0) AS nb_po, COALESCE(a.nb_articles, 0) AS nb_articles,

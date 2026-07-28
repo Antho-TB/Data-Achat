@@ -77,7 +77,13 @@ class Config:
     # Fichier transitaire (suivi maritime) -- source des ETD réel/ETA/livraison.
     # Vide = mode dégradé (ot_transport bootstrappé depuis achat.commande).
     # Prod : \\Srv-files-pom\partage\ADA\METIER\SUIVI CDES IMPORT\2026\TRANSITAIRE\2026 SUIVI MARITIME.xlsx
-    SUIVI_MARITIME_PATH: str = os.getenv("SUIVI_MARITIME_PATH", "")
+    # Source du suivi maritime. Valeur attendue depuis le 28/07 : "gsheet", qui
+    # lit le classeur partage avec le transitaire (source de verite). Un chemin
+    # de fichier reste accepte comme repli explicite.
+    SUIVI_MARITIME_PATH: str = os.getenv("SUIVI_MARITIME_PATH", "gsheet")
+    # Repli utilise automatiquement si le gsheet est illisible (hors reseau,
+    # authentification Google indisponible).
+    SUIVI_MARITIME_PATH_FICHIER: str = os.getenv("SUIVI_MARITIME_PATH_FICHIER", "")
 
     # API FastAPI (ERP Achat)
     API_HOST: str = os.getenv("API_HOST", "127.0.0.1")

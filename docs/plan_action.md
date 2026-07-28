@@ -210,11 +210,20 @@ Notes brutes de la séance, à trier avec Marlène. Andréa doit envoyer les sie
 - [x] **Priorité d'affichage** : les lignes en retard remontent en tête quel que soit leur statut, puis en production, en cours de livraison, livré, payé, annulé. À rang égal, l'échéance la plus proche d'abord.
 - [x] **Discrimination BL / conteneur** (ISO 6346) et purge des 27 lignes fautives.
 
-### Bloqué par la bascule sur le gsheet maritime
+### Bascule sur le gsheet maritime — codée, reste à activer
 
-- [ ] **Date et heure de livraison confirmées** (colonnes P et Q du gsheet). Les colonnes n'existent pas dans le fichier serveur actuellement lu.
-- [ ] **Plusieurs BL par conteneur** (colonne M). Demande une table fille `achat.ot_transport_bl`, le conteneur étant aujourd'hui la clé primaire avec une seule colonne `n_bl`.
-- [ ] **Basculer `transform_maritime` sur le gsheet**, comme cela vient d'être fait pour l'artwork. Le connecteur Sheets est en place, il reste à identifier le bon classeur : Andréa cite « SUIVI MARITIME TARRERIAS 2026 », nom différent du gsheet POC `1hP73oiv…` documenté le 30/06. **À confirmer avec elle avant le 31/07.**
+Classeur confirmé par Antho le 28/07 : « SUIVI MARITIME TARRERIAS 2026 » est bien
+le gsheet `1hP73oivXrB8o8I7pkrGh7y6nPzn0ccfW` déjà documenté. Sa structure à 18
+colonnes correspond exactement aux lettres citées par Andréa — conteneur en J,
+BL en M, date confirmée en P, heure en Q.
+
+- [x] **Lecture directe du gsheet** dans `extract_suivi_maritime`, avec repli automatique sur le fichier serveur si Google est injoignable
+- [x] **Date et heure de livraison confirmées** assemblées en horodatage (`date_livraison` est déjà un timestamp). Gère `08:00`, `14h30`, `8h`
+- [x] **Plusieurs BL par conteneur** : table `achat.ot_transport_bl` (grain conteneur + BL), 29 BL repris de l'existant. `ot_transport.n_bl` conserve le BL principal pour ne pas casser les vues. L'API agrège et le front affiche un compteur quand il y en a plusieurs
+- [ ] **Activer sur le poste de Marlène** : mettre `SUIVI_MARITIME_PATH=gsheet` dans `config/.env` et renseigner `SUIVI_MARITIME_PATH_FICHIER` avec le chemin serveur comme repli. Le défaut du code est déjà `gsheet`, mais le `.env` existant surcharge avec le chemin fichier
+- [ ] **Prérequis OAuth commun avec l'artwork** : le scope `spreadsheets.readonly` exige un reconsentement manuel une fois (cf. §3.4)
+- [ ] Vérifier que le classeur est partagé avec le compte Google de FUSEAU
+- [ ] Après la première exécution : contrôler que les BL manquants signalés en démo (`SZSE2608065`, `TEMU7385996`) remontent bien
 
 ### À faire lors de la prochaine session sur le poste de Marlène
 
