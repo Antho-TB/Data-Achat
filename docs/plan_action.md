@@ -121,6 +121,69 @@ nominatif**, ce qui est précisément le problème qu'on cherche à éliminer.
 
 ---
 
+## 3.4 Couverture réelle des sources — audit du 28/07
+
+Question posée par Antho : « est-ce qu'on capte bien toutes les sources, et
+est-ce automatique ? » Réponse vérifiée module par module (quel script est
+appelé par quel pipeline ou quelle tâche planifiée) et recoupée avec la
+fraîcheur réelle des tables. **Deux chaînes sur huit sont automatisées.**
+
+### Automatisé
+
+| Chaîne | Déclencheur | Alimente | Fraîcheur constatée |
+|---|---|---|---|
+| **Fichiers du partage réseau** (IMPORT 2026, Matrice, dimensions, SUIVI MARITIME) → `pipeline.py` puis étape ENRICH | `run_etl_scheduled.ps1` ⚠️ **vérifier que la tâche est bien installée sur le poste de Marlène** | `commande`, `produit`, `qualite`, `acompte`, `ot_transport`, `artwork` | 28/07 |
+| **Pièces jointes Gmail (BL)** : `preflight_gmail` → `fetch_attachments` → `parse_bl` → `load_ot_gmail` | Tâche `FUSEAU_Gmail_ETL`, toutes les 2 h, 8h-18h, poste de Marlène | `ot_transport` (n° BL) | 28/07 |
+
+### Non automatisé — aucun appelant, exécution manuelle uniquement
+
+| Source | Modules concernés | Conséquence mesurée |
+|---|---|---|
+| **ETA réestimées depuis le corps des mails transitaires** | `parse_email_eta`, `load_email_eta` | Livrés le 27/07, **jamais exécutés**. `transport_evenement` : 4 lignes |
+| **Non-conformités depuis les mails d'Eric T** | `parse_email_ncr`, `load_email_ncr` | Corrigés le 28/07, **jamais exécutés** sur des mails réels |
+| **Rapports qualité du Drive** | `crawl_drive_qualite`, `load_qualite_doc_drive`, `load_qualite_analyse_ocr` | `qualite_doc` et `qualite_analyse` : 8 lignes chacune, **figées au 02/07** |
+| **Gsheet Artwork (Clarisse)** | `load_artwork`, `gsheets` | `artwork_statut` figé au **22/07** |
+| **CA fournisseur 3 ans** | `enrich_ca` | `fournisseur_ca` : 21 lignes, one-shot |
+| **Référentiel article Sylob** | `enrich_from_sylob` | One-shot |
+| **MIF, STOP REF, lots multiples, nomenclature** | `transform_mif`, `transform_stop_ref`, `transform_lot_multiples`, `transform_nomenclature` | `mif_suivi` 16 lignes, `article_cycle_vie` 9 lignes, **copies de mars** |
+| **Événements métier email-first** | `load_evenements` | Tâche Cowork : ne tourne que si l'application Claude est ouverte |
+
+### Ce qu'il faut en retenir
+
+Le socle quotidien est couvert : les commandes, la qualité, les acomptes, les
+conteneurs et les BL se rafraîchissent seuls. **Tout l'email-first livré depuis
+le 22/07 ne tourne pas** : les modules existent, sont testés, et attendent un
+ordonnanceur. C'est le même défaut de raccordement que celui corrigé le matin
+du 28/07, à une échelle plus large.
+
+- [ ] Vérifier que la tâche ETL fichiers est installée sur le poste de Marlène (la tâche Gmail l'est, l'API ne l'est pas : ne rien supposer)
+- [ ] Ordonnancer les deux chaînes mail (ETA, NCR) : il leur manque un producteur de messages, `fetch_attachments` ne couvre que les pièces jointes
+- [ ] Ordonnancer le crawl Drive qualité, ou acter que la qualité reste alimentée par l'IMPORT seul
+- [ ] Ordonnancer la relecture du gsheet Artwork
+- [ ] Décider pour les sources one-shot (CA, MIF, STOP REF, nomenclature) : rafraîchissement périodique ou reprise manuelle assumée
+
+---
+
+## 3.5 Retours de la démo du 28/07 (notes d'Antho)
+
+Notes brutes de la séance, à trier avec Marlène. Andréa doit envoyer les siennes.
+
+**Données et captation**
+
+- **Factures parfois en JPEG**, packing lists parfois en Excel. Le parseur de pièces jointes doit couvrir ces formats, pas seulement le PDF. À croiser avec la captation packing list (§5.2).
+- **BL SZSE2608065 absent.** Vérifié le 28/07 : il n'est **ni dans la base, ni dans le fichier serveur `2026 SUIVI MARITIME.xlsx`** (pourtant modifié le jour même à 11h11). Il ne peut donc venir que de la pièce jointe Gmail. Piste : la chaîne PJ n'a pas tourné, ou n'a pas su parser ce BL. À diagnostiquer sur le poste de Marlène, seul endroit où elle s'exécute.
+- **Conteneur TEMU7385996 incorrect.** Même constat : absent de la base et du fichier transitaire. Même piste.
+- ⚠️ **Hypothèse à lever** : Antho note « PJ réceptionnée et Gsheet à jour ». Si le transitaire tient à jour le **gsheet** pendant que l'ETL lit le **fichier serveur**, on lit une copie. Vérifier laquelle des deux sources fait foi aujourd'hui.
+- **Avoirs fournisseurs absents du prévisionnel.** Aucune table ne les porte. Source et règle de gestion à définir.
+
+**Fonctionnel**
+
+- **Champ « Prioritaire » Oui/Non** dans le suivi des commandes, pour filtrer dans le suivi des OP. Rejoint la demande de flag promo modifiable (§5.2) et la question Q-C.
+- **Faire valider les documents de sortie par le service Qualité** (Fiche Achat exportée, rapports).
+- **Export PDF à revoir : il imprime toute l'application** au lieu de la seule fiche. Bug de périmètre `@media print`.
+
+---
+
 ## 4. Priorité 3 — dette et incohérences à arbitrer
 
 ### 4.1 Bloqué par une action externe
