@@ -12,7 +12,7 @@ Ces points conditionnent tout le reste :
 1. **Toujours allumé** : le serveur ne s'éteint pas la nuit (sinon on retombe sur le problème du poste Marlène).
 2. **Réseau — accès sortants obligatoires depuis le serveur** :
    - **DWH Azure PostgreSQL** : `psql-dtpf-psql-prod.postgres.database.azure.com` port `5432` (via le lien qui remplace le VPN — à confirmer selon le segment réseau du serveur).
-   - **Sylob** : `192.168.102.21` port `5433`.
+   - **Sylob DWH V25 (SRV-ERP-DATA)** : `192.168.102.41` port `5432`.
    - **API Google (Gmail + Drive)** : `*.googleapis.com` port `443` (pour les ETL).
 3. **Réseau — accès entrant** : port `5050` ouvert au sous-réseau local (postes de Marlène / Andréa / Maxence).
 4. **Compte de service** : idéalement `svc-dataachat` (ticket GLPI du 20/07) pour faire tourner le service sans session ouverte. À défaut, un compte de service dédié avec mot de passe.
@@ -152,8 +152,7 @@ Restart-Service FUSEAU-API     # (ou Restart-ScheduledTask selon l'option choisi
 | Besoin | Détail |
 |---|---|
 | **Serveur always-on** | Ne s'éteint pas la nuit |
-| **Sortant 5432** | vers `psql-dtpf-psql-prod.postgres.database.azure.com` |
-| **Sortant 5433** | vers Sylob `192.168.102.21` |
+| **Sortant 5432** | vers DWH Azure `psql-dtpf-psql-prod.postgres.database.azure.com` et DWH Sylob V25 `192.168.102.41` |
 | **Sortant 443** | vers `*.googleapis.com` (ETL Gmail/Drive) |
 | **Entrant 5050** | depuis le sous-réseau des postes clients |
 | **Python 3.11** | installé ou installable |

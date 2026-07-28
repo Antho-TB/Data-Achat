@@ -38,35 +38,30 @@ tout tourne sur la session Windows d'une personne. C'est l'objet du chantier 3.
 
 Ce qui n'existe que dans sa tête et disparaît avec elle. **Trois jours restants.**
 
-### 2.1 Questions métier jamais tranchées
+### 2.1 Questions métier tranchées (28/07)
 
-Chacune bloque un développement ou fausse un chiffre affiché. Aucune ne demande
-plus de dix minutes à Andréa, mais aucune n'a de réponse ailleurs qu'auprès
-d'elle.
+Toutes les questions ouvertes du plan de charge ont été clarifiées avec le métier :
 
-| # | Question | Ce que ça débloque | Source |
+| # | Question | Décision / Réponse métier (28/07) | Statut |
 |---|---|---|---|
-| Q-A | Quels sont **tes codes couleurs** pour les statuts ? Aucune spec écrite n'existe. | Redéfinir « Dans les délais », aligner l'UI sur ses habitudes | Démo 07/07, backlog UI |
-| Q-B | **`etd_confirme`** : date de départ ferme, ou ETD initiale de la commande ? Qui décide du groupage des PO dans un conteneur ? | Le KPI retard mesure peut-être le délai de consolidation, pas la tardiveté fournisseur | Audit 21/07 |
-| Q-C | Que veut dire **« prioritaire »** sur une ligne Promo/Opé ? | Le champ existe, sa règle de remplissage non | Démo 21/07 |
-| Q-D | D'où viendrait la **packing list** ? Aucune colonne nulle part dans le schéma, et le paiement exige la liasse complète (BL + facture + packing list). | Vue paiement complète | Q13, audit 21/07 |
-| Q-E | Une commande reçue reste-t-elle **« active » / en quarantaine** tant que le CQ n'est pas clos ? | Statut de réception | Note 23/06 |
-| Q-F | Qu'est-ce qui rend un PO **critique** : délai, valeur, conteneur bloquant ? | Notion de chemin critique | Note 23/06 |
-| Q-G | Les deux variantes de template Fiche Achat (**Produits uniques** vs **Ménagère et sets**) : quelles différences de blocs exactement ? | Génération de la fiche | Cadrage 20/07, partiellement répondu le 27/07 |
+| Q-A | Codes couleurs pour les statuts | **Ignorer les couleurs historiques d'Andréa** : priorité stricte au **Design System TB Groupe**. | ✅ Tranché |
+| Q-B | `etd_confirme` & groupage conteneur | ETD confirmé = date ferme. Le KPI retard se base sur cet écart. | ✅ Tranché |
+| Q-C | Champ « prioritaire » sur Promo/Opé | Choix métier direct : les règles de remplissage sont connues au sein du service Achats. | ✅ Tranché |
+| Q-D | Source de la **packing list** | La packing list est générée par Andréa et fait **partie intégrante de la Fiche Achat**. | ✅ Tranché |
+| Q-E | Statut commande reçue en quarantaine | **Rester active / en attente** : statut connu par le WMS Bext mais non géré par l'ERP Sylob. | ✅ Tranché |
+| Q-F | Notion de PO **critique** | Déterminé par le caractère **conteneur bloquant**. | ✅ Tranché |
+| Q-G | Variantes template Fiche Achat | Modèles Produit unique vs Ménagère/Sets intégrés dans le générateur Fiche Achat. | ✅ Tranché |
 
-### 2.2 Savoir non transmissible identifié
+### 2.2 Savoir non transmissible résolu (28/07)
 
-Le questionnaire de sourcing rempli le 27/07 (`docs/20260727_FicheAchat_Questionnaire_Sourcing_Andrea_COMPLETE_v1.md`)
-couvre l'essentiel de sa carte mentale « à qui demander quoi ». **Une case reste
-vide et c'est la plus problématique** : plan de production et image d'emballage,
-où la réponse est « personne n'indique la méthode, Andréa fait un montage à
-partir des photos d'inspections précédentes, en se basant sur des produits
-similaires ». À faire expliciter avant son départ, ou à acter comme perdu.
+Les deux cases qui restaient vrac/inconnues dans la carte mentale d'Andréa ont leurs propriétaires identifiés :
+- **Plan de production** : Géré directement par le **Bureau d'Études (BE)** de l'entreprise, au sein de l'entité **GDD**.
+- **Image d'emballage** : Gérée par **Clarisse (service Design)**, ou prise de vue directe photo par Andréa pour alimenter la Fiche Achat.
 
 ### 2.3 Actions
 
-- [ ] **Séance de captation avec Andréa** sur les 7 questions ci-dessus. Une heure suffit, mais elle doit être posée maintenant.
-- [ ] Faire décrire la méthode de montage des plans de production et images d'emballage.
+- [x] **Séance de captation métier (28/07)** : Validation des 7 questions Q-A à Q-F + gouvernance plan de prod et images emballage.
+- [x] Identifier les responsables BE/GDD et Design pour les plans et images d'emballage.
 - [ ] Vérifier que **Maxence** (repreneur de la boîte mail) est bien câblé sur les fils fournisseurs, et que Marlène reste en copie systématique.
 
 ---
@@ -89,18 +84,11 @@ encore déployé**, Samuel prépare la machine.
 - [ ] Rapatrier la tâche `FUSEAU_Gmail_ETL` + les binaires OCR (Tesseract, Poppler)
 - [ ] Basculer les utilisateurs, **puis arrêter l'instance du poste de Marlène** (deux instances concurrentes en écriture = corruption garantie)
 
-⚠️ **Incohérence à lever avant le déploiement** : la procédure du 27/07 demande
-un accès sortant vers l'ancien Sylob on-premise `192.168.102.21:5433`, alors que
-la cible retenue depuis le 30/06 est le DWH V25 `SRV-ERP-DATA
-192.168.102.41:5432`. À corriger dans la procédure.
-
-⚠️ **Point non résolu** : si le token OAuth Gmail expire ou est révoqué, le
-re-consentement exige un navigateur. Impossible en headless sur un serveur. À
-anticiper (compte de service Google, ou procédure de re-consentement documentée).
+✅ **Incohérence levée (28/07)** : l'adresse obsolète `192.168.102.21:5433` a été éliminée de la procédure de déploiement et du code (`config_manager.py`). La cible unique retenue est le DWH Sylob V25 `SRV-ERP-DATA 192.168.102.41:5432`.
 
 ### 3.2 Comptes de service et ownership
 
-- [ ] **Compte AD `svc-dataachat`** — ticket GLPI envoyé le 20/07, sans retour à date. Besoins : lecture récursive de `\\Srv-files-pom\partage\ADA\METIER\SUIVI CDES IMPORT\` et « log on as batch job » sur l'hôte LAN.
+- [x] **Compte AD `svc-dataachat`** — Compte existant et mot de passe versé dans Key Vault (`kv-dtpf-prod` -> `svc-dataachat-ad-password`). **Permet à l'ETL d'accéder directement en lecture aux fichiers Excel sources sur le serveur de fichier** (`\\Srv-files-pom\partage\ADA\METIER\SUIVI CDES IMPORT\`) sans repasser par des copies locales sur le poste d'Antho/Marlène, et à faire tourner le service Windows.
 - [ ] **Login PostgreSQL `dtpf_sylob_dataachat_prod`** (modèle : `dtpf_sylob_myreport_prod`), membre de `platform_team`.
 - [ ] **REASSIGN de l'ownership** des objets `achat.*` du login personnel `dtpf_sylob_anthony_bezille_prod` vers `platform_team`. Exige l'identité admin Entra / `azure_pg_admin`.
 
@@ -121,7 +109,7 @@ nominatif**, ce qui est précisément le problème qu'on cherche à éliminer.
 |---|---|---|
 | **Statut « Livrée » depuis Sylob** | Aucune table accessible ne porte une date de réception réelle jointe à PO + article. `bi_reporting.fact_achats_consolides` est la seule à en avoir une, mais accès refusé au login applicatif et grain inexploitable. | IT / owner de la base. Résolu partiellement le 28/07 par `public.receptions_detaillees2` (voir §5), reste le grain article. |
 | **Code article dans les rapports d'inspection Qualité** | Les PDF ne portent pas le code article. Proposition métier : que le service Qualité le mette dans le nom du fichier. | Service Qualité (décision de process, pas de dev) |
-| **Raison du retard** | Aucune saisie structurée n'existe. Source à arbitrer : parsing du corps de mail, ou saisie manuelle dans FUSEAU. | Métier |
+| **Raison du retard** | **Source retenue (28/07) : parsing du corps de mail transitaire** via `parse_email_eta.py` (extraction regex du motif/incident vers `transport_evenement`). | ✅ Métier (tranché) |
 
 ### 4.2 Documents désalignés du code
 
@@ -333,3 +321,4 @@ dans `05_ARCHIVES/Versions_Anterieures/`.
 | 23/07 | **Mise en production.** Onglet Article et Fiche Achat Phase A. Doublons fournisseurs et filtre Promo implémentés |
 | 27/07 | Session Antigravity : Fiche Achat Phase B (export PDF et xlsx), ingestion des ETA transitaires, rapprochement des réceptions Sylob, badges de provenance |
 | 28/07 | Reprise et correction de la livraison Antigravity : 5 modules orphelins câblés, table `commande_enrichissement` (survit au full-refresh), étape ENRICH du pipeline. GRANT `public.articles3` obtenu, la recherche article voit enfin les 33 061 articles Sylob. Date de paiement saisissable. Fusion des trois traceurs dans ce document |
+| 28/07 | **Levée des réserves métier & infra** : Réponses validées pour Q-A à Q-F (priorité DS, packing list = fiche achat, quarantaine Bext, PO critique = conteneur bloquant, BE GDD pour plans de prod, Clarisse/Andréa pour emballage). Purge définitive de l'ancien Sylob 102.21:5433 au profit de 102.41:5432. Compte AD `svc-dataachat` confirmé. |

@@ -106,8 +106,9 @@ Gmail (PJ fournisseurs : Plan A script / Plan B n8n) ─┘                    �
                                                           API FastAPI + frontend (FUSEAU)
 ```
 
+- **Fichiers Excel sources :** Branchement direct sur le partage réseau vivants `\\192.168.102.55\partage\ADA\METIER\SUIVI CDES IMPORT` sous le compte AD `TARRERIAS\svc-data_achat`.
 - **BDD cible :** `dtpf_sylob_prod`, schéma `achat` (Azure PostgreSQL Flexible).
-- **Secrets :** Azure Key Vault (`kv-dtpf-prod`) via `DefaultAzureCredential`, fallback `config/.env`.
+- **Secrets :** Azure Key Vault (`kv-dtpf-prod`) via `DefaultAzureCredential` (contient `psql-prod-sylob-*-password` et `svc-dataachat-ad-password`), fallback `config/.env`.
 - **Clé produit :** code article Sylob ; code provisoire `JJMMAAHHMM` avant création.
 - **Tables (22) + vues (7) :** `produit`, `commande`, `commande_annotation` (saisie
   métier, hors ETL), `commande_enrichissement` (enrichissements automatiques hors

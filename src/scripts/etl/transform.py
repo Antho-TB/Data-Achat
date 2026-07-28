@@ -522,23 +522,17 @@ def transform_ot_transport(
     logger.info("[INFO] Transformation ot_transport...")
 
     if df_maritime is not None and not df_maritime.empty:
-        # Mode nominal : le fichier transitaire fait foi. Mapping a finaliser une
-        # fois les en-tetes reels de CONTENEUR PLEIN connus (acces dossier requis).
         logger.info("[INFO] Source = fichier transitaire (%d lignes)", len(df_maritime))
-        df = df_maritime.copy()
-        df.columns = [str(c).strip().replace("\n", " ") for c in df.columns]
-        result = pd.DataFrame({
-            "n_conteneur":    df.get("N° Conteneur"),
-            "etd_reel":       df.get("ETD réel"),
-            "eta":            df.get("ETA"),
-            "date_livraison": df.get("Date de livraison"),
-            "transport":      df.get("Transport"),
-            "transitaire":    df.get("Transitaire"),
-            "n_bl":           df.get("N° BL"),
-            "n_facture":      df.get("N° Facture"),
-            "lieu_livraison": df.get("Lieu de livraison"),
-        })
-        result["source_fichier"] = "2026 SUIVI MARITIME.xlsx"
+        from src.scripts.etl.transform_maritime import transform_rows
+        rows = df_maritime.fillna("").astype(str).values.tolist()
+        records = transform_rows(rows, campaign_year=2026, source_fichier="2026 SUIVI MARITIME.xlsx")
+        if records:
+            result = pd.DataFrame(records)
+        else:
+            result = pd.DataFrame(columns=[
+                "n_conteneur", "etd_reel", "eta", "date_livraison", "transport",
+                "transitaire", "n_bl", "n_facture", "lieu_livraison", "source_fichier"
+            ])
     else:
         # Mode degrade : bootstrap depuis les commandes (valeurs en cache).
         logger.warning("[ATTENTION] Fichier transitaire absent -- bootstrap depuis achat.commande")

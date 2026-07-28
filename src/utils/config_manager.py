@@ -154,7 +154,7 @@ class Config:
         Construit l'URL de connexion au DWH Sylob On-Premise (tarrerias_production_dwh).
 
         Le serveur Sylob est une instance PostgreSQL sur le réseau bureau TB Groupe
-        (192.168.102.21:5433), accessible uniquement via VPN Stormshield.
+        (192.168.102.41:5432, SRV-ERP-DATA), accessible uniquement via VPN Stormshield.
         L'accès est en lecture seule avec l'utilisateur dataviz-admin pour garantir
         qu'aucune écriture accidentelle ne modifie les données de production ERP.
 

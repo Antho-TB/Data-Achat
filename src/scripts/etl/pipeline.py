@@ -46,11 +46,57 @@ def _get_data_dir() -> Path:
         FileNotFoundError: Si le répertoire DATA_DIR n'existe pas.
     """
     from src.utils.config_manager import Config, get_base_path
-    base = get_base_path()
-    data_dir = base / Config.DATA_DIR
+    raw_path = Path(Config.DATA_DIR)
+    data_dir = raw_path if raw_path.is_absolute() else get_base_path() / raw_path
     if not data_dir.exists():
         raise FileNotFoundError(f"Répertoire introuvable : {data_dir}")
     return data_dir
+
+
+import os
+
+
+def _find_file(data_dir: Path, filename: str, fallback_pattern: str) -> Path:
+    target = data_dir / filename
+    if target.exists():
+        return target
+
+    # 1. Recherche directe dans le dossier racine
+    matches = [p for p in data_dir.glob(fallback_pattern) if not p.name.startswith("~$")]
+    if matches:
+        latest = sorted(matches, key=lambda p: p.stat().st_mtime, reverse=True)[0]
+        logger.info("[INFO] Fichier '%s' localise : '%s'", filename, latest)
+        return latest
+
+    # 2. Recherche ciblée dans les sous-dossiers actifs du partage (PRODUITS, 2026, etc.)
+    candidates: list[Path] = []
+    for sub in (data_dir / "PRODUITS", data_dir / "2026", data_dir / "2026" / "TRANSITAIRE"):
+        if sub.exists():
+            for p in sub.glob(fallback_pattern):
+                if not p.name.startswith("~$"):
+                    candidates.append(p)
+
+    # 3. Fallback : os.walk avec arrêt à profondeur max 2 pour éviter d'explorer les archives historiques profondes (MAX_PATH Windows)
+    if not candidates and data_dir.exists():
+        base_depth = len(data_dir.parts)
+        try:
+            for root, dirs, files in os.walk(data_dir, onerror=lambda _: None):
+                curr_depth = len(Path(root).parts) - base_depth
+                if curr_depth > 2:
+                    dirs.clear()  # Ne pas s'enfoncer dans les archives profondes
+                    continue
+                for f in files:
+                    if not f.startswith("~$") and Path(f).match(fallback_pattern):
+                        candidates.append(Path(root) / f)
+        except Exception as err:
+            logger.warning("[ATTENTION] Parcours de dossier limite par erreur : %s", err)
+
+    if candidates:
+        latest = sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True)[0]
+        logger.info("[INFO] Fichier '%s' localise : '%s'", filename, latest)
+        return latest
+
+    raise FileNotFoundError(f"Fichier '{filename}' (motif '{fallback_pattern}') introuvable dans {data_dir}")
 
 
 def run(dry_run: bool = False) -> dict[str, int]:
@@ -58,12 +104,8 @@ def run(dry_run: bool = False) -> dict[str, int]:
     Exécute le pipeline ETL complet (Extract -> Transform -> Load).
 
     Chaque étape est encapsulée dans un try/except indépendant pour retourner
-    des statistiques partielles même en cas d'erreur, plutôt que de propager
-    une exception non gérée vers le scheduler ou l'appelant.
-
-    Junior Tip : Le pattern "stats dict + erreurs += 1" permet au processus
-    appelant (CI, orchestrateur n8n) de détecter un échec partiel via le
-    compteur erreurs sans avoir à analyser les logs.
+    au processus appelant (CI, orchestrateur n8n) de détecter un échec partiel
+    via le compteur erreurs sans avoir à analyser les logs.
 
     Args:
         dry_run: Si True, skip le chargement PostgreSQL (test extract+transform).
@@ -95,9 +137,13 @@ def run(dry_run: bool = False) -> dict[str, int]:
     # ── EXTRACT ──────────────────────────────────────────────────────────────
     logger.info("[INFO] === EXTRACT ===")
     try:
-        df_matrice = extract_matrice(data_dir / "Matrice TB Import.xlsx")
-        df_dimensions = extract_dimensions(data_dir / "Base article dimensions volume.xlsx")
-        df_import = extract_import(data_dir / "IMPORT 2026.xlsx")
+        f_matrice = _find_file(data_dir, "Matrice TB Import.xlsx", "*Matrice*.xlsx")
+        f_dimensions = _find_file(data_dir, "Base article dimensions volume.xlsx", "*dimensions*.xlsx")
+        f_import = _find_file(data_dir, "IMPORT 2026.xlsx", "*IMPORT*.xlsx")
+
+        df_matrice = extract_matrice(f_matrice)
+        df_dimensions = extract_dimensions(f_dimensions)
+        df_import = extract_import(f_import)
         # Source transitaire (None si dossier non accessible -> bootstrap commande)
         df_maritime = extract_suivi_maritime(Config.SUIVI_MARITIME_PATH or None)
     except Exception as exc:
