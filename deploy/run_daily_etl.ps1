@@ -8,6 +8,8 @@
 
     1. Artwork  : gsheet LIS-CON-28-0 (Clarisse) -> achat.artwork_statut
     2. Qualite  : Drive "ANALYSES ET INSPECTIONS" -> achat.qualite_doc / _analyse
+    3. Sylob    : dimensions, referentiel article et CA fournisseur 3 ans
+                  -> achat.produit et achat.fournisseur_ca
 
   Complement de run_gmail_etl.ps1 (PJ Gmail, toutes les 2 h) et de la tache
   Cowork (decisions metier depuis le corps des mails, toutes les 2 h).
@@ -76,6 +78,25 @@ if ($LASTEXITCODE -ne 0) {
     & $Py -m src.scripts.etl.load_qualite_doc_drive --commit *>> $Log
     if ($LASTEXITCODE -ne 0) { Log "[ERREUR] load_qualite_doc_drive exit=$LASTEXITCODE"; $Echecs++ }
     else { Log "[SUCCES] documents qualite rafraichis" }
+}
+
+# --- 3. Enrichissements depuis le DWH Sylob on-premise -----------------------
+# Ne tournaient pas sur le poste de Marlene faute d'identifiants SYLOB_* dans
+# config/.env, ce qui avait ete pris pour un dysfonctionnement du code. Verifie
+# le 28/07 depuis le poste d'Antho : 1188 articles enrichis en dimensions, 1195
+# en prix et delai, 21 fournisseurs en CA 3 ans.
+#
+# Si les identifiants manquent, get_sylob_url() leve et les trois etapes
+# echouent proprement, sans empecher les deux sources precedentes.
+Log "[3/3] enrichissements Sylob (dimensions, referentiel, CA fournisseur)"
+foreach ($Mod in @("enrich_dimensions", "enrich_from_sylob", "enrich_ca")) {
+    & $Py -m "src.scripts.etl.$Mod" *>> $Log
+    if ($LASTEXITCODE -ne 0) {
+        Log "[ERREUR] $Mod exit=$LASTEXITCODE (identifiants SYLOB_* dans config/.env ? VPN ?)"
+        $Echecs++
+    } else {
+        Log "[SUCCES] $Mod"
+    }
 }
 
 if ($Echecs -gt 0) { Log "=== FIN ETL quotidien : $Echecs echec(s) ==="; exit 1 }

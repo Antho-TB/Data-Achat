@@ -27,7 +27,45 @@ Sylob : « couteau » remonte des codes `Comp0740009` et `Prod0740054`, absents 
 - **Déjà appliquées le 28/07 (compte anthony_bezille, OK)** : `20260727_reception_sylob.sql`, `20260728_commande_enrichissement.sql`, `20260728_paiement_annotation.sql`.
 - Rien à refaire. Point conservé pour traçabilité.
 
-## 3. Identifiants DWH Sylob on-premise (192.168.102.41)
+## 2 bis. LE VRAI BLOCAGE D'IDENTIFIANTS : le scope Google Sheets
+
+Ajouté le 28/07 au soir, après audit. C'est **le seul manque d'identifiant qui
+bloque une fonctionnalité livrée**, et il ne figurait pas dans ce document.
+
+Le scope `spreadsheets.readonly` a été ajouté à `SCOPES` dans
+`src/utils/google_auth.py`, mais **le `token.json` du poste de Marlène a été créé
+avant**. Google ne signale jamais un scope manquant au chargement du
+credential : il échoue à la première requête concernée, par une erreur
+« insufficient scope ». Le token actuel fonctionne donc parfaitement pour Gmail
+et Drive, et échouera sur Sheets.
+
+Ce que ça bloque, deux fonctionnalités livrées le 28/07 :
+
+1. **Le rafraîchissement quotidien de l'artwork** (`deploy/run_daily_etl.ps1`),
+   qui lit le gsheet de Clarisse en direct au lieu d'un export XLSX manuel.
+2. **La bascule du suivi maritime sur le gsheet du transitaire**, qui apporte la
+   colonne BL absente du fichier serveur, les BL multiples par conteneur et
+   l'heure de livraison confirmée.
+
+Manipulation, à faire UNE FOIS et à la main (impossible en tâche planifiée, un
+navigateur doit s'ouvrir) :
+
+```powershell
+cd <REPO>
+Remove-Item config\token.json
+.\.venv311\Scripts\python.exe -m src.scripts.etl.transform_artwork --gsheet --out data\_artwork.json
+# Un navigateur s'ouvre : valider le consentement sur les 3 scopes
+# (gmail.readonly, drive.readonly, spreadsheets.readonly).
+```
+
+Vérifier au passage que les deux classeurs sont partagés avec le compte Google
+utilisé par FUSEAU : `LIS-CON-28-0` (artwork, Clarisse) et
+`1hP73oivXrB8o8I7pkrGh7y6nPzn0ccfW` (SUIVI MARITIME TARRERIAS 2026, transitaire).
+
+Ensuite seulement, installer la tâche quotidienne et passer
+`SUIVI_MARITIME_PATH=gsheet` dans `config/.env`.
+
+## 3. Identifiants DWH Sylob on-premise (192.168.102.41) -- sans urgence
 Aujourd'hui `get_sylob_url()` lit **uniquement** `config/.env` (pas de Key Vault, contrairement à `get_pg_url()`). Or le poste de Marlène n'a **ni** `KEY_VAULT_NAME` renseigné **ni** `az` CLI → toute la chaîne PG fonctionne via `.env` en clair, pas via Key Vault.
 Deux options selon l'horizon :
 - **Court terme (poste Marlène)** : ajouter dans `config/.env` (jamais commité) : `SYLOB_HOST=192.168.102.41`, `SYLOB_PORT=5432`, `SYLOB_DB=tarrerias_production_dwh`, `SYLOB_USER=dataviz-admin`, `SYLOB_PASSWORD=…`. **Le mot de passe doit être saisi localement sur le poste, jamais transmis en chat.**

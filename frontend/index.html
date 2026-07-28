@@ -2049,10 +2049,30 @@ function payBadge(r) {
 }
 // Meme logique agregee au grain conteneur (nb_a_payer_retard/nb_a_payer/nb_paye
 // calcules cote API a partir de v_previsionnel.est_a_payer(_en_retard)).
+// Un conteneur sans aucune ligne de commande rattachée n'est pas « payé » : on
+// ne sait simplement pas ce qu'il contient. Le transitaire suit tous les
+// conteneurs TB depuis 2023, y compris ceux dont les commandes ne figurent plus
+// dans l'IMPORT de l'année ; la jointure sur le n° de conteneur ne ramène alors
+// rien. Afficher « Payé » et « 0,00 $US » dans ce cas est trompeur : ça se lit
+// comme un conteneur soldé et sans valeur, alors que c'est un trou de données.
+function conteneurSansLigne(r) {
+  return (r.nb_articles || 0) === 0 && (r.nb_po || 0) === 0;
+}
+
 function conteneurPayBadge(r) {
+  if (conteneurSansLigne(r)) {
+    return '<span class="badge badge-gray" title="Aucune ligne de commande rattachée à ce conteneur : son contenu et sa valeur sont inconnus de FUSEAU. Cas courant pour les conteneurs antérieurs à l\'IMPORT de l\'année en cours.">Non rattaché</span>';
+  }
   if ((r.nb_a_payer_retard || 0) > 0) return '<span class="badge badge-red">À payer (retard)</span>';
   if ((r.nb_a_payer || 0) > 0)        return '<span class="badge badge-orange">À payer</span>';
   return '<span class="badge badge-green">Payé</span>';
+}
+
+// Valeur d'un conteneur : « — » plutôt qu'un faux zéro quand rien n'est rattaché.
+function conteneurValeur(r) {
+  return conteneurSansLigne(r)
+    ? '<span style="color:var(--muted)" title="Valeur inconnue : aucune ligne de commande rattachée à ce conteneur.">—</span>'
+    : fmt(r.valeur, 'money');
 }
 
 // ── Paiement éditable (demande métier 28/07) ────────────────────────────────
@@ -2070,6 +2090,12 @@ function conteneurPayBadge(r) {
 // achat.commande est en full-refresh, une écriture directe serait effacée la
 // nuit suivante. Effacer la date rend la main à l'ETL.
 function paiementCell(r, fournisseur) {
+  // Rien à saisir sur un conteneur sans ligne de commande : l'endpoint
+  // refuserait la saisie ("aucune ligne active"). On affiche le badge sans
+  // l'affordance d'édition plutôt que d'offrir un clic qui échoue.
+  if (typeof conteneurSansLigne === 'function' && conteneurSansLigne(r)) {
+    return `<td>${conteneurPayBadge(r)}</td>`;
+  }
   const cle = `${r.n_conteneur || ''}|${fournisseur || ''}`;
   const dateVal = r.date_paiement ? String(r.date_paiement).slice(0, 10) : '';
   const marqueur = r.paiement_saisi
@@ -3317,9 +3343,9 @@ function renderConteneursTable(rows) {
             ? '<span style="color:var(--muted)">—</span>'
             : `<span style="color:var(--muted)" title="Estimation ETA + ${DELAI_LIVRAISON_APRES_ETA_JOURS} j, non confirmée par le transitaire">${fmt(livraisonEstimee(r.eta), 'date')}</span>`}</td>
       <td>${fmt(r.date_livraison, 'datetime')}${chgtDot(r.couleur_livraison, r.nb_changements_livraison)}</td>
-      <td style="text-align:right">${r.nb_po ?? 0}</td>
-      <td style="text-align:right">${r.nb_articles ?? 0}</td>
-      <td style="text-align:right">${fmt(r.valeur, 'money')}</td>
+      <td style="text-align:right">${conteneurSansLigne(r) ? '<span style="color:var(--muted)">—</span>' : (r.nb_po ?? 0)}</td>
+      <td style="text-align:right">${conteneurSansLigne(r) ? '<span style="color:var(--muted)">—</span>' : (r.nb_articles ?? 0)}</td>
+      <td style="text-align:right">${conteneurValeur(r)}</td>
       ${paiementCell(r, null)}
     </tr>`).join('')}</tbody></table></div>`;
   if (_pendingConteneurFocus) setTimeout(applyConteneurFocus, 60);

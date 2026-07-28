@@ -151,7 +151,31 @@ tourné, ce sont les **modules Python** qui font le même travail en double.
 |---|---|---|---|
 | **Rapports qualité du Drive** | `crawl_drive_qualite`, `load_qualite_doc_drive` | `qualite_doc` et `qualite_analyse` : 8 lignes chacune, **figées au 02/07** | ✅ **À planifier 1×/jour** |
 | **Gsheet Artwork (Clarisse)** | `transform_artwork`, `load_artwork` | `artwork_statut` figé au **22/07** | ✅ **À planifier 1×/jour** |
-| CA fournisseur 3 ans, référentiel Sylob, MIF, STOP REF, lots multiples, nomenclature | `enrich_ca`, `enrich_from_sylob`, `transform_mif`, `transform_stop_ref`, `transform_lot_multiples`, `transform_nomenclature` | Copies one-shot, certaines de mars | ⛔ **Abandonné** (arbitrage Antho du 28/07) : reprise manuelle assumée |
+| **Enrichissements Sylob on-premise** : CA fournisseur 3 ans, référentiel article (prix, délai), dimensions et packaging | `enrich_ca`, `enrich_from_sylob`, `enrich_dimensions` | Ne tournaient pas sur le poste de Marlène | ✅ **À planifier** — voir ci-dessous |
+| MIF, STOP REF, lots multiples, nomenclature | `transform_mif`, `transform_stop_ref`, `transform_lot_multiples`, `transform_nomenclature` | Copies one-shot de mars | ⛔ Reprise manuelle assumée |
+| Acomptes depuis Sylob | `enrich_acompte` | Superseded | ⛔ **Obsolète** : `load_acompte` charge depuis la colonne Acompte de l'IMPORT, qui est la source métier officielle (le montant est absent côté ERP) |
+
+### Enrichissements Sylob : ils fonctionnent, il leur manquait les identifiants
+
+Correction du 28/07 au soir. Ces trois modules avaient été écartés du poste de
+Marlène parce qu'« ils ne marchaient pas ». **Le code n'est pas en cause** : le
+poste de Marlène n'a tout simplement pas les identifiants du DWH Sylob
+on-premise (`SYLOB_*` absents de son `config/.env`), et `get_sylob_url()` lève
+alors une erreur. Ce sont pourtant des informations dont le métier a besoin,
+dont le CA fournisseur sur 3 ans glissants, demandé dans trois comptes rendus
+de démo.
+
+Vérifié et exécuté depuis le poste d'Antho, qui a les identifiants :
+
+| Module | Résultat réel |
+|---|---|
+| `enrich_dimensions` | 1188 articles sur 1199 enrichis en dimensions et packaging depuis Sylob V25 |
+| `enrich_from_sylob` | 1195 articles enrichis (prix du dernier achat, délai de réappro) |
+| `enrich_ca` | 21 fournisseurs, 12,8 M$ de CA sur 3 ans glissants |
+
+- [ ] **Renseigner les identifiants Sylob dans le `config/.env` du poste de Marlène** : `SYLOB_HOST=192.168.102.41`, `SYLOB_PORT=5432`, `SYLOB_DB=tarrerias_production_dwh`, `SYLOB_USER=dataviz-admin`, `SYLOB_PASSWORD` à saisir localement, jamais transmis par écrit
+- [ ] **Ajouter les trois modules à la tâche quotidienne** `run_daily_etl.ps1` une fois les identifiants en place
+- [ ] Cible serveur : étendre `get_sylob_url()` au Key Vault, comme `get_pg_url()`, pour sortir ce mot de passe des `.env` en clair
 
 ### Doublon d'implémentation tranché
 
