@@ -153,7 +153,17 @@ button { cursor: pointer; }
 .tab-btn.active { color: #fff; border-bottom-color: var(--orange-lt); }
 
 /* ── Main layout ─────────────────────────────────────────────────────────── */
-.main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+/* Largeur de contenu : le plafond fixe a 1400px laissait, sur les ecrans
+   larges du bureau, deux bandes vides de plusieurs centaines de pixels de
+   chaque cote pendant que les tableaux a 15 colonnes se tassaient au milieu.
+   On occupe desormais la largeur disponible, avec une marge de respiration
+   proportionnelle et un plafond haut pour rester lisible sur tres grand ecran
+   (une ligne de tableau de 2500px de large est illisible a la lecture). */
+.main {
+  padding: 24px clamp(16px, 2.5vw, 40px);
+  max-width: 2100px;
+  margin: 0 auto;
+}
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
@@ -298,7 +308,10 @@ button { cursor: pointer; }
 }
 
 .table-wrap td {
-  padding: 9px 12px;
+  /* Respiration : les lignes etaient serrees alors que la place ne manquait
+     pas. Retour metier du 28/07. */
+  padding: 11px 16px;
+  line-height: 1.45;
   border-bottom: 1px solid #f0f4f8;
   vertical-align: middle;
 }
