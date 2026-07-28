@@ -86,6 +86,22 @@ encore déployé**, Samuel prépare la machine.
 
 ✅ **Incohérence levée (28/07)** : l'adresse obsolète `192.168.102.21:5433` a été éliminée de la procédure de déploiement et du code (`config_manager.py`). La cible unique retenue est le DWH Sylob V25 `SRV-ERP-DATA 192.168.102.41:5432`.
 
+### 3.1 bis Accès d'Andréa en attendant le serveur
+
+Solution provisoire retenue le 28/07 : **aucune installation sur son poste.**
+FUSEAU est une application web, Andréa l'ouvre dans son navigateur sur l'adresse
+réseau du poste de Marlène. Copier le dépôt sur son poste a été explicitement
+écarté : deux instances écrivant dans la même base de production, c'est la
+corruption de données assurée.
+
+Procédure exécutable, écrite pour l'assistant du poste de Marlène :
+`docs/20260728_FUSEAU_AccesLAN_Andrea_Runbook.md`.
+
+- [ ] `API_HOST=0.0.0.0` dans le `config/.env` du poste de Marlène
+- [ ] Règle de pare-feu entrante sur le port 5050, profils Domain et Private
+- [ ] Redémarrage de la tâche `FUSEAU-API` (coupure de 20 s, hors démo)
+- [ ] Transmettre l'URL à Andréa et lui communiquer la clé API de vive voix
+
 ### 3.2 Comptes de service et ownership
 
 - [x] **Compte AD `svc-dataachat`** — Compte existant et mot de passe versé dans Key Vault (`kv-dtpf-prod` -> `svc-dataachat-ad-password`). **Permet à l'ETL d'accéder directement en lecture aux fichiers Excel sources sur le serveur de fichier** (`\\Srv-files-pom\partage\ADA\METIER\SUIVI CDES IMPORT\`) sans repasser par des copies locales sur le poste d'Antho/Marlène, et à faire tourner le service Windows.

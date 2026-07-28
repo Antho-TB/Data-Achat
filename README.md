@@ -79,7 +79,8 @@ logs, dépannage : `docs/20260723_FUSEAU_RunbookServiceWindows_v1.md`.
 | Procédure Windows Server (migration à venir) | `docs/20260727_FUSEAU_Procedure_Deploiement_WindowsServer_v1.md` |
 | Runbook OAuth Gmail | `docs/20260622_FUSEAU_RunbookOAuthGmail_v1.md` |
 | Déploiement poste Marlène + Gmail | `docs/20260629_FUSEAU_DeploiementPosteMarlene_Cowork_v1.md` |
-| Runbook service Windows (prod, accès LAN Andréa) | `docs/20260723_FUSEAU_RunbookServiceWindows_v1.md` |
+| Runbook service Windows (prod) | `docs/20260723_FUSEAU_RunbookServiceWindows_v1.md` |
+| **Ouvrir l'accès LAN à Andréa** (exécutable par le Claude du poste Marlène) | `docs/20260728_FUSEAU_AccesLAN_Andrea_Runbook.md` |
 | Schéma machine-readable `achat.*` | `docs/achat_schema.yaml` |
 | Sources gsheet/Drive (artworks, qualité, maritime) | `docs/sources_gsheet_drive.md` |
 
