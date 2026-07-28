@@ -21,12 +21,9 @@ from typing import Any
 
 from src.scripts.gmail.load_evenements import load as load_evenements
 from src.scripts.gmail.parse_email_eta import parse_email_body
+from src.utils.logging_setup import setup_logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s -- %(message)s",
-)
-logger = logging.getLogger("load_email_eta")
+logger = logging.getLogger(__name__)
 
 
 def process_messages(messages: list[dict[str, Any]], dry_run: bool = False) -> int:
@@ -53,15 +50,17 @@ def process_messages(messages: list[dict[str, Any]], dry_run: bool = False) -> i
         all_events.extend(events)
 
     if not all_events:
-        logger.info("Aucun événement d'ETA trouvé dans les %d message(s).", len(messages))
+        logger.info("[INFO] Aucun événement d'ETA trouvé dans les %d message(s).", len(messages))
         return 0
 
-    logger.info("%d événement(s) d'ETA extrait(s). Routage vers achat.transport_evenement...", len(all_events))
+    logger.info("[INFO] %d événement(s) d'ETA extrait(s). Routage vers achat.transport_evenement...",
+                len(all_events))
     load_evenements(all_events, dry_run=dry_run)
     return len(all_events)
 
 
 def main() -> None:
+    setup_logging()
     ap = argparse.ArgumentParser(description="Charge les événements d'ETA depuis un fichier JSON de messages")
     ap.add_argument("--file", required=True, help="Chemin du fichier JSON de messages")
     ap.add_argument("--dry-run", action="store_true", help="Mode simulation (rollback)")
@@ -69,7 +68,7 @@ def main() -> None:
 
     file_path = Path(args.file)
     if not file_path.exists():
-        logger.error("Fichier introuvable : %s", file_path)
+        logger.error("[ECHEC] Fichier introuvable : %s", file_path)
         return
 
     data = json.loads(file_path.read_text(encoding="utf-8-sig"))

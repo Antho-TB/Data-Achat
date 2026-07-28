@@ -90,13 +90,15 @@ ON CONFLICT (n_conteneur) DO UPDATE SET
     charge_le              = NOW()
 """
 
+# L'id est laisse a la sequence native de la table : le calculer par
+# (SELECT MAX(id) + 1) provoquait une collision de cle primaire des que deux
+# executions se croisaient (tache planifiee et lancement manuel).
 EVENT_SQL = """
 INSERT INTO achat.transport_evenement
-    (id, cle_idempotence, n_conteneur, source, date_info, type, champ_date,
+    (cle_idempotence, n_conteneur, source, date_info, type, champ_date,
      ancienne_valeur, nouvelle_valeur, texte)
 VALUES
-    ((SELECT COALESCE(MAX(id), 0) + 1 FROM achat.transport_evenement),
-     :cle, :n_conteneur, :source, CAST(:date_info AS date), 'chgt_date', :champ_date,
+    (:cle, :n_conteneur, :source, CAST(:date_info AS date), 'chgt_date', :champ_date,
      CAST(:ancienne_valeur AS date), CAST(:nouvelle_valeur AS date), :texte)
 ON CONFLICT (cle_idempotence) DO NOTHING
 """

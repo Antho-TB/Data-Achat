@@ -2,14 +2,27 @@
 """
 [TEST] Validation de la génération et de l'export Excel de la Fiche Achat (FOR-ACH-03-12)
 """
-from fastapi.testclient import TestClient
-import openpyxl
 from io import BytesIO
 
-from app.main import app
+import openpyxl
+import pytest
+from fastapi.testclient import TestClient
+
 from src.utils.export_fiche_excel import generate_fiche_excel_bytes
 
-client = TestClient(app)
+
+@pytest.fixture(scope="module")
+def client() -> TestClient:
+    """
+    Client HTTP de test, instancie a la demande.
+
+    Junior Tip : TestClient(app) au niveau module declenchait le lifespan
+    FastAPI, donc la connexion PostgreSQL, des la COLLECTE des tests. Toute la
+    suite devenait dependante du VPN, y compris les tests purement unitaires.
+    """
+    from app.main import app
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 def test_generate_fiche_excel_bytes():
@@ -50,7 +63,7 @@ def test_generate_fiche_excel_bytes():
     assert "PURCHASE SHEET" in str(ws["C1"].value)
 
 
-def test_api_export_fiche_excel():
+def test_api_export_fiche_excel(client: TestClient):
     payload = {
         "data": {
             "supplier": "POLLYDA",

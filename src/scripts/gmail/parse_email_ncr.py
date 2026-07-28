@@ -1,21 +1,43 @@
+# -*- coding: utf-8 -*-
 """
-Module de parsing des emails de rejets et non-conformités (Eric Tarrerias / Qualité).
+[GMAIL]
+=============================================================================
+PARSER DES MAILS DE NON-CONFORMITE (NCR) -> DONNEES STRUCTUREES
+=============================================================================
 
-Analyse les corps et sujets d'emails émis par le Commerce/Qualité pour extraire
-de manière déterministe les décisions de non-conformité (NCR), les numéros de PO,
-les codes articles et les motifs de refus.
+Eric T. signale les rejets qualite par mail. Ce module lit l'objet et le corps
+du message pour en extraire de facon deterministe : le numero de PO, le code
+article, la reference du rapport (NCR..., CA...) et le motif du refus.
+
+Strategie : le parser reste PUR, sans acces base. Il se contente d'extraire et
+de refuser les valeurs douteuses ; c'est load_email_ncr qui ecrit. Cette
+separation permet de rejouer un parsing sur un mail reel sans VPN ni risque
+d'ecriture.
+
+Junior Tip : un code article TB fait 8 chiffres, mais une date compactee
+(20260715) aussi, et un PO a 8 chiffres aussi. Sans garde-fou, le parser
+prenait la date du mail pour un code article et posait la non-conformite sur
+un article au hasard. On exclut donc le PO deja reconnu et tout ce qui
+ressemble a une date.
+
+Usage :
+    python -m src.scripts.gmail.parse_email_ncr --file data/mail_ncr.txt
 """
+from __future__ import annotations
 
-import re
+import argparse
+import json
 import logging
-from typing import Any, Dict, Optional
+import re
+from typing import Any, Optional
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+from src.utils.logging_setup import setup_logging
+
 logger = logging.getLogger(__name__)
 
-# Patterns regex ciblés
 PATTERN_PO = [
-    re.compile(r'(?<![A-Za-z0-9])(?:PO|COMMANDE|CMD|SO)\s*[:#-]?\s*([0-9]{4,8})(?![A-Za-z0-9])', re.IGNORECASE),
+    re.compile(r'(?<![A-Za-z0-9])(?:PO|COMMANDE|CMD|SO)\s*[:#-]?\s*([0-9]{4,8})(?![A-Za-z0-9])',
+               re.IGNORECASE),
     re.compile(r'(?<![A-Za-z0-9])(1[0-9]{5})(?![A-Za-z0-9])'),
 ]
 
@@ -28,42 +50,65 @@ PATTERN_NCR_REF = [
 
 KEYWORDS_REJET = [
     'non conforme', 'non-conforme', 'rejet', 'rejete', 'rejeté', 'refuse', 'refusé',
-    'ncr', 'defectueux', 'defectueuse', 'non conformite', 'non-conformite', 'fail'
+    'ncr', 'defectueux', 'defectueuse', 'non conformite', 'non-conformite', 'fail',
 ]
+
+NCR_REF_DEFAUT = "NCR-EMAIL"
 
 
 def is_ncr_email(subject: str, body: str) -> bool:
-    """Vérifie si l'email traite d'une non-conformité ou d'un rejet qualité.
-
-    Args:
-        subject (str): Sujet du mail.
-        body (str): Corps du mail.
-
-    Returns:
-        bool: True si l'email signale une non-conformité.
-    """
+    """Indique si le mail signale une non-conformite ou un rejet qualite."""
     text_full = f"{subject} {body}".lower()
     return any(kw in text_full for kw in KEYWORDS_REJET)
 
 
-def parse_email_ncr(body: str, subject: str = "", sender: str = "", date_sent: str = "") -> Optional[Dict[str, Any]]:
-    """Extrait le PO, le code article, la référence NCR et le motif du rejet depuis un email.
+def _ressemble_a_une_date(valeur: str) -> bool:
+    """Ecarte les suites de 8 chiffres qui sont en realite des dates YYYYMMDD."""
+    if len(valeur) != 8:
+        return False
+    annee, mois, jour = int(valeur[:4]), int(valeur[4:6]), int(valeur[6:])
+    return 2000 <= annee <= 2099 and 1 <= mois <= 12 and 1 <= jour <= 31
+
+
+def extract_code_article(full_text: str, po_number: Optional[str]) -> Optional[str]:
+    """
+    Extrait un code article a 8 chiffres, en ecartant le PO et les dates.
 
     Args:
-        body (str): Corps textuel du message.
-        subject (str): Objet du mail.
-        sender (str): Adresse email de l'expéditeur (ex: Eric Tarrerias).
-        date_sent (str): Date d'envoi du mail (ISO ou YYYY-MM-DD).
-
+        full_text: objet + corps du mail.
+        po_number: PO deja reconnu, a ne pas reprendre comme code article.
     Returns:
-        Optional[Dict[str, Any]]: Dictionnaire des données NCR ou None si non applicable.
+        Code article plausible, ou None si aucun candidat fiable.
+    """
+    for match in PATTERN_ARTICLE.finditer(full_text):
+        candidat = match.group(1)
+        if po_number and candidat.lstrip("0") == po_number:
+            continue
+        if _ressemble_a_une_date(candidat):
+            logger.info("[INFO] Suite de 8 chiffres ecartee (ressemble a une date) : %s", candidat)
+            continue
+        return candidat
+    return None
+
+
+def parse_email_ncr(body: str, subject: str = "", sender: str = "",
+                    date_sent: str = "") -> Optional[dict[str, Any]]:
+    """
+    Extrait le PO, le code article, la reference NCR et le motif d'un mail de rejet.
+
+    Args:
+        body: corps textuel du message.
+        subject: objet du mail.
+        sender: adresse de l'expediteur.
+        date_sent: date d'envoi (ISO ou YYYY-MM-DD).
+    Returns:
+        Dictionnaire NCR, ou None si le mail ne concerne pas une non-conformite.
     """
     if not is_ncr_email(subject, body):
         return None
 
     full_text = f"{subject}\n{body}"
 
-    # 1. Extraction du N° PO
     po_number = None
     for pat in PATTERN_PO:
         match = pat.search(full_text)
@@ -71,50 +116,52 @@ def parse_email_ncr(body: str, subject: str = "", sender: str = "", date_sent: s
             po_number = match.group(1).lstrip('0')
             break
 
-    # 2. Extraction du Code Article
-    match_art = PATTERN_ARTICLE.search(full_text)
-    code_article = match_art.group(1) if match_art else None
+    code_article = extract_code_article(full_text, po_number)
 
-    # 3. Extraction Référence NCR / Rapport CA...
-    ncr_ref = None
+    ncr_ref = NCR_REF_DEFAUT
     for pat in PATTERN_NCR_REF:
         match = pat.search(full_text)
         if match:
             ncr_ref = match.group(1).upper()
             break
 
-    if not ncr_ref:
-        ncr_ref = "NCR-EMAIL"
+    lignes = [ligne.strip() for ligne in body.splitlines() if ligne.strip()]
+    motif_lignes = [l for l in lignes if any(kw in l.lower() for kw in KEYWORDS_REJET)]
+    motif = motif_lignes[0] if motif_lignes else (subject or "Rejet qualite signale par mail")
 
-    # 4. Décision & Motif
-    decision = "NON CONFORME"
-    
-    # Extraire une ligne explicative si possible
-    lines = [line.strip() for line in body.splitlines() if line.strip()]
-    motif_lines = [l for l in lines if any(kw in l.lower() for kw in KEYWORDS_REJET)]
-    motif = motif_lines[0] if motif_lines else (subject if subject else "Rejet qualité signalé par mail")
+    if ("tarrerias" in sender.lower() or "eric" in sender.lower()) and "Eric T." not in motif:
+        motif = f"[Decision Eric T.] {motif}"
 
-    # Si expediteur Eric T. -> mentionner la validation Commerce
-    is_eric_t = "tarrerias" in sender.lower() or "eric" in sender.lower()
-    if is_eric_t and "Eric T." not in motif:
-        motif = f"[Décision Eric T.] {motif}"
+    if not po_number:
+        logger.warning("[ATTENTION] Mail NCR sans PO identifiable, il ne sera pas ingere : %s",
+                       subject[:80])
 
-    result = {
+    logger.info("[INFO] Mail NCR detecte : PO=%s, article=%s, ref=%s",
+                po_number, code_article, ncr_ref)
+    return {
         "po_number": po_number,
         "code_article": code_article,
         "ncr_ref": ncr_ref,
-        "decision": decision,
+        "decision": "NON CONFORME",
         "motif": motif,
         "date_decision": date_sent,
         "expediteur": sender,
     }
 
-    logger.info(f"[INFO] Email NCR détecté : PO={po_number}, Article={code_article}, Ref={ncr_ref}")
-    return result
+
+def main() -> None:
+    setup_logging()
+    ap = argparse.ArgumentParser(description="Parse un mail de non-conformite qualite")
+    ap.add_argument("--file", required=True, help="Fichier texte du mail")
+    ap.add_argument("--subject", default="", help="Objet du mail")
+    ap.add_argument("--sender", default="", help="Adresse de l'expediteur")
+    args = ap.parse_args()
+
+    with open(args.file, "r", encoding="utf-8") as fh:
+        body = fh.read()
+    resultat = parse_email_ncr(body, args.subject, args.sender)
+    logger.info("[SUCCES] Resultat :\n%s", json.dumps(resultat, indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":
-    sample_subject = "RE: NON-CONFORMITE PO 181325 - Echantillon couteau fromage"
-    sample_body = "Bonjour Andréa,\nSuite aux tests labo, présence de piqûres de rouille. Le lot est NON CONFORME et rejeté. Merci d'ouvrir la NCR2026-04.\nCdlt,\nEric Tarrerias"
-    res = parse_email_ncr(sample_body, sample_subject, "eric.tarrerias@tb-groupe.fr", "2026-07-27")
-    print("Parsing Result:", res)
+    main()

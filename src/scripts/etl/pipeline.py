@@ -87,7 +87,8 @@ def run(dry_run: bool = False) -> dict[str, int]:
     from src.utils.config_manager import Config
 
     stats: dict[str, int] = {
-        "produits": 0, "commandes": 0, "artwork": 0, "ot_transport": 0, "qualite": 0, "acompte": 0, "erreurs": 0
+        "produits": 0, "commandes": 0, "artwork": 0, "ot_transport": 0, "qualite": 0,
+        "acompte": 0, "receptions_sylob": 0, "enrichissements_appliques": 0, "erreurs": 0
     }
     data_dir = _get_data_dir()
 
@@ -145,6 +146,24 @@ def run(dry_run: bool = False) -> dict[str, int]:
         stats["acompte"] = load_acompte(df_acompte, engine)
     except Exception as exc:
         logger.error("[ERREUR] Chargement PostgreSQL échoué : %s", exc, exc_info=True)
+        stats["erreurs"] += 1
+
+    # ── ENRICH ───────────────────────────────────────────────────────────────
+    # Etape obligatoire APRES le LOAD : achat.commande et achat.qualite viennent
+    # d'etre videes puis rechargees depuis l'Excel. Tout ce qui ne vient pas de
+    # ce fichier (reception physique Sylob, non-conformite signalee par mail)
+    # est stocke a part dans achat.commande_enrichissement et doit etre
+    # reprojete ici, sinon l'information disparait de l'application chaque nuit.
+    logger.info("[INFO] === ENRICH ===")
+    try:
+        from src.scripts.etl.apply_enrichissement import apply_enrichissement
+        from src.scripts.etl.enrich_reception_sylob import enrich_receptions_sylob
+
+        stats["receptions_sylob"] = enrich_receptions_sylob()["enrichissements_ecrits"]
+        applique = apply_enrichissement()
+        stats["enrichissements_appliques"] = applique["commandes_maj"] + applique["qualite_maj"]
+    except Exception as exc:
+        logger.error("[ERREUR] Enrichissement post-chargement échoué : %s", exc, exc_info=True)
         stats["erreurs"] += 1
 
     _print_report(df_produit, df_commande, dry_run=False)
