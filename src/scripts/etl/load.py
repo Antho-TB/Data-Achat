@@ -389,6 +389,29 @@ def load_ot_transport(df: pd.DataFrame, engine: Engine) -> int:
         return 0
 
     logger.info("[INFO] Chargement ot_transport (upsert) : %d conteneur(s)...", len(df))
+
+    # Le transformateur maritime produit des champs de travail qui n'ont pas de
+    # colonne en base : po_numbers (liste des PO du conteneur, exploitee par le
+    # chemin JSON de load_ot_gmail) et date_transmission (horodatage du fichier,
+    # servant a l'arbitrage chronologique des changements d'ETA). Les envoyer
+    # tels quels faisait echouer l'INSERT sur "column po_numbers does not
+    # exist", ce qui interrompait le LOAD avant qualite et acompte.
+    #
+    # Junior Tip : on filtre sur les colonnes REELLES de la table plutot que de
+    # maintenir une liste d'exclusions. Le jour ou le transformateur ajoute un
+    # champ, le chargement continue de fonctionner au lieu de casser tout le
+    # pipeline pour une colonne accessoire.
+    colonnes_table = {
+        row[0] for row in engine.connect().execute(text("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'achat' AND table_name = 'ot_transport'
+        """)).fetchall()
+    }
+    ignorees = [c for c in df.columns if c not in colonnes_table]
+    if ignorees:
+        logger.info("[INFO] Colonnes hors table ot_transport, ignorees : %s", ", ".join(ignorees))
+        df = df[[c for c in df.columns if c in colonnes_table]]
+
     cols = [c for c in df.columns if c != "n_conteneur"]
     set_clause = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols)
     set_clause += ", charge_le = now()"
