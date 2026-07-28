@@ -1,0 +1,292 @@
+Searched for "article"
+Searched for "id="tab-"
+Searched for "tab-article"
+Viewed index.html:760-900
+Searched for "loadArticle"
+Searched for "loadArticle"
+Viewed index.html:2400-2600
+Searched for "renderProduitFiche"
+Viewed index.html:2270-2405
+Searched for "fieldRow"
+Viewed index.html:2255-2270
+
+Voici le code HTML/JS complet de l'onglet **Fiche Article 360°** de FUSEAU (`frontend/index.html`).
+
+---
+
+### 1. Structure HTML de l'onglet (`<div id="tab-article">`)
+
+```html
+<!-- ARTICLE (Fiche 360° - Demande Andréa) -->
+<div id="tab-article" class="tab-panel">
+  <div class="section-header">
+    <span class="section-title">Fiche Article (Suivi complet par référence)</span>
+  </div>
+  
+  <div class="toolbar">
+    <span class="fiche-search-wrap">
+      <input id="f-article-code" 
+             type="text" 
+             autocomplete="off" 
+             placeholder="Code article, désignation ou EAN..." 
+             oninput="articleSearch(this.value)" 
+             onblur="setTimeout(articleSuggestHide,200)" 
+             onkeydown="if(event.key==='Enter'){ articleSuggestHide(); loadArticle(); }" 
+             style="width: 320px;">
+      <div id="article-suggest" class="fiche-suggest" style="display:none;"></div>
+    </span>
+    <button class="btn btn-primary btn-sm" onclick="loadArticle()">Rechercher</button>
+  </div>
+  
+  <div id="article-content">
+    <div class="empty">Saisissez un code article, un EAN ou une désignation pour voir sa fiche 360°.</div>
+  </div>
+</div>
+```
+
+---
+
+### 2. Logique JS de Chargement (`loadArticle`)
+
+```javascript
+async function loadArticle() {
+  const inputVal = document.getElementById('f-article-code').value.trim();
+  const el = document.getElementById('article-content');
+  if (!inputVal) {
+    el.innerHTML = '<div class="empty">Saisissez un code article, un EAN ou une désignation pour voir sa fiche complète.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="loader"><span class="spinner"></span>Recherche en cours...</div>';
+  try {
+    let targetCode = inputVal;
+
+    // Si la recherche est une désignation ou un EAN (pas un code strict à 8 chiffres)
+    if (!/^\d{8}$/.test(inputVal)) {
+      const searchRes = await apiFetch(`/api/search/article?q=${encodeURIComponent(inputVal)}&limit=15`);
+      const candidates = searchRes.data || [];
+      
+      if (candidates.length === 0) {
+        // Aucun candidat trouvé
+      } else if (candidates.length === 1) {
+        targetCode = candidates[0].code_article;
+      } else {
+        // Plusieurs articles correspondent -> Affichage du sélecteur
+        el.innerHTML = `
+          <div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px;">
+            <div style="font-weight:600;font-size:14px;margin-bottom:10px;">🔍 ${candidates.length} articles correspondent à « ${esc(inputVal)} » :</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Code Article</th><th>Désignation</th><th>EAN13 / EDI</th><th>Action</th></tr></thead>
+                <tbody>
+                  ${candidates.map(c => `<tr>
+                    <td class="mono"><strong>${esc(c.code_article)}</strong></td>
+                    <td>${esc(c.designation || '—')}</td>
+                    <td class="mono">${esc(c.ean13 || c.edi || '—')}</td>
+                    <td>
+                      <button class="btn btn-ghost btn-sm" onclick="selectAndLoadArticle('${esc(c.code_article)}')">🔍 Voir la Fiche 360°</button>
+                    </td>
+                  </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>`;
+        return;
+      }
+    }
+
+    const [hist, cmd, prod] = await Promise.all([
+      apiFetch(`/api/fournisseurs/all/historique-prix?code_article=${encodeURIComponent(targetCode)}`),
+      apiFetch(`/api/commandes?code_article=${encodeURIComponent(targetCode)}&limit=200`),
+      apiFetch(`/api/produit/${encodeURIComponent(targetCode)}`),
+    ]);
+    const histRows = (hist.data || []).slice(0, 3);
+    const enCours = (cmd.data || []).filter(r => !r.est_livre);
+
+    const histTable = histRows.length
+      ? `<div class="table-wrap"><table>
+          <thead><tr><th>PO#</th><th>Fournisseur</th><th>Prix</th><th>Date</th></tr></thead>
+          <tbody>${histRows.map(r => `<tr>
+            <td class="mono">${esc(r.po_number)||'-'}</td>
+            <td>${esc(r.fournisseur)||'-'}</td>
+            <td class="mono">$${Number(r.prix||0).toLocaleString('fr-FR',{minimumFractionDigits:3,maximumFractionDigits:3})}</td>
+            <td>${esc(r.date_mail)||'-'}</td>
+          </tr>`).join('')}</tbody></table></div>`
+      : '<div class="empty">Aucun historique de prix pour cet article</div>';
+
+    const cmdTable = enCours.length
+      ? `<div class="table-wrap"><table>
+          <thead><tr><th>PO#</th><th>Fournisseur</th><th>Statut</th><th>Qté</th><th>Prix</th></tr></thead>
+          <tbody>${enCours.map(r => `<tr>
+            <td class="mono">${esc(r.po_number)||'-'}</td>
+            <td>${esc(r.fournisseur)||'-'}</td>
+            <td>${badge(r.statut_retard)}</td>
+            <td class="mono">${r.quantite??'-'}</td>
+            <td class="mono">$${Number(r.prix_unitaire||0).toLocaleString('fr-FR',{minimumFractionDigits:3,maximumFractionDigits:3})}</td>
+          </tr>`).join('')}</tbody></table></div>`
+      : '<div class="empty">Aucune commande en cours pour cet article</div>';
+
+    const nomDesignation = prod.data?.produit?.designation_fr || prod.data?.nomenclature?.description_fr || histRows[0]?.designation || '';
+
+    el.innerHTML = `
+      <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Article <strong>${esc(targetCode)}</strong> - ${esc(nomDesignation)}</p>
+      ${renderProduitFiche(prod.data)}
+      <div class="section-header" style="margin-top:16px;"><span class="section-title">Commandes en cours</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : IMPORT 2026.xlsx (Excel Andréa) + DWH Sylob V25">IMPORT 2026.xlsx + Sylob</span></div>
+      ${cmdTable}
+      <div class="section-header" style="margin-top:16px;"><span class="section-title">3 derniers prix (tous fournisseurs confondus)</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : Commandes historiques Sylob V25 / IMPORT 2026.xlsx">Commandes Sylob V25</span></div>
+      ${histTable}`;
+  } catch (e) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">!</div>${esc(e.message)}</div>`;
+    toast(e.message, true);
+  }
+}
+```
+
+---
+
+### 3. Génération dynamique de la Fiche (`renderProduitFiche`)
+
+```javascript
+function fieldRow(label, val, unit) {
+  if (val === null || val === undefined || val === '') return '';
+  return `<div class="fiche-row" style="margin-bottom:4px;"><label style="width:180px;">${esc(label)}</label><span>${esc(val)}${unit ? ' ' + unit : ''}</span></div>`;
+}
+
+function renderProduitFiche(data) {
+  if (!data) return '';
+  const p = data.produit || {};
+  const n = data.nomenclature || {};
+  const aw = data.artwork;
+  const cv = data.cycle_vie;
+  const qhist = data.qualite || [];
+  const composants = data.composants || [];
+  const g = (obj, k) => obj && obj[k] != null && obj[k] !== '' ? obj[k] : null;
+  const pick = (...vals) => vals.find(v => v !== null && v !== undefined && v !== '');
+
+  const identite = `
+    <div class="section-header"><span class="section-title">Identité</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : DWH Sylob V25 + Matrice TB Import.xlsx">Sylob V25 + Matrice</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:0 24px;">
+      ${fieldRow('Désignation FR', pick(g(p,'designation_fr'), g(n,'description_fr')))}
+      ${fieldRow('Désignation EN (Name)', pick(g(p,'designation_en'), g(n,'description_en')))}
+      ${fieldRow('Marque', g(p,'marque'))}
+      ${fieldRow('Gamme', pick(g(p,'gamme'), g(n,'gamme')))}
+      ${fieldRow('Grande famille', g(p,'grande_famille'))}
+      ${fieldRow('Fournisseur', pick(g(p,'fournisseur'), g(n,'fournisseur')))}
+      ${fieldRow('Pays fournisseur', g(p,'pays_fournisseur'))}
+      ${fieldRow('Type de lot', pick(g(p,'type_lot'), g(n,'lot_vrac')))}
+      ${fieldRow('Code provisoire', g(p,'code_provisoire'))}
+    </div>`;
+
+  const logistique = `
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Logistique & EAN</span>
+      <span class="badge badge-green" style="margin-left:8px;" title="Dimensions/packaging et EAN issus du pull direct Sylob V25 (source de vérité) ou Matrice Excel.">${p.source_dimensions === 'sylob_v25' ? 'Sylob V25' : 'Matrice TB Import'}</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:0 24px;">
+      ${fieldRow('EAN13 (ITEM)', pick(g(p,'ean13'), g(n,'ean13')))}
+      ${fieldRow('EAN14 PCB (MASTER)', pick(g(p,'ean14_pcb'), g(n,'ean14_pcb')))}
+      ${fieldRow('EAN14 SPCB (INNER)', pick(g(p,'ean14_spcb'), g(n,'ean14_spcb')))}
+      ${fieldRow('HS Code (douane)', g(n,'hs_code'))}
+      ${fieldRow('PCB', g(p,'pcb'))}
+      ${fieldRow('SPCB', g(p,'spcb'))}
+      ${fieldRow('Qté inner', g(p,'inner_qty'))}
+      ${fieldRow('Qté master', g(p,'master_qty'))}
+      ${fieldRow('Dimensions PCB (L×l×H cm)', [g(p,'longueur_pcb_cm'), g(p,'largeur_pcb_cm'), g(p,'hauteur_pcb_cm')].filter(Boolean).join(' × '))}
+      ${fieldRow('Poids PCB', g(p,'poids_pcb_kg'), 'kg')}
+      ${fieldRow('Volume', g(p,'volume_m3'), 'm³')}
+      ${fieldRow('Poids UVC', g(p,'poids_uvc_g'), 'g')}
+      ${fieldRow('Délai réappro', g(p,'delai_reappro_jours'), 'j')}
+    </div>`;
+
+  const matiere = `
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Matière, marquage & packaging</span><span class="badge badge-gray" style="margin-left:8px;" title="Source : Matrice TB Import.xlsx + Nomenclature Sylob">Matrice TB + Sylob</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:0 24px;">
+      ${fieldRow('Matière lame', pick(g(p,'matiere_lame'), g(n,'matiere_lame')))}
+      ${fieldRow('Chrome %', pick(g(p,'chrome_pct'), g(n,'chrome_pct')))}
+      ${fieldRow('Traitement thermique', g(p,'traitement_thermique'))}
+      ${fieldRow('Finition', pick(g(p,'finition'), g(n,'finition')))}
+      ${fieldRow('Matière manche', pick(g(p,'matiere_manche'), g(n,'matiere_manche')))}
+      ${fieldRow('Pantone manche', g(n,'pantone_manche'))}
+      ${fieldRow('Marquage', pick(g(p,'marquage_libelle'), g(n,'marquage')))}
+      ${fieldRow('Dimensions marquage', g(n,'dim_marquage'))}
+      ${fieldRow('Emplacement marquage', g(n,'emplacement_marquage'))}
+      ${fieldRow('Épaisseur', pick(g(p,'epaisseur_mm'), g(n,'epaisseur_mm')), 'mm')}
+      ${fieldRow('Longueur', pick(g(p,'longueur_mm'), g(n,'longueur_mm')), 'mm')}
+    </div>`;
+
+  const composantsBlock = composants.length ? `
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Composants (lot multiple, ${composants.length})</span><span class="badge badge-gray" style="margin-left:8px;" title="Source : Matrice TB Import.xlsx (Feuille Nomenclatures)">Matrice TB (Nomenclatures)</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>#</th><th>Composant</th><th>Matière</th><th>Chrome %</th><th>Finition</th><th>Manche</th><th>Marquage</th></tr></thead>
+      <tbody>${composants.map(c => `<tr>
+        <td class="mono">${c.position}</td>
+        <td>${esc(c.nom_composant)||'-'}</td>
+        <td>${esc(c.matiere_lame)||'-'}</td>
+        <td class="mono">${c.chrome_pct??'-'}</td>
+        <td>${esc(c.finition)||'-'}</td>
+        <td>${esc(c.matiere_manche)||'-'}</td>
+        <td>${esc(c.marquage)||'-'}</td>
+      </tr>`).join('')}</tbody></table></div>` : '';
+
+  const artworkBlock = aw ? `
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Artwork (design)</span><span class="badge badge-yellow" style="margin-left:8px;" title="Source : Google Sheet 'Suivi des artworks-import' (Clarisse)">GSheet Artwork (Clarisse)</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:0 24px;align-items:center;">
+      <div class="fiche-row" style="margin-bottom:4px;"><label style="width:180px;">Statut</label>${badge(aw.statut_artwork)}</div>
+      ${fieldRow('Priorité', aw.priorite)}
+      ${fieldRow('Valideur', aw.valideur)}
+      ${fieldRow('Dernière version', aw.derniere_version)}
+      ${fieldRow('Dernière validation', aw.date_validation)}
+      ${(aw.drive_url || aw.drive_file_id) ? `<a href="${esc(aw.drive_url || 'https://drive.google.com/file/d/' + aw.drive_file_id + '/view')}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="margin-left:auto" title="Ouvrir le fichier original dans Google Drive">🎨 Ouvrir l'artwork (Drive) 🔗</a>` : ''}
+    </div>` : `
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Artwork (design)</span><span class="badge badge-gray" style="margin-left:8px;" title="Source : Google Sheet 'Suivi des artworks-import' (Clarisse)">GSheet Artwork (Clarisse)</span></div>
+    <div class="fiche-row"><label style="width:180px;">Artwork</label><span class="badge badge-gray">Non</span></div>`;
+
+  const cycleBlock = cv ? `
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Cycle de vie (Carrefour)</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : Commentaire Sylob V25 (HO Code / Distributeur)">Sylob V25</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:0 24px;">
+      ${fieldRow('Statut', cv.statut)}
+      ${fieldRow('Qté en commande', cv.quantite_en_commande)}
+    </div>` : '';
+
+  const qdocs = data?.qualite_docs || [];
+  const qana = data?.qualite_analyses || [];
+  const docsBlock = (qdocs.length || qana.length) ? `
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Rapports & Analyses Qualité (${qdocs.length + qana.length})</span><span class="badge badge-yellow" style="margin-left:8px;" title="Source : Drive 'ANALYSES ET INSPECTIONS' (Rapports DEKRA / SPECTRO)">Drive Qualité (Drive)</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Type</th><th>Réf / Nom</th><th>PO#</th><th>Date / Stade</th><th>Conformité</th><th>Document</th></tr></thead>
+      <tbody>
+        ${qdocs.map(d => `<tr>
+          <td><span class="badge badge-blue">${esc(d.type || 'Rapport')}</span></td>
+          <td class="mono">${esc(d.ref_rapport || d.fichier || '—')}</td>
+          <td class="mono">${esc(d.po_number || '—')}</td>
+          <td>${esc(d.stade || '—')}</td>
+          <td>-</td>
+          <td><a href="${esc(d.drive_url || 'https://drive.google.com/file/d/' + d.drive_file_id + '/view')}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="Ouvrir le PDF dans Google Drive">📎 Ouvrir PDF 🔗</a></td>
+        </tr>`).join('')}
+        ${qana.map(a => `<tr>
+          <td><span class="badge badge-green">Analyse Spectro</span></td>
+          <td class="mono">${esc(a.ref_rapport || a.sample_name || '—')}</td>
+          <td class="mono">${esc(a.po_number || '—')}</td>
+          <td>${esc(a.date_mesure || '—')}</td>
+          <td>${badge(a.conformite)}</td>
+          <td><a href="${esc(a.drive_url || 'https://drive.google.com/file/d/' + a.drive_file_id + '/view')}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="Ouvrir le rapport dans Google Drive">📎 Ouvrir Rapport 🔗</a></td>
+        </tr>`).join('')}
+      </tbody></table></div>` : '';
+
+  const qualiteBlock = qhist.length ? `
+    <div class="section-header" style="margin-top:14px;"><span class="section-title">Historique qualité (${qhist.length})</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : Inspections à l'arrivée et enregistrements NCR">Inspections & NCR</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>PO#</th><th>Fournisseur</th><th>Inspection</th><th>N° rapport</th><th>Réception</th><th>NCR</th></tr></thead>
+      <tbody>${qhist.slice(0,10).map(q => `<tr>
+        <td class="mono">${esc(q.po_number)||'-'}</td>
+        <td>${esc(q.fournisseur)||'-'}</td>
+        <td>${inspBadge(q.resultat_inspection)} <small>${esc(q.date_inspection)||''}</small></td>
+        <td class="mono">${q.ref_rapport ? (q.drive_url ? `<a href="${esc(q.drive_url)}" target="_blank" rel="noopener" title="Ouvrir dans Drive">${esc(q.ref_rapport)} 📎</a>` : (q.drive_file_id ? `<a href="https://drive.google.com/file/d/${esc(q.drive_file_id)}/view" target="_blank" rel="noopener" title="Ouvrir dans Drive">${esc(q.ref_rapport)} 📎</a>` : esc(q.ref_rapport))) : '-'}</td>
+        <td>${esc(q.reception)||'-'}</td>
+        <td class="mono">${esc(q.ncr)||'-'}</td>
+      </tr>`).join('')}</tbody></table></div>` : '';
+
+  if (!p.code_article && !n.code_article && !aw && !cv && !qhist.length && !qdocs.length && !qana.length) {
+    return '<div class="empty">Aucune fiche 360° trouvée (ni Sylob/Matrice, ni artwork, ni qualité) pour cet article.</div>';
+  }
+  return identite + logistique + matiere + composantsBlock + artworkBlock + cycleBlock + docsBlock + qualiteBlock;
+}
+```

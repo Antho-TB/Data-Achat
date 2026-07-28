@@ -33,7 +33,8 @@ Prérequis : Python 3.11, accès au repo `Antho-TB/Data-Achat`, VPN Stormshield 
    ```powershell
    pip install -r requirements.txt
    ```
-3. **Config `config\.env`** (copier le modèle `config\marlene.env` du poste test, puis renseigner) :
+3. **Config `config\.env`** (partir de `config\.env.example`, puis renseigner ; le modèle
+   `config\marlene.env` a été supprimé le 28/07, il faisait doublon) :
    ```
    KEY_VAULT_NAME=            # VIDE — pas d'az login sur le poste Marlène
    PG_HOST=psql-dtpf-psql-prod.postgres.database.azure.com

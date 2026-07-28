@@ -37,11 +37,14 @@ bureau) n'ai **pas pu vérifier lequel est réellement utilisé aujourd'hui** :
    secrets). **Si c'est ce chemin qui est utilisé : quelqu'un doit d'abord mettre à jour le
    contenu de `A:\DATA\PARTAGE\Data-Achat` avec le commit `f8fd29d` avant de relancer ce
    script** — sans ça tu recopieras du code périmé.
-2. **Git direct** : il existe une paire de clés `deploy/marlene_deploy_key(.pub)` (clé de
-   déploiement SSH) mais **elle n'est référencée nulle part dans le code ou les scripts** —
-   probablement préparée pour un chantier jamais terminé. Si le poste a un `.git` fonctionnel
-   avec cette clé configurée, un simple `git pull` suffit et c'est le chemin le plus fiable
-   (pas de dépendance au partage réseau).
+2. **Git direct** : c'est le chemin retenu et il fonctionne. Un simple `git pull` suffit, et
+   `run_api.py` le fait automatiquement au démarrage (cf. `API_AUTO_PULL` dans `config/.env`).
+   Le remote est en HTTPS.
+
+   > Note du 28/07/2026 : la paire de clés SSH `deploy/marlene_deploy_key(.pub)`, préparée le
+   > 29/06 pour un chantier jamais terminé et référencée nulle part, a été supprimée du dépôt.
+   > Si elle avait été enregistrée comme deploy key sur GitHub, la retirer côté GitHub aussi
+   > (commentaire de la clé : `tarrerias\abezille@PT-011`).
 
 **Avant de toucher au code sur ce poste** :
 ```powershell
