@@ -10,3 +10,9 @@ pdfplumber>=0.11.0
 # système : tesseract-ocr (+ langue fra) et poppler.
 pytesseract>=0.3.10
 pdf2image>=1.17.0
+
+# Extraction des montants de facture (src/scripts/gmail/parse_facture.py).
+# Modèle multimodal Gemini : les factures arrivent en PDF propre, en scan ou en
+# photo JPEG, avec un gabarit par fournisseur -- des regex de montant y seraient
+# silencieusement fausses. Clé déjà en place chez TB (projet veille).
+google-genai>=1.0.0

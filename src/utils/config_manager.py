@@ -85,6 +85,35 @@ class Config:
     # authentification Google indisponible).
     SUIVI_MARITIME_PATH_FICHIER: str = os.getenv("SUIVI_MARITIME_PATH_FICHIER", "")
 
+    # ── Extraction des pieces comptables par modele multimodal ──────────────
+    # Les factures fournisseurs arrivent en PDF propre, en PDF scanne ou en
+    # photo JPEG, avec un gabarit different par fournisseur. Des expressions
+    # regulieres de montant y seraient fragiles et, pire, silencieusement
+    # fausses : c'est exactement le defaut corrige le 31/07 sur la provenance
+    # des montants. On lit donc la piece avec un modele multimodal.
+    #
+    # Choix de Gemini plutot que d'un autre fournisseur : la cle existe deja
+    # chez TB (projet veille, secret GEMINI-API-KEY), le SDK google-genai est
+    # deja en production maison, et les pieces jointes vivent DEJA chez Google
+    # puisque la messagerie Achats est Gmail. Aucun nouveau sous-traitant a
+    # faire valider, aucun achat a declencher.
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    # Modeles epingles a une version EXACTE, jamais un alias "-latest" : un
+    # alias qui glisse changerait les montants extraits sans qu'aucune ligne de
+    # code ne bouge, sur une donnee qui declenche des paiements.
+    MODELE_FACTURE: str = os.getenv("MODELE_FACTURE", "models/gemini-3.5-flash")
+    # Escalade sur les pieces douteuses seulement (confiance basse ou ecart
+    # important avec le fichier IMPORT). Passer 100 % des PJ au modele le plus
+    # lourd couterait cher pour un gain nul sur les documents lisibles.
+    MODELE_FACTURE_ESCALADE: str = os.getenv(
+        "MODELE_FACTURE_ESCALADE", "models/gemini-3.1-pro-preview")
+    # En dessous de ce seuil, la piece est stockee mais marquee a valider : elle
+    # ne doit pas s'afficher comme un fait dans l'interface de paiement.
+    SEUIL_CONFIANCE_FACTURE: float = float(os.getenv("SEUIL_CONFIANCE_FACTURE", "0.75"))
+    # Ecart relatif tolere entre le montant de la piece et celui du fichier
+    # IMPORT avant de declencher l'escalade puis l'alerte metier.
+    SEUIL_ECART_FACTURE: float = float(os.getenv("SEUIL_ECART_FACTURE", "0.02"))
+
     # API FastAPI (ERP Achat)
     API_HOST: str = os.getenv("API_HOST", "127.0.0.1")
     API_PORT: int = int(os.getenv("API_PORT", "5050"))
@@ -185,6 +214,43 @@ class Config:
             database=cls.SYLOB_DB,
             query={"sslmode": "prefer"},
         )
+
+    @classmethod
+    def get_gemini_api_key(cls) -> str:
+        """
+        Retourne la cle Gemini, Key Vault d'abord, .env en repli.
+
+        Junior Tip : la cle est lue a l'appel et non au chargement du module.
+        Un secret resolu au moment de l'import se fige pour toute la duree du
+        processus, y compris apres une rotation de cle, et force un aller-retour
+        reseau meme quand aucune facture n'est a lire.
+
+        Convention de nom du secret : GEMINI-API-KEY, identique a celle du
+        projet veille (kv-shsv-veille-prod), pour qu'un seul reflexe suffise
+        d'un projet a l'autre.
+
+        Returns:
+            La cle API, chaine vide si aucune source n'en fournit.
+        """
+        if cls.GEMINI_API_KEY:
+            return cls.GEMINI_API_KEY
+        if not cls.KEY_VAULT_NAME:
+            return ""
+        try:
+            from azure.identity import DefaultAzureCredential
+            from azure.keyvault.secrets import SecretClient
+
+            client = SecretClient(
+                vault_url=f"https://{cls.KEY_VAULT_NAME}.vault.azure.net/",
+                credential=DefaultAzureCredential(),
+            )
+            return client.get_secret("GEMINI-API-KEY").value or ""
+        except Exception as exc:
+            logger.warning(
+                "[ATTENTION] Cle Gemini absente du Key Vault %s (%s) : "
+                "l'extraction des montants de facture restera inactive.",
+                cls.KEY_VAULT_NAME, exc)
+            return ""
 
     @classmethod
     def _get_pg_url_from_keyvault(cls) -> "URL":
