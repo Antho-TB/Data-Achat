@@ -259,6 +259,80 @@ BL en M, date confirmée en P, heure en Q.
 
 ---
 
+## 3.7 Retours de Marlène du 29/07 — session de paiement réelle
+
+Mail « 260729 FUSEAU – TEST ONGLET PRÉVISIONNEL – PAIEMENTS ». Premier usage de
+l'onglet Prévisionnel en conditions de paiement (elle règle les fournisseurs le
+matin, tableau import et pochette de paiement à côté). Deux natures de retours
+à ne pas mélanger : un **défaut de provenance des montants**, et de
+l'**ergonomie de sélection**.
+
+### Défaut de provenance — le sujet grave
+
+Le tableau « B/L en attente ou bloqués » affichait un badge de source
+« Suivi Maritime + Gmail BL » pour l'ensemble de la section, montants compris.
+C'est faux : `valeur` et `valeur_a_payer` sortent **exclusivement** de
+`achat.commande` (IMPORT 2026.xlsx + Sylob). Le maritime et Gmail n'alimentent
+que le BL, l'ETD/ETA et le n° de facture — **aucun montant n'est extrait des
+pièces jointes à ce jour** (`parse_bl.py` capte `n_facture`, jamais de montant).
+
+Conséquence relevée par Marlène : sur HONGXING, FUSEAU affichait un montant issu
+du fichier IMPORT alors que la facture reçue par mail porte **6 403,20 EUR** ;
+une autre ligne affichait un montant sans BL, sans facture et sans trace
+maritime. Son verdict : « très dangereux, nous ne sommes plus censés
+l'utiliser à terme ». Elle a raison — l'interface présentait comme corroborée
+une donnée qui ne l'était pas.
+
+- [x] **Provenance rétablie dans l'interface (31/07)** : badge de section scindé
+      (« BL / dates : Maritime + Gmail » vs « Montants : IMPORT 2026.xlsx »),
+      en-têtes des colonnes de montants marquées `(IMPORT)`, avertissement
+      explicite au-dessus du tableau, et nouvelle colonne **Justificatif** qui
+      qualifie chaque ligne (BL + facture / BL seul / Facture seule / **Aucun ⚠**).
+      `n_facture` est désormais exposé par `/api/previsionnel`.
+- [ ] **Extraire le montant de facture des PJ Gmail** — chantier structurel, non
+      couvert. Cible : montant + devise + n° de facture stockés hors
+      `achat.commande` (full-refresh), donc dans
+      `achat.commande_enrichissement` (colonnes à ajouter) ou une table
+      `achat.facture_fournisseur` dédiée si le grain est la facture et non le PO.
+      L'interface devra afficher **montant IMPORT et montant facture côte à
+      côte** avec un écart signalé, jamais un seul chiffre de provenance floue.
+      Décision de grain à trancher avant de coder.
+- [ ] **Devise** : Marlène cite un montant en EUR, les colonnes FUSEAU sont en
+      USD. Le montant de facture devra porter sa devise, sans conversion
+      implicite.
+- [ ] **Credit note GUANGWEI** reçue par mail cette semaine : absente. Même
+      chantier — une note de crédit est un montant négatif de liasse.
+- [ ] **JIT GLOBAL à 0** alors que la liasse mail porte 19 557,72 : à qualifier
+      (aucune ligne rattachée dans l'IMPORT, ou lignes considérées soldées).
+
+### Ergonomie de la session de paiement
+
+- [x] **Filtre multi-valeurs façon Excel (31/07)** : cases à cocher par
+      fournisseur et par statut de paiement (« ajouter au filtre »), cumulables
+      avec la recherche libre.
+- [x] **Sélection de lignes totalisée (31/07)** : case à cocher par ligne et par
+      conteneur, barre de totaux (valeur + reste à payer) au-dessus du tableau,
+      calculée sur la sélection quand il y en a une, sinon sur le filtre. Répond
+      au cas « je ne paie que 2 factures HONGXING sur 5 » sans repasser par la
+      calculette.
+- [x] **Colonne « Reste à payer · USD »** exposée dans le tableau : elle
+      existait côté API (`valeur_a_payer`) et n'était pas affichée.
+
+### Bugs restants signalés le 29/07 — non traités
+
+- [ ] **Les n° de BL ne remontent plus** dans ce tableau, alors qu'ils
+      s'affichaient la veille. Marlène croise systématiquement n° de conteneur
+      et n° de BL. Piste : bascule sur le gsheet maritime / `ot_transport_bl`
+      (§3.6) — le BL principal de `ot_transport` a pu se vider.
+- [ ] **Saisie de la date de paiement impossible**, y compris sur les liasses
+      sans anomalie (capture d'écran fournie). À reproduire : clé API,
+      `conteneurSansLigne`, ou refus de l'endpoint
+      `PUT /api/paiement/conteneur/{n}`.
+- [ ] **Deposits / paiements d'avance / DEKRA** : à cadrer à la prochaine
+      session de travail avec elle.
+
+---
+
 ## 4. Priorité 3 — dette et incohérences à arbitrer
 
 ### 4.1 Bloqué par une action externe

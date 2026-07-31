@@ -274,6 +274,42 @@ button { cursor: pointer; }
 .btn-orange { background: var(--orange); color: #fff; }
 .btn-orange:hover { background: var(--orange-lt); }
 
+/* ── Filtre multi-valeurs façon Excel (« ajouter au filtre ») ────────────── */
+/* Retour Marlène 29/07 : un filtre mono-valeur oblige à repasser en mode
+   calculette pour totaliser 2 factures sur 5. On coche, on additionne. */
+.ms { position: relative; display: inline-block; }
+.ms > summary {
+  list-style: none; cursor: pointer; white-space: nowrap;
+  font-size: 12.5px; padding: 6px 10px;
+  border: 1px solid var(--border); border-radius: 5px; background: #f8fafc;
+}
+.ms > summary::-webkit-details-marker { display: none; }
+.ms > summary::after { content: ' \25BE'; color: var(--muted); }
+.ms[open] > summary { border-color: var(--blue-light); background: #fff; }
+.ms-panel {
+  position: absolute; z-index: 300; top: 100%; left: 0; margin-top: 3px;
+  min-width: 250px; max-height: 300px; overflow-y: auto;
+  background: #fff; border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.14); padding: 6px;
+}
+.ms-panel label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; padding: 3px 4px; cursor: pointer; border-radius: 3px;
+}
+.ms-panel label:hover { background: #f1f5f9; }
+.ms-panel input[type=checkbox] { padding: 0; margin: 0; background: none; border: none; }
+.ms-actions {
+  display: flex; gap: 6px; padding-bottom: 5px; margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+/* Barre de totaux de la sélection : reste visible sous les filtres. */
+.selbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 20px;
+  font-size: 12.5px; margin-bottom: 8px; padding: 7px 14px;
+  background: var(--sand, #FFF6E5); border: 1px solid #F3D299; border-radius: 6px;
+}
+.selbar .selbar-val { font-family: var(--font-mono, monospace); font-weight: 700; }
+
 /* ── Table ───────────────────────────────────────────────────────────────── */
 .table-wrap {
   background: var(--card);
@@ -770,14 +806,34 @@ button { cursor: pointer; }
     </div>
       <div class="section-header"><span class="section-title">Mesures prévisionnelles</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : Agrégation des lignes de commandes d'importation">Commandes Import</span></div>
     <div id="prev-mesures" class="artwork-stats"></div>
-    <div class="section-header"><span class="section-title">B/L en attente ou bloqués — par conteneur puis fournisseur</span><span class="badge badge-green" style="margin-left:8px;" title="Source : Suivi Maritime Transitaire (Qualitairsea) + PJ Gmail (BL)">Suivi Maritime + Gmail BL</span></div>
+    <div class="section-header"><span class="section-title">B/L en attente ou bloqués — par conteneur puis fournisseur</span><span class="badge badge-green" style="margin-left:8px;" title="BL, n° de facture, ETD réel et ETA : Suivi Maritime Transitaire (Qualitairsea) + PJ Gmail.">BL / dates : Maritime + Gmail</span><span class="badge badge-orange" style="margin-left:6px;" title="Les colonnes Valeur et Reste à payer viennent de achat.commande, alimentée par IMPORT 2026.xlsx et Sylob. AUCUN montant n'est lu dans les factures reçues par mail à ce jour : ce n'est pas le montant de la liasse documentaire.">Montants : IMPORT 2026.xlsx</span></div>
     <p style="font-size:12px;color:var(--muted);margin:4px 0 8px;">« Bloqué » = en retard de livraison ET pas encore parti. Paiement : même logique que l'onglet Conteneurs (Payé / À payer / À payer en retard), ventilée ici par fournisseur au sein de chaque conteneur.</p>
+    <p style="font-size:12px;color:#855400;background:var(--sand,#FFF6E5);border:1px solid #F3D299;border-radius:6px;padding:7px 12px;margin:4px 0 8px;">⚠ <b>Ne pas payer sur ces montants sans la liasse.</b> Les deux colonnes de montants proviennent du fichier IMPORT, pas des factures reçues par mail — l'extraction des montants de facture n'est pas encore en place. La colonne <b>Justificatif</b> indique, ligne par ligne, si un BL ou un n° de facture corrobore la ligne ; « Aucun » = montant issu du seul fichier IMPORT.</p>
     <div class="toolbar" style="margin-bottom:8px;">
       <input id="f-prev-conteneur" type="text" placeholder="N° conteneur, BL ou fournisseur…"
              oninput="filterBlBloques()" style="min-width:280px;">
-      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('f-prev-conteneur').value='';filterBlBloques();">Effacer</button>
+      <details class="ms" id="ms-prev-frs">
+        <summary id="ms-prev-frs-lbl" title="Cocher un ou plusieurs fournisseurs (comme « ajouter au filtre » dans Excel).">Fournisseur : tous</summary>
+        <div class="ms-panel">
+          <div class="ms-actions">
+            <button class="btn btn-ghost btn-sm" onclick="resetBlFiltre('fournisseur')">Tout décocher</button>
+          </div>
+          <div id="ms-prev-frs-list"></div>
+        </div>
+      </details>
+      <details class="ms" id="ms-prev-pay">
+        <summary id="ms-prev-pay-lbl" title="Cocher un ou plusieurs statuts de paiement.">Paiement : tous</summary>
+        <div class="ms-panel">
+          <div class="ms-actions">
+            <button class="btn btn-ghost btn-sm" onclick="resetBlFiltre('paiement')">Tout décocher</button>
+          </div>
+          <div id="ms-prev-pay-list"></div>
+        </div>
+      </details>
+      <button class="btn btn-ghost btn-sm" onclick="resetBlFiltres()">Effacer les filtres</button>
       <span id="prev-bl-count" style="margin-left:auto;font-size:12px;color:var(--muted);"></span>
     </div>
+    <div id="prev-bl-totaux" class="selbar" style="display:none;"></div>
     <div id="prev-bl-bloques"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
     <div class="section-header"><span class="section-title">Par fournisseur (à payer / inspection / parti / retard)</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : Commandes d'importation ventilées par fournisseur">Commandes Import</span></div>
     <div id="prev-frs"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
@@ -3125,33 +3181,204 @@ async function loadPrevisionnel() {
 // Jeu de lignes complet, conserve pour filtrer sans rappeler l'API.
 let _blBloquesRows = [];
 
+// ── Filtres multi-valeurs + selection totalisee (retour Marlene 29/07) ──────
+// Le jour de paiement, Marlene ne solde pas "tout HONGXING" : elle choisit 2
+// factures sur 5 et doit en connaitre le total. Un filtre mono-valeur + un
+// total de colonne ne suffisent pas -> filtre facon Excel (cases a cocher,
+// "ajouter au filtre") + selection de lignes additionnee en pied de filtre.
+// Un Set vide = axe non filtre (tout passe), pas "rien ne passe".
+const _blFiltres = { fournisseur: new Set(), paiement: new Set() };
+// Cles des lignes cochees. Grain = (conteneur, fournisseur), le meme que celui
+// de la saisie de paiement : une coche correspond a un reglement reel.
+const _blSelection = new Set();
+
+const _blKey = r => `${r.n_conteneur || ''}|${r.fournisseur || ''}`;
+
+// ── Provenance ligne a ligne (retour Marlene 29/07) ─────────────────────────
+// Les montants de ce tableau viennent de achat.commande (IMPORT 2026.xlsx +
+// Sylob) : aucun montant n'est aujourd'hui extrait des factures recues par
+// mail. Une ligne sans BL ni n° de facture est donc un montant que RIEN ne
+// corrobore hors du fichier IMPORT -- exactement le cas signale sur HONGXING.
+// On l'affiche au lieu de le taire : payer sur cette base est un risque.
+function justificatifBadge(r) {
+  const bl = !!(r.n_bl && String(r.n_bl).trim());
+  const fac = !!(r.n_facture && String(r.n_facture).trim());
+  if (bl && fac) {
+    return `<span class="badge badge-green" title="BL ${esc(r.n_bl)} et facture ${esc(r.n_facture)} connus. Le montant reste celui du fichier IMPORT : à recouper avec la liasse.">BL + facture</span>`;
+  }
+  if (bl) {
+    return `<span class="badge badge-blue" title="BL ${esc(r.n_bl)} connu, aucun n° de facture capté. Montant issu du fichier IMPORT.">BL seul</span>`;
+  }
+  if (fac) {
+    return `<span class="badge badge-blue" title="Facture ${esc(r.n_facture)} connue, aucun BL capté. Montant issu du fichier IMPORT.">Facture seule</span>`;
+  }
+  return '<span class="badge badge-red" title="Ni BL ni n° de facture connus de FUSEAU : le montant affiché ne repose QUE sur le fichier IMPORT, sans pièce documentaire. Ne pas payer sur cette seule base.">Aucun ⚠</span>';
+}
+// Meme regle que conteneurPayBadge, exposee comme valeur filtrable.
+const _blPayBucket = r =>
+  (r.nb_a_payer_retard || 0) > 0 ? 'À payer (retard)'
+    : (r.nb_a_payer || 0) > 0 ? 'À payer'
+      : 'Payé';
+
 // Recherche libre sur le conteneur, le BL ou le fournisseur (demande metier
-// 28/07 : retrouver un conteneur precis sans faire defiler tout le tableau).
-function filterBlBloques() {
+// 28/07 : retrouver un conteneur precis sans faire defiler tout le tableau),
+// combinee aux filtres multi-valeurs.
+function _blRowsFiltrees() {
   const q = (document.getElementById('f-prev-conteneur')?.value || '')
     .trim().toLowerCase();
-  const rows = !q ? _blBloquesRows : _blBloquesRows.filter(r =>
-    [r.n_conteneur, r.n_bl, r.fournisseur]
-      .some(v => String(v || '').toLowerCase().includes(q)));
+  return _blBloquesRows.filter(r => {
+    const matchQ = !q || [r.n_conteneur, r.n_bl, r.fournisseur]
+      .some(v => String(v || '').toLowerCase().includes(q));
+    const matchFrs = !_blFiltres.fournisseur.size
+      || _blFiltres.fournisseur.has(r.fournisseur || '—');
+    const matchPay = !_blFiltres.paiement.size
+      || _blFiltres.paiement.has(_blPayBucket(r));
+    return matchQ && matchFrs && matchPay;
+  });
+}
+
+// Options reconstruites a chaque chargement : les fournisseurs presents
+// dependent des conteneurs encore ouverts.
+function renderBlFiltreOptions() {
+  const opt = (v, axe) => `<label><input type="checkbox" value="${esc(v)}"`
+    + `${_blFiltres[axe].has(v) ? ' checked' : ''}`
+    + ` onchange="toggleBlFiltre('${axe}', this)"> ${esc(v)}</label>`;
+  const frs = [...new Set(_blBloquesRows.map(r => r.fournisseur || '—'))]
+    .sort((a, b) => a.localeCompare(b, 'fr'));
+  const boxFrs = document.getElementById('ms-prev-frs-list');
+  if (boxFrs) boxFrs.innerHTML = frs.map(v => opt(v, 'fournisseur')).join('');
+  const boxPay = document.getElementById('ms-prev-pay-list');
+  if (boxPay) {
+    boxPay.innerHTML = ['À payer (retard)', 'À payer', 'Payé']
+      .map(v => opt(v, 'paiement')).join('');
+  }
+  majBlFiltreLibelles();
+}
+
+function toggleBlFiltre(axe, input) {
+  if (input.checked) _blFiltres[axe].add(input.value);
+  else _blFiltres[axe].delete(input.value);
+  majBlFiltreLibelles();
+  filterBlBloques();
+}
+
+function resetBlFiltre(axe) {
+  _blFiltres[axe].clear();
+  renderBlFiltreOptions();
+  filterBlBloques();
+}
+
+function resetBlFiltres() {
+  const q = document.getElementById('f-prev-conteneur');
+  if (q) q.value = '';
+  _blFiltres.fournisseur.clear();
+  _blFiltres.paiement.clear();
+  renderBlFiltreOptions();
+  filterBlBloques();
+}
+
+function majBlFiltreLibelles() {
+  const lbl = (id, set, nom) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = !set.size ? `${nom} : tous`
+      : set.size === 1 ? `${nom} : ${[...set][0]}`
+        : `${nom} : ${set.size} sélectionnés`;
+  };
+  lbl('ms-prev-frs-lbl', _blFiltres.fournisseur, 'Fournisseur');
+  lbl('ms-prev-pay-lbl', _blFiltres.paiement, 'Paiement');
+}
+
+// ── Selection de lignes et totaux ──────────────────────────────────────────
+function toggleBlLigne(cb) {
+  if (cb.checked) _blSelection.add(cb.dataset.cle);
+  else _blSelection.delete(cb.dataset.cle);
+  // La case du conteneur suit l'etat de ses lignes (cochee seulement si toutes
+  // le sont), sinon elle mentirait sur ce qui est totalise.
+  const cont = cb.dataset.cont || '';
+  const soeurs = document.querySelectorAll(
+    `#prev-bl-bloques input.bl-chk[data-cont="${CSS.escape(cont)}"]`);
+  const chef = document.querySelector(
+    `#prev-bl-bloques input.bl-chk-cont[data-cont="${CSS.escape(cont)}"]`);
+  if (chef) {
+    const coches = [...soeurs].filter(x => x.checked).length;
+    chef.checked = coches === soeurs.length;
+    chef.indeterminate = coches > 0 && coches < soeurs.length;
+  }
+  renderBlTotaux();
+}
+
+function toggleBlConteneur(cb) {
+  const cont = cb.dataset.cont || '';
+  document.querySelectorAll(
+    `#prev-bl-bloques input.bl-chk[data-cont="${CSS.escape(cont)}"]`
+  ).forEach(x => {
+    x.checked = cb.checked;
+    if (cb.checked) _blSelection.add(x.dataset.cle);
+    else _blSelection.delete(x.dataset.cle);
+  });
+  cb.indeterminate = false;
+  renderBlTotaux();
+}
+
+function clearBlSelection() {
+  _blSelection.clear();
+  document.querySelectorAll('#prev-bl-bloques input.bl-chk, #prev-bl-bloques input.bl-chk-cont')
+    .forEach(x => { x.checked = false; x.indeterminate = false; });
+  renderBlTotaux();
+}
+
+// Totaux : sur la selection si au moins une ligne est cochee, sinon sur le
+// resultat du filtre. Deux montants distincts, jamais confondus : la valeur
+// engagee des lignes et ce qu'il reste a payer dessus.
+function renderBlTotaux() {
+  const el = document.getElementById('prev-bl-totaux');
+  if (!el) return;
+  const rows = _blRowsFiltrees();
+  const sel = rows.filter(r => _blSelection.has(_blKey(r)));
+  const base = sel.length ? sel : rows;
+  if (!base.length) { el.style.display = 'none'; return; }
+  const somme = (cle) => base.reduce((s, r) => s + (Number(r[cle]) || 0), 0);
+  el.style.display = 'flex';
+  el.innerHTML = (sel.length
+    ? `<span><b>${sel.length}</b> ligne(s) cochée(s)</span>`
+    : `<span><b>${rows.length}</b> ligne(s) filtrée(s) — cocher des lignes pour totaliser une sélection</span>`)
+    + `<span>Valeur : <span class="selbar-val">${fmt(somme('valeur'), 'money')}</span></span>`
+    + `<span title="Reste dû sur les lignes retenues (lignes non payées uniquement).">`
+    + `Reste à payer : <span class="selbar-val">${fmt(somme('valeur_a_payer'), 'money')}</span></span>`
+    + (sel.length
+      ? `<button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="clearBlSelection()">Tout décocher</button>`
+      : '');
+}
+
+function filterBlBloques() {
+  const rows = _blRowsFiltrees();
   const nb = new Set(rows.map(r => r.n_conteneur)).size;
   const total = new Set(_blBloquesRows.map(r => r.n_conteneur)).size;
   const compteur = document.getElementById('prev-bl-count');
   if (compteur) {
-    compteur.textContent = q
-      ? `${nb} conteneur(s) sur ${total}`
-      : `${total} conteneur(s)`;
+    compteur.textContent = nb === total
+      ? `${total} conteneur(s)`
+      : `${nb} conteneur(s) sur ${total}`;
   }
   renderBlBloques(rows, true);
 }
 
 function renderBlBloques(rows, filtre = false) {
-  if (!filtre) { _blBloquesRows = rows; }
+  if (!filtre) {
+    _blBloquesRows = rows;
+    // Les cles disparues du jeu de donnees ne doivent pas continuer a peser
+    // dans les totaux apres un rechargement.
+    const vivantes = new Set(rows.map(_blKey));
+    [..._blSelection].forEach(k => { if (!vivantes.has(k)) _blSelection.delete(k); });
+    renderBlFiltreOptions();
+  }
   const el = document.getElementById('prev-bl-bloques');
   if (!rows.length) {
     el.innerHTML = filtre
-      ? '<div class="empty">Aucun conteneur ne correspond à cette recherche</div>'
+      ? '<div class="empty">Aucun conteneur ne correspond à ce filtre</div>'
       : '<div class="empty">Aucun B/L en attente</div>';
-    if (!filtre) filterBlBloques();
+    if (!filtre) filterBlBloques(); else renderBlTotaux();
     return;
   }
   if (!filtre) {
@@ -3164,33 +3391,51 @@ function renderBlBloques(rows, filtre = false) {
     const k = r.n_conteneur || '—';
     (byConteneur[k] = byConteneur[k] || []).push(r);
   });
+  // stopPropagation sur les en-tetes de la colonne a cocher : le tri generique
+  // est cable en delegation sur tout th, un clic sur la case le declencherait
+  // et melangerait les lignes avec leurs en-tetes de conteneur.
   let html = `<div class="table-wrap"><table>
     <thead><tr>
+      <th title="Cocher les lignes à payer pour en lire le total." onclick="event.stopPropagation()">✓</th>
       <th>Conteneur / Fournisseur</th><th>N° BL</th>
+      <th title="Pièces documentaires connues de FUSEAU pour cette ligne (BL et/ou n° de facture, captés par le suivi maritime et les PJ Gmail). « Aucun » = le montant affiché ne repose que sur le fichier IMPORT.">Justificatif</th>
       <th title="Nombre de PO.">PO · nb</th><th title="Nombre de lignes article.">Art. · nb</th>
-      <th title="Valeur des lignes, en USD.">Valeur · USD</th>
+      <th title="Valeur des lignes, en USD. SOURCE : achat.commande (IMPORT 2026.xlsx + Sylob) — ce n'est PAS le montant de la facture reçue par mail.">Valeur · USD <span style="font-weight:400;color:var(--muted);">(IMPORT)</span></th>
+      <th title="Reste dû sur ces lignes (lignes non payées), en USD. SOURCE : achat.commande (IMPORT 2026.xlsx + Sylob) — à recouper avec la liasse avant paiement.">Reste à payer · USD <span style="font-weight:400;color:var(--muted);">(IMPORT)</span></th>
       <th>ETD</th><th>ETA</th>
       <th title="En retard de livraison ET pas encore parti.">Bloqué</th>
       <th title="Payé / À payer / À payer en retard, ventilé pour ce fournisseur au sein de ce conteneur. Cliquer sur un badge pour saisir la date de paiement du bloc.">Paiement ✎</th>
     </tr></thead><tbody>`;
   Object.entries(byConteneur).forEach(([cont, frsRows]) => {
-    const totPo = new Set(), totArt = frsRows.reduce((s,r)=>s+(r.nb_articles||0),0);
-    const totVal = frsRows.reduce((s,r)=>s+(Number(r.valeur)||0),0);
+    const totArt = frsRows.reduce((s, r) => s + (r.nb_articles || 0), 0);
+    const totVal = frsRows.reduce((s, r) => s + (Number(r.valeur) || 0), 0);
+    const totDu = frsRows.reduce((s, r) => s + (Number(r.valeur_a_payer) || 0), 0);
     const anyBloque = frsRows.some(r => r.est_bloque);
+    const coches = frsRows.filter(r => _blSelection.has(_blKey(r))).length;
     html += `<tr style="background:var(--sand,#FAF6EF);font-weight:600;">
-      <td colspan="4">📦 ${esc(cont)}</td>
-      <td>${fmt(totVal, 'money')}</td>
+      <td><input type="checkbox" class="bl-chk-cont" data-cont="${esc(cont)}"
+                 title="Cocher tout le conteneur"
+                 ${coches === frsRows.length ? 'checked' : ''}
+                 onclick="toggleBlConteneur(this)"></td>
+      <td colspan="5">📦 ${esc(cont)}</td>
+      <td style="text-align:right">${fmt(totVal, 'money')}</td>
+      <td style="text-align:right">${fmt(totDu, 'money')}</td>
       <td colspan="2"></td>
       <td>${anyBloque ? '<span class="badge badge-red">Oui</span>' : '<span class="badge badge-green">Non</span>'}</td>
       <td></td>
     </tr>`;
     frsRows.forEach(r => {
+      const cle = _blKey(r);
       html += `<tr>
+        <td><input type="checkbox" class="bl-chk" data-cle="${esc(cle)}" data-cont="${esc(cont)}"
+                   ${_blSelection.has(cle) ? 'checked' : ''} onclick="toggleBlLigne(this)"></td>
         <td style="padding-left:24px;">${esc(r.fournisseur) || '—'}</td>
         <td class="mono">${esc(r.n_bl) || '—'}</td>
+        <td>${justificatifBadge(r)}</td>
         <td style="text-align:right">${r.nb_po ?? 0}</td>
         <td style="text-align:right">${r.nb_articles ?? 0}</td>
         <td style="text-align:right">${fmt(r.valeur, 'money')}</td>
+        <td style="text-align:right">${fmt(r.valeur_a_payer, 'money')}</td>
         <td>${fmt(r.etd, 'date')}</td>
         <td>${fmt(r.eta, 'date')}</td>
         <td>${r.est_bloque ? `<span class="badge badge-red">${r.nb_bloques}</span>` : '<span class="badge badge-gray">-</span>'}</td>
@@ -3200,6 +3445,13 @@ function renderBlBloques(rows, filtre = false) {
   });
   html += '</tbody></table></div>';
   el.innerHTML = html;
+  // Etat mixte des cases conteneur : impossible en HTML, pose apres rendu.
+  Object.entries(byConteneur).forEach(([cont, frsRows]) => {
+    const coches = frsRows.filter(r => _blSelection.has(_blKey(r))).length;
+    const chef = el.querySelector(`input.bl-chk-cont[data-cont="${CSS.escape(cont)}"]`);
+    if (chef) chef.indeterminate = coches > 0 && coches < frsRows.length;
+  });
+  renderBlTotaux();
 }
 
 // ════════════════════════════════════════════════════════════════════════════

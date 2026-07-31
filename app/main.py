@@ -963,10 +963,20 @@ def get_previsionnel():
             # rapprochement des receptions Sylob a bascule 47 PO de plus en
             # 'Livree'. On garde donc une ligne des qu'elle n'est pas livree OU
             # qu'il reste a payer.
+            #
+            # Provenance (retour Marlene 29/07) : les montants de ce tableau
+            # viennent EXCLUSIVEMENT de achat.commande (IMPORT 2026.xlsx +
+            # Sylob). Le maritime et Gmail n'alimentent que le BL, l'ETD/ETA et
+            # le n° de facture -- aucun montant n'est extrait des pieces
+            # jointes a ce jour. On expose donc n_bl ET n_facture pour que
+            # l'interface puisse distinguer un montant corrobore par une liasse
+            # documentaire d'un montant qui ne repose que sur le fichier IMPORT
+            # (que le metier doit justement cesser d'utiliser).
             bl_bloques = rows_to_dicts(conn.execute(text(f"""
                 SELECT
                     c.n_conteneur,
                     MAX(ot.n_bl)                              AS n_bl,
+                    MAX(ot.n_facture)                         AS n_facture,
                     c.fournisseur,
                     COUNT(DISTINCT c.po_number)                AS nb_po,
                     COUNT(*)                                   AS nb_articles,
