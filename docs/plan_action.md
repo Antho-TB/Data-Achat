@@ -381,6 +381,35 @@ d'erreur exact :
       clé API lui a déjà été demandée sur son poste. Question posée par mail le
       31/07.
 
+### Mise en service sur le poste de Marlène
+
+Tout ce qui précède est livré côté dépôt, rien n'est actif sur son poste tant que
+le runbook n'a pas été joué :
+**`docs/20260731_FUSEAU_RunbookPosteMarlene_MontantsFacture_v1.md`**, écrit pour
+être exécuté par la session Claude de son poste (migration SQL, dépendance
+`google-genai`, clé Gemini, bascule du suivi maritime sur le gsheet, première
+lecture des factures en dry-run, contrôles d'interface avec elle, compte rendu
+chiffré attendu en retour).
+
+- [x] **Extraction des montants de facture codée (31/07)** :
+      `src/scripts/gmail/parse_facture.py` (modèle multimodal Gemini, escalade sur
+      confiance basse, libellé lu conservé pour vérification humaine) et
+      `src/scripts/gmail/load_facture.py` (écriture dans
+      `achat.facture_fournisseur`, contrôle d'écart avec le fichier IMPORT en
+      `[ATTENTION]` sans trancher). Table créée par
+      `sql/20260731_facture_fournisseur.sql`. Validé sur quatre documents
+      fabriqués : facture EUR 6 403,20 lue malgré les leurres sous-total et
+      remise, même facture scannée en JPEG à 0,95 de confiance, note de crédit
+      ramenée en négatif, connaissement correctement écarté. Huit tests unitaires
+      sur la normalisation, sans appel d'API.
+- [ ] **Runbook à jouer sur le poste de Marlène** (bloquant pour tout le reste).
+- [ ] **Affichage montant IMPORT et montant facture côte à côte, avec l'écart** :
+      dépend des règles métier demandées à Marlène par mail le 31/07 (déclencheur
+      du paiement, document qui fait foi, devise, imputation d'une note de crédit,
+      définition d'une liasse complète).
+- [ ] **Automatiser l'extraction** seulement après avoir mesuré qualité et coût
+      sur un mois de pièces jointes réelles.
+
 ### Reste à cadrer
 
 - [ ] **Deposits / paiements d'avance / DEKRA** : à cadrer à la prochaine
