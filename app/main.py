@@ -972,10 +972,28 @@ def get_previsionnel():
             # l'interface puisse distinguer un montant corrobore par une liasse
             # documentaire d'un montant qui ne repose que sur le fichier IMPORT
             # (que le metier doit justement cesser d'utiliser).
+            #
+            # BL (retour Marlene 29/07, "les numeros de BL ne remontent plus") :
+            # ot_transport.n_bl ne porte que le BL PRINCIPAL, et il est vide sur
+            # tous les conteneurs venus du fichier serveur du transitaire, qui
+            # est une copie reduite a 14 colonnes SANS colonne BL. La liste
+            # complete vit dans achat.ot_transport_bl. On prend donc le relais
+            # sur cette table quand ot_transport est muette.
+            # ATTENTION : ot_transport_bl est au grain (conteneur, BL), un
+            # conteneur en porte plusieurs. La joindre en LEFT JOIN
+            # multiplierait les lignes de commande et gonflerait COUNT(*) comme
+            # SUM(valeur). D'ou la sous-requete scalaire, qui ne peut pas
+            # dupliquer de ligne.
             bl_bloques = rows_to_dicts(conn.execute(text(f"""
                 SELECT
                     c.n_conteneur,
-                    MAX(ot.n_bl)                              AS n_bl,
+                    COALESCE(
+                        MAX(ot.n_bl),
+                        (SELECT MIN(b.n_bl) FROM {SCHEMA}.ot_transport_bl b
+                          WHERE b.n_conteneur = c.n_conteneur)
+                    )                                         AS n_bl,
+                    (SELECT COUNT(*) FROM {SCHEMA}.ot_transport_bl b
+                      WHERE b.n_conteneur = c.n_conteneur)     AS nb_bl,
                     MAX(ot.n_facture)                         AS n_facture,
                     c.fournisseur,
                     COUNT(DISTINCT c.po_number)                AS nb_po,

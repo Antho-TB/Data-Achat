@@ -201,6 +201,22 @@ def resoudre_colonnes(entete: list[str]) -> dict[str, Optional[int]]:
     if absentes:
         logger.info("[INFO] Colonnes non fournies par le transitaire, ignorees : %s",
                     ", ".join(absentes))
+
+    # Le BL merite mieux qu'un log INFO (retour Marlene 29/07 : "les numeros de
+    # BL ne remontent plus"). La copie serveur du suivi maritime n'a plus de
+    # colonne BL depuis juillet 2026 : le chargement se deroule sans erreur et
+    # remplit achat.ot_transport avec n_bl a NULL sur tous les conteneurs. Cote
+    # metier, la colonne N° BL du tableau des paiements se vide, et Marlene
+    # perd le croisement conteneur x BL dont elle se sert pour rapprocher une
+    # liasse documentaire. Junior Tip : une source amputee d'une colonne n'est
+    # pas une absence de donnee, c'est une source a changer -- ici le gsheet du
+    # transitaire (SUIVI_MARITIME_PATH=gsheet), qui porte bien le BL.
+    if colonnes.get("bl") is None:
+        logger.warning("[ATTENTION] Aucune colonne BL dans cette source maritime : "
+                       "achat.ot_transport sera chargee sans numero de BL et la "
+                       "colonne N° BL se videra cote application. Basculer "
+                       "SUIVI_MARITIME_PATH sur 'gsheet' (le fichier serveur est "
+                       "une copie reduite a 14 colonnes, sans BL).")
     return colonnes
 MONTHS = {m: i for i, m in enumerate(
     ["january", "february", "march", "april", "may", "june", "july",

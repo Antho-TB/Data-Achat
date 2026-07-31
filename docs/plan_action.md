@@ -318,16 +318,71 @@ une donnée qui ne l'était pas.
 - [x] **Colonne « Reste à payer · USD »** exposée dans le tableau : elle
       existait côté API (`valeur_a_payer`) et n'était pas affichée.
 
-### Bugs restants signalés le 29/07 — non traités
+### Bug 1 — les n° de BL ne remontent plus : cause identifiée le 31/07
 
-- [ ] **Les n° de BL ne remontent plus** dans ce tableau, alors qu'ils
-      s'affichaient la veille. Marlène croise systématiquement n° de conteneur
-      et n° de BL. Piste : bascule sur le gsheet maritime / `ot_transport_bl`
-      (§3.6) — le BL principal de `ot_transport` a pu se vider.
-- [ ] **Saisie de la date de paiement impossible**, y compris sur les liasses
-      sans anomalie (capture d'écran fournie). À reproduire : clé API,
-      `conteneurSansLigne`, ou refus de l'endpoint
-      `PUT /api/paiement/conteneur/{n}`.
+Mesures en base ce jour :
+
+| Mesure | Valeur |
+|---|---|
+| `achat.ot_transport` | 146 conteneurs, **36 seulement avec un `n_bl`** |
+| dont chargés depuis `2026 SUIVI MARITIME.xlsx` (fichier serveur) | 108 lignes, **0 avec un BL** |
+| dernier chargement maritime | 28/07 11:49 |
+| blocs (conteneur × fournisseur) affichés dans le tableau des paiements | 21, dont **1 avec un BL** |
+
+**Ce n'est pas une régression de code, c'est la source.** Le poste lit encore le
+fichier serveur (`SUIVI_MARITIME_PATH=\\192.168.102.55\...\2026 SUIVI
+MARITIME.xlsx`), qui est une **copie réduite à 14 colonnes sans colonne BL**
+depuis juillet 2026. Le chargement se déroule sans erreur et remplit
+`ot_transport` avec `n_bl` à NULL. Le parseur ne le signalait qu'en `INFO`,
+donc invisible. Les BL que Marlène voyait « hier » venaient du bootstrap du
+27/07 (35 conteneurs) et d'un mail Gmail.
+
+- [x] **Alerte à la place du silence (31/07)** : `resoudre_colonnes` loggue
+      désormais `[ATTENTION]` quand la source n'a pas de colonne BL, en nommant
+      le correctif (basculer sur le gsheet).
+- [x] **Relais sur `achat.ot_transport_bl` (31/07)** dans `/api/previsionnel`
+      quand `ot_transport.n_bl` est muet, par sous-requête scalaire et non par
+      jointure : au grain (conteneur, BL), une jointure aurait dupliqué les
+      lignes de commande et gonflé `COUNT(*)` comme `SUM(valeur)`. Vérifié sans
+      dérive : 21 blocs, 123 articles, 579 350,19 $US avant et après.
+- [x] **Trou de données nommé dans l'interface (31/07)** : le tiret de la
+      colonne N° BL porte une infobulle qui distingue « le fournisseur n'a pas
+      émis son BL » de « la source chargée ne porte pas de colonne BL », et le
+      compteur multi-BL est affiché.
+- [ ] **Action bloquante, sur le poste de Marlène** : `SUIVI_MARITIME_PATH=gsheet`
+      dans `config/.env`, `SUIVI_MARITIME_PATH_FICHIER` renseigné en repli, puis
+      relance de l'ETL maritime. Impossible depuis le poste d'Antho :
+      `config/credentials.json` y est absent, le gsheet est illisible. Prérequis
+      inchangés (§3.6) : reconsentement OAuth `spreadsheets.readonly` et partage
+      du classeur avec le compte Google de FUSEAU.
+
+### Bug 2 — saisie de la date de paiement : SQL innocenté, raccordement en cause
+
+Reproduction à blanc le 31/07 (transaction annulée, aucune écriture) sur le plus
+gros bloc à payer, `MSMU7221231` / HONGXING, 30 lignes : **l'upsert passe**.
+`achat.commande_annotation` porte bien `date_paiement` et la contrainte unique
+`(po_number, code_article)` attendue par le `ON CONFLICT` ; aucune ligne de
+commande n'a de `code_article` NULL (759 lignes actives contrôlées) ; `API_KEY`
+est bien définie côté serveur. La panne est donc dans le raccordement, pas dans
+la base.
+
+Deux causes plausibles corrigées à l'aveugle, faute de connaître le message
+d'erreur exact :
+
+- [x] **La ligne conteneur n'était pas cliquable (31/07)** : dans ce tableau, la
+      cellule Paiement de la ligne 📦 conteneur était vide, alors qu'on règle un
+      BL entier. Elle est désormais éditable et solde tout le conteneur, comme
+      sur l'onglet Conteneurs.
+- [x] **Clé API : saisie annulée ≠ clé invalide (31/07)** : une fenêtre de
+      saisie annulée envoyait une clé vide, le serveur répondait 401 et
+      l'interface annonçait « clé invalide ». Les deux cas sont désormais
+      distingués, et le message dit quoi faire.
+- [ ] **À confirmer avec Marlène** : message d'erreur exact affiché, et si la
+      clé API lui a déjà été demandée sur son poste. Question posée par mail le
+      31/07.
+
+### Reste à cadrer
+
 - [ ] **Deposits / paiements d'avance / DEKRA** : à cadrer à la prochaine
       session de travail avec elle.
 

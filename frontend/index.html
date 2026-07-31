@@ -1022,12 +1022,22 @@ function getApiKey(force = false) {
 
 async function apiFetch(path, options = {}) {
   if (options.method && options.method !== 'GET') {
-    options.headers = { ...(options.headers || {}), 'X-API-Key': getApiKey() };
+    // Une clé vide (fenêtre de saisie annulée) partait quand même dans l'entête
+    // et revenait en 401 « clé invalide », ce qui envoyait chercher une erreur
+    // de clé là où il n'y avait qu'une saisie abandonnée. On distingue les deux.
+    const cle = getApiKey();
+    if (!cle) {
+      throw new Error('Enregistrement annulé : la clé API est nécessaire pour écrire. '
+        + 'Recliquez sur la cellule, elle vous sera redemandée.');
+    }
+    options.headers = { ...(options.headers || {}), 'X-API-Key': cle };
   }
   const r = await fetch(API + path, options);
   if (r.status === 401) {
     localStorage.removeItem('erp_api_key');  // clé invalide : re-demander au prochain essai
-    throw new Error('Clé API invalide — réessayez, elle vous sera redemandée.');
+    throw new Error('Clé API refusée par le serveur — recliquez sur la cellule, '
+      + 'elle vous sera redemandée. Si le refus persiste, la clé du poste ne '
+      + 'correspond plus à celle du serveur (prévenir Antho).');
   }
   if (!r.ok) {
     const err = await r.json().catch(() => ({ detail: r.statusText }));
@@ -3194,6 +3204,20 @@ const _blSelection = new Set();
 
 const _blKey = r => `${r.n_conteneur || ''}|${r.fournisseur || ''}`;
 
+// N° BL : un tiret nu ne dit pas si le fournisseur n'a pas encore emis son BL
+// ou si FUSEAU ne sait pas le lire. Depuis juillet 2026 la copie serveur du
+// suivi maritime n'a plus de colonne BL : le tableau se vidait sans explication
+// (retour Marlene 29/07). On nomme le trou de donnees au lieu de le masquer.
+function blCell(r) {
+  if (r.n_bl && String(r.n_bl).trim()) {
+    const multi = (r.nb_bl || 0) > 1
+      ? ` <span class="badge badge-gray" title="${r.nb_bl} BL sur ce conteneur, un par fournisseur">${r.nb_bl}</span>`
+      : '';
+    return esc(r.n_bl) + multi;
+  }
+  return '<span style="color:var(--muted)" title="Aucun BL connu pour ce conteneur : soit le fournisseur ne l\'a pas encore émis, soit la source maritime chargée ne porte pas de colonne BL (cas de la copie serveur du fichier transitaire). À recouper avec la liasse documentaire.">—</span>';
+}
+
 // ── Provenance ligne a ligne (retour Marlene 29/07) ─────────────────────────
 // Les montants de ce tableau viennent de achat.commande (IMPORT 2026.xlsx +
 // Sylob) : aucun montant n'est aujourd'hui extrait des factures recues par
@@ -3412,6 +3436,21 @@ function renderBlBloques(rows, filtre = false) {
     const totDu = frsRows.reduce((s, r) => s + (Number(r.valeur_a_payer) || 0), 0);
     const anyBloque = frsRows.some(r => r.est_bloque);
     const coches = frsRows.filter(r => _blSelection.has(_blKey(r))).length;
+    // Bloc conteneur agrege, pour solder tout le conteneur d'un clic comme sur
+    // l'onglet Conteneurs. La cellule etait vide jusqu'au 31/07 : Marlene
+    // signalait ne pas pouvoir saisir de date de paiement, or c'est la ligne
+    // conteneur qu'on a naturellement envie de cliquer quand on regle un BL
+    // entier. Le fournisseur est omis : l'API solde alors tout le conteneur.
+    const agg = {
+      n_conteneur: cont,
+      nb_po: frsRows.reduce((s, r) => s + (r.nb_po || 0), 0),
+      nb_articles: totArt,
+      nb_a_payer_retard: frsRows.reduce((s, r) => s + (r.nb_a_payer_retard || 0), 0),
+      nb_a_payer: frsRows.reduce((s, r) => s + (r.nb_a_payer || 0), 0),
+      nb_paye: frsRows.reduce((s, r) => s + (r.nb_paye || 0), 0),
+      date_paiement: frsRows.every(r => r.date_paiement) ? frsRows[0].date_paiement : null,
+      paiement_saisi: frsRows.some(r => r.paiement_saisi),
+    };
     html += `<tr style="background:var(--sand,#FAF6EF);font-weight:600;">
       <td><input type="checkbox" class="bl-chk-cont" data-cont="${esc(cont)}"
                  title="Cocher tout le conteneur"
@@ -3422,7 +3461,7 @@ function renderBlBloques(rows, filtre = false) {
       <td style="text-align:right">${fmt(totDu, 'money')}</td>
       <td colspan="2"></td>
       <td>${anyBloque ? '<span class="badge badge-red">Oui</span>' : '<span class="badge badge-green">Non</span>'}</td>
-      <td></td>
+      ${paiementCell(agg, null)}
     </tr>`;
     frsRows.forEach(r => {
       const cle = _blKey(r);
@@ -3430,7 +3469,7 @@ function renderBlBloques(rows, filtre = false) {
         <td><input type="checkbox" class="bl-chk" data-cle="${esc(cle)}" data-cont="${esc(cont)}"
                    ${_blSelection.has(cle) ? 'checked' : ''} onclick="toggleBlLigne(this)"></td>
         <td style="padding-left:24px;">${esc(r.fournisseur) || '—'}</td>
-        <td class="mono">${esc(r.n_bl) || '—'}</td>
+        <td class="mono">${blCell(r)}</td>
         <td>${justificatifBadge(r)}</td>
         <td style="text-align:right">${r.nb_po ?? 0}</td>
         <td style="text-align:right">${r.nb_articles ?? 0}</td>
