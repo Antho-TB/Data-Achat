@@ -114,6 +114,40 @@ class Config:
     # IMPORT avant de declencher l'escalade puis l'alerte metier.
     SEUIL_ECART_FACTURE: float = float(os.getenv("SEUIL_ECART_FACTURE", "0.02"))
 
+    # ── Bornes de temps sur l'appel au modele ───────────────────────────────
+    # En MILLISECONDES : c'est l'unite attendue par types.HttpOptions du SDK
+    # google-genai, et convertir au point d'appel serait une occasion d'erreur
+    # silencieuse sur une valeur qui n'echoue jamais bruyamment.
+    #
+    # Sans timeout, le SDK attend indefiniment. Mesure du 06/08/2026 sur le poste
+    # de Marlene : un PDF de 0,4 Mo a fige le lot plus de 4 minutes. Sur une tache
+    # planifiee, un appel qui ne rend jamais la main suspend le pipeline entier
+    # sans erreur ni ligne de log, c'est-a-dire exactement le mode de panne qui a
+    # laisse l'ETL Gmail mort deux semaines sans que personne le voie.
+    #
+    # 120 s : une facture PDF propre repond en 3 a 6 s, un scan lourd en 30 a
+    # 60 s. On laisse deux fois la marge du pire cas mesure.
+    GEMINI_TIMEOUT_MS: int = int(os.getenv("GEMINI_TIMEOUT_MS", "120000"))
+    # 180 s : le modele d'escalade est plus lent par construction, et il ne tourne
+    # que sur les pieces les plus mauvaises.
+    GEMINI_TIMEOUT_ESCALADE_MS: int = int(
+        os.getenv("GEMINI_TIMEOUT_ESCALADE_MS", "180000"))
+    # 3 tentatives (1 + 2 reprises) : couvre la coupure reseau passagere et le
+    # 429/503 transitoire, sans transformer une panne durable en attente longue.
+    GEMINI_TENTATIVES: int = int(os.getenv("GEMINI_TENTATIVES", "3"))
+    # Coupe-circuit de lot. Sans lui, une API indisponible fait consommer a chaque
+    # piece son budget complet de tentatives : sur 21 pieces, la tache planifiee
+    # tournerait plus de deux heures pour ne rien produire. Au-dela de ce nombre
+    # d'echecs COMPLETS consecutifs, on arrete le lot et on leve.
+    GEMINI_ECHECS_CONSECUTIFS_MAX: int = int(
+        os.getenv("GEMINI_ECHECS_CONSECUTIFS_MAX", "3"))
+
+    # Tri prealable des pieces jointes avant tout appel payant (triage_piece.py).
+    # Interrupteur volontaire : si le tri se met a ecarter a tort des factures sur
+    # le poste metier, on revient a "tout envoyer au modele" par une ligne de .env,
+    # sans redeploiement de code ni intervention d'un developpeur.
+    TRI_PREALABLE_PIECE: bool = os.getenv("TRI_PREALABLE_PIECE", "1") == "1"
+
     # API FastAPI (ERP Achat)
     API_HOST: str = os.getenv("API_HOST", "127.0.0.1")
     API_PORT: int = int(os.getenv("API_PORT", "5050"))

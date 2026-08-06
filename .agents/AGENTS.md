@@ -27,3 +27,13 @@ Ce document unifie les règles de développement, d'architecture et de déploiem
 - **Circuit A (Nouveau produit Import / Artworks) :** Utilise le connecteur Gmail pour l'extraction et l'analyse. L'écriture se fait en UPSERT sur `achat.commande`.
 - **Circuit B (Réapprovisionnement) :** Analyse automatisée et dashboard en temps réel.
 - **Grants BDD :** Le rôle `platform_team` a les privilèges de lecture (`SELECT`), ainsi que d'écriture (`INSERT`, `UPDATE`) sur `achat.commande` et ses tables associées. Il n'a aucun droit destructeur (`TRUNCATE`, `DROP`).
+
+## 5. Règle d'Or de Sécurité Données (Strictement Obligatoire - Toutes Sessions)
+- **INTERDICTION TOTALE DE SUPPRESSION SANS CONFIRMATION :**
+  Aucun agent (Antigravity, Claude, subagent, script Python généré) ne doit exécuter seul une commande ou un script contenant un `DROP TABLE`, `DROP VIEW`, `DROP SCHEMA`, `DROP DATABASE`, `TRUNCATE`, ou `DELETE` sans avoir demandé et obtenu une confirmation explicite, préalable et écrite d'Anthony Bezille pour CHAQUE table ciblée.
+
+## 6. Rôle & Périmètre d'Antigravity / Gemini
+- **Périmètre exclusif :** Prototypage UI/UX, esthétique des interfaces, composants frontend, bac à sable.
+- **Production & Backend complexe :** Gérés par Claude et supervisés par Anthony Bezille. Aucune modification DDL/prod ne doit être exécutée par Antigravity.
+
+

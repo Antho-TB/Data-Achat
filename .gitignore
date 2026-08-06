@@ -65,3 +65,9 @@ page*.html
 
 # Logs runtime API (locaux au poste, jamais versionnes)
 deploy/logs/
+
+# Sorties psql des migrations et scripts de restauration (artefacts d'execution,
+# propres a une machine et a un instant donne : seul le .sql se versionne)
+sql/*.out
+sql/*.out.err
+sql/*.log.err
