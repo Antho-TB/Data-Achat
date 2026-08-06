@@ -440,6 +440,26 @@ chiffré attendu en retour).
 - [ ] **Fraîcheur des sources figées** : `Matrice Lot Multiples`, `POINT MIF` et `STOP REF CARREFOUR` ont été ingérés depuis des copies datant de mars. À rafraîchir.
 - [ ] **Mapping des 47 colonnes de l'IMPORT** : plusieurs colonnes restent non vérifiées (`OP/Client/Appro`, `Alerte`, `Nombre de mois`, `Prix / référence`, `Total prix sur facture`, `MAT / SP / Échantillon de conformité`).
 
+### 4.4 Fichiers de restauration DWH déposés dans ce repo (à arbitrer)
+
+Constaté le 06/08. Deux fichiers SQL du 04/08 traînent non trackés dans `sql/`,
+et ils ne relèvent pas du périmètre FUSEAU :
+
+| Fichier | Contenu | Pourquoi c'est hors périmètre |
+|---|---|---|
+| `sql/20260804_recovery_ddl_47tables.sql` (865 Ko) | Dump `pg_dump` : 47 `CREATE TABLE public.*` et 195 index | Schéma `public`, owner `dtpf_sylob_myreport_prod`. FUSEAU écrit dans `achat.*`, jamais dans `public.*`. |
+| `sql/20260804_load_wave1.sql` | 46 `INSERT ... SELECT * FROM fdw_restore.*` | Rechargement via FDW des mêmes tables MyReport. |
+
+Vérifié : aucun secret, aucun `DROP` / `TRUNCATE` / `DELETE`, purement additif.
+Ces fichiers relèvent vraisemblablement du repo `dev/MyReport`, pas de celui-ci.
+
+- [ ] **Trancher où ces deux fichiers sont versionnés** (repo `MyReport`, ou ici
+      si on assume que Data-Achat porte aussi les migrations `public.*`). Tant que
+      ce n'est pas tranché, ils restent non trackés : ne pas les committer par
+      réflexe lors d'un `git add -A`.
+- [ ] Les sorties psql associées (`sql/_*.out`, `sql/_*.out.err`) sont désormais
+      ignorées par git, elles n'ont pas à être versionnées.
+
 ---
 
 ## 5. Backlog fonctionnel
