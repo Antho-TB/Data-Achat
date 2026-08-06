@@ -460,6 +460,55 @@ Ces fichiers relèvent vraisemblablement du repo `dev/MyReport`, pas de celui-ci
 - [ ] Les sorties psql associées (`sql/_*.out`, `sql/_*.out.err`) sont désormais
       ignorées par git, elles n'ont pas à être versionnées.
 
+### 4.5 Point de reprise du 06/08/2026 au soir
+
+Session sur le poste de Marlène (14h00-16h45) puis sur le poste d'Antho.
+Livrables de la session : `docs/FUSEAU_20260806.zip` (non versionné, couvert par
+`docs/*.zip`) et la PR [#1](https://github.com/Antho-TB/Data-Achat/pull/1).
+
+**Acquis, dans la PR #1 (poussée, à merger) :**
+
+| Correctif | Effet |
+|---|---|
+| Timeout Gemini 120 s / 180 s, 3 tentatives, coupe-circuit | Un appel figé ne suspend plus la tâche planifiée (blocage de 4 min mesuré) |
+| `triage_piece.py`, tri à 3 étages | 11 PJ sur 11 étaient non comptables et payées au tarif multimodal |
+| `lire_classeur()` : lecture Drive du `.xlsx` transitaire | Cause du bug des BL manquants (47 BL à récupérer) |
+| `run_api_service.ps1` : racine du dépôt robuste | La tâche `FUSEAU-API` échouait à chaque ouverture de session sans trace |
+| `AGENTS.md` racine, garde-fous anti-destructif | Les agents non-Claude ne voyaient pas la règle |
+
+**Acquis sur le poste, hors dépôt :** tâche `FUSEAU-API` créée et `Running`,
+auto-pull vérifié de bout en bout, token Google reconsenti sur les 3 scopes,
+clé Gemini corrigée (chevrons du gabarit retirés), pip rebootstrappé,
+table `achat.facture_fournisseur` créée (19 colonnes, additive).
+
+**À reprendre demain, dans cet ordre :**
+
+- [ ] **Vérifier la lecture Drive réelle depuis le poste de Marlène.** Non
+      testable depuis le poste d'Antho, qui n'a ni `credentials.json` ni
+      `token.json`. Seuls l'aiguillage MIME et le filtrage d'onglets sont
+      couverts par les tests. Attendu : ≥ 54 lignes et un index de colonne BL
+      non nul. Puis rejouer l'ETL maritime et mesurer (avant : 146 conteneurs,
+      36 avec BL).
+- [ ] **Test de non-régression du tri** sur `data/PJ/202607` : `--sans-tri` puis
+      comparaison des verdicts. Zéro faux négatif exigé avant de faire confiance
+      au tri en production.
+- [ ] **Garde-fou de scope OAuth, pas encore écrit.** C'est la cause racine de
+      l'ETL Gmail mort du 22/07 au 06/08 : `token.json` portait 2 scopes,
+      `google_auth.py` en demande 3 depuis `b12cb42`, et Google refuse tout
+      rafraîchissement dont le périmètre dépasse celui accordé. Le piège est
+      documenté en tête de `google_auth.py` mais rien ne le détecte. À faire :
+      comparer les scopes du token à `SCOPES` avant le refresh et lever un
+      message qui dit quoi faire, au lieu d'un `RefreshError: invalid_scope`.
+      Corriger au passage la docstring et le log, qui parlent encore de 2 scopes.
+- [ ] **Rejouer l'ETL Gmail** : deux semaines de pièces jointes à rattraper,
+      passage supervisé préférable.
+- [ ] **Auto-pull fragile** : `run_api.py` annule le pull si
+      `git status --porcelain` est non vide, et ne le dit pas assez fort. Deux
+      occurrences (un `.log.err` le 28/07, une sauvegarde `.env` le 06/08).
+- [ ] **Étape 7 avec Marlène**, et ses deux questions en attente : le message
+      d'erreur exact du 29/07 sur la saisie de paiement, et si FUSEAU lui a déjà
+      demandé une clé API sur ce poste.
+
 ---
 
 ## 5. Backlog fonctionnel

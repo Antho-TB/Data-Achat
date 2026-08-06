@@ -111,8 +111,19 @@ préférable.
 az keyvault secret set --vault-name kv-dtpf-prod --name GEMINI-API-KEY --value <cle fournie par Antho>
 ```
 
-**Voie fichier local**, si le Key Vault n'est pas accessible depuis ce poste :
-ajouter dans `config\.env` la ligne `GEMINI_API_KEY=<cle>`.
+**Voie fichier local** — c'est la **seule qui fonctionne sur ce poste** :
+`KEY_VAULT_NAME` y est vide par choix, et `get_gemini_api_key()` ne tente le Key
+Vault que si cette variable est renseignée. Ajouter dans `config\.env` :
+
+```
+GEMINI_API_KEY=AIza...
+```
+
+> ⚠️ **Sans chevrons, sans guillemets, sans espace autour du `=`.** Le 06/08, la
+> clé a été collée sous la forme `GEMINI_API_KEY=<AIza...>` en recopiant les
+> chevrons du gabarit : les 100 % des appels sont partis en `API_KEY_INVALID`.
+> Les `<...>` de cette documentation marquent un emplacement à remplacer, ils ne
+> font jamais partie de la valeur.
 
 Ne pas demander la clé à Marlène, ne pas l'afficher, ne pas la recopier dans le
 compte rendu.
