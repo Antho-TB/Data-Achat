@@ -143,14 +143,32 @@ classeur Google du transitaire, lui, porte toujours le BL.
 
 Relevé sur le poste d'Antho le 31/07 au matin : 146 conteneurs, 36 avec un BL.
 
-**Bascule** : dans `config\.env`, remplacer la ligne `SUIVI_MARITIME_PATH=...` par
-les deux lignes suivantes. Conserver l'ancien chemin comme repli, ne pas le
-supprimer.
+> ⚠️ **Corrigé le 06/08 — cette bascule n'est plus à faire.** La mesure sur le
+> poste a montré qu'aucune ligne `SUIVI_MARITIME_PATH` n'existe dans le
+> `config\.env`, et que le défaut du code est déjà `gsheet`
+> ([config_manager.py](../src/utils/config_manager.py)). La bascule était donc
+> déjà effective : ce n'était pas la configuration qui bloquait.
+>
+> La vraie cause était double. Le classeur du transitaire est un **`.xlsx`
+> déposé dans Drive**, pas un Google Sheet natif, et l'API Sheets refuse un
+> fichier Office. Cet échec était ensuite avalé par le `except` large de
+> [extract.py](../src/scripts/etl/extract.py), qui repliait en silence sur la
+> copie serveur à 14 colonnes, celle qui n'a pas de colonne BL. Corrigé par
+> `lire_classeur()`. **Ne pas modifier `config\.env`**, passer directement à la
+> vérification ci-dessous.
+
+<details>
+<summary>Instruction d'origine du 31/07, conservée pour mémoire (ne pas appliquer)</summary>
+
+Dans `config\.env`, remplacer la ligne `SUIVI_MARITIME_PATH=...` par les deux
+lignes suivantes. Conserver l'ancien chemin comme repli, ne pas le supprimer.
 
 ```
 SUIVI_MARITIME_PATH=gsheet
 SUIVI_MARITIME_PATH_FICHIER=\\192.168.102.55\partage\ADA\METIER\SUIVI CDES IMPORT\2026\TRANSITAIRE\2026 SUIVI MARITIME.xlsx
 ```
+
+</details>
 
 **Vérifier que le classeur est lisible avant de lancer quoi que ce soit** :
 

@@ -437,20 +437,53 @@ def transform_rows(rows: list[list[str]], campaign_year: int = 2026,
 GSHEET_MARITIME_ID = "1hP73oivXrB8o8I7pkrGh7y6nPzn0ccfW"
 
 
+# Seul onglet portant le suivi conteneurs. Les autres (AVRIL a DECEMBRE) sont des
+# plannings de livraison par semaine, sans colonne BL : les lire n'apporterait
+# rien et melangerait leurs lignes a celles du suivi. Constate le 06/08/2026.
+ONGLETS_UTILES: frozenset[str] = frozenset({"SUIVI"})
+
+
 def _read_rows_gsheet(spreadsheet_id: str) -> list[list[str]]:
     """
     Lit le suivi maritime directement dans le classeur partage du transitaire.
 
+    Le classeur n'est PAS un Google Sheet natif : c'est un .xlsx depose dans
+    Drive par QUALITAIR (proprietaire lbonnet@qualitairsea.com). L'API Sheets le
+    refusait, ce qui faisait echouer cette fonction depuis sa mise en place : le
+    repli d'extract.py retombait alors sur la copie serveur a 14 colonnes, sans
+    colonne BL. C'est la cause du bug des numeros de BL manquants. lire_classeur()
+    choisit l'API a utiliser d'apres le type MIME reel.
+
     Args:
-        spreadsheet_id: identifiant du classeur.
+        spreadsheet_id: identifiant du classeur Drive.
     Returns:
         Lignes brutes, meme format positionnel que _read_rows.
     """
-    from src.utils.gsheets import read_all_tabs
+    from src.utils.gsheets import lire_classeur
+
+    onglets = lire_classeur(spreadsheet_id)
+    retenus = [(nom, grille) for nom, grille in onglets
+               if nom.strip().upper() in ONGLETS_UTILES]
+
+    if not retenus:
+        # Repli plutot qu'echec : le transitaire peut renommer son onglet. On le
+        # dit fort, parce que lire tous les onglets melange les plannings mensuels
+        # au suivi conteneurs et gonfle le compteur de lignes ignorees.
+        logger.warning("[ATTENTION] Aucun onglet %s dans le classeur (presents : %s). "
+                       "Repli sur la lecture de tous les onglets.",
+                       "/".join(sorted(ONGLETS_UTILES)),
+                       ", ".join(nom for nom, _ in onglets) or "aucun")
+        retenus = onglets
+    else:
+        ignores = [nom for nom, _ in onglets
+                   if nom.strip().upper() not in ONGLETS_UTILES]
+        if ignores:
+            logger.info("[INFO] Onglets ignores (plannings sans BL) : %s.",
+                        ", ".join(ignores))
 
     lignes: list[list[str]] = []
-    for nom_onglet, grille in read_all_tabs(spreadsheet_id):
-        logger.info("[INFO] Onglet '%s' : %d ligne(s).", nom_onglet, len(grille))
+    for nom_onglet, grille in retenus:
+        logger.info("[INFO] Onglet retenu '%s' : %d ligne(s).", nom_onglet, len(grille))
         for ligne in grille:
             lignes.append([str(c) if c is not None else "" for c in ligne])
     return lignes
