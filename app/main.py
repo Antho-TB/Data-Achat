@@ -577,10 +577,10 @@ def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
                        p.designation_en,
                        COALESCE(p.designation_fr, p.designation_en, t.designation) AS designation,
                        p.ean13,
-                       t.fournisseur, t.prix, t.date_mail
+                       t.fournisseur, t.prix, t.quantite, t.date_mail
                 FROM (
                     SELECT po_number, code_article, designation, fournisseur,
-                           prix_unitaire AS prix, date_commande AS date_mail,
+                           prix_unitaire AS prix, quantite, date_commande AS date_mail,
                            ROW_NUMBER() OVER (PARTITION BY code_article
                                               ORDER BY date_commande DESC NULLS LAST) AS rn
                     FROM {SCHEMA}.commande
@@ -591,7 +591,40 @@ def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
                 WHERE rn <= 3
                 ORDER BY t.code_article, t.date_mail DESC NULLS LAST
             """), params)
-            return {"source": "commande_fallback", "data": rows_to_dicts(r)}
+            lignes = rows_to_dicts(r)
+            if lignes:
+                return {"source": "commande_fallback", "data": lignes}
+
+            # Repli sans limite de date (mail Marlene MONTBRIZON du 03/09/2026).
+            # achat.commande ne porte que le perimetre IMPORT (juin 2024 a
+            # aujourd'hui) : 788 articles du referentiel n'y ont aucun prix. Quand
+            # la recherche ne sort rien, on va chercher les 3 derniers prix dans
+            # achat.historique_prix_sylob, construit sur les commandes fournisseur
+            # Sylob depuis 2013, toutes societes confondues, sans borne de date.
+            # La source est renvoyee au front pour que l'interface annonce d'ou
+            # vient le prix : hors perimetre Import, la devise peut ne pas etre le
+            # dollar.
+            if not code_article:
+                return {"source": "commande_fallback", "data": []}
+
+            repli = conn.execute(text(f"""
+                SELECT h.po_number, h.code_article,
+                       COALESCE(p.designation_fr, h.designation) AS designation_fr,
+                       p.designation_en,
+                       COALESCE(p.designation_fr, p.designation_en, h.designation) AS designation,
+                       p.ean13,
+                       h.fournisseur, h.prix_unitaire AS prix, h.quantite,
+                       h.date_commande AS date_mail,
+                       h.societe, h.devise_etrangere, h.prix_unitaire_eur, h.unite
+                FROM {SCHEMA}.historique_prix_sylob h
+                LEFT JOIN {SCHEMA}.produit p ON p.code_article = h.code_article
+                WHERE h.code_article = :code_article
+                ORDER BY h.rang
+            """), {"code_article": code_article})
+            lignes_repli = rows_to_dicts(repli)
+            logger.info("[INFO] Historique prix %s : repli Sylob, %d ligne(s)",
+                        code_article, len(lignes_repli))
+            return {"source": "sylob_hors_perimetre", "data": lignes_repli}
         except Exception as e:
             raise internal_error(e)
 

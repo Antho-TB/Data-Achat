@@ -2486,13 +2486,14 @@ function renderFrsDetailRows() {
     || (r.ean13 || '').toLowerCase().includes(q)
     || (r.po_number || '').toLowerCase().includes(q));
   document.getElementById('frs-detail-table').innerHTML = rows.length ? `<div class="table-wrap"><table>
-    <thead><tr><th>PO#</th><th>Article</th><th>EAN13</th><th>Désignation FR</th><th>Désignation EN</th><th>Prix</th><th>Date</th></tr></thead>
+    <thead><tr><th>PO#</th><th>Article</th><th>EAN13</th><th>Désignation FR</th><th>Désignation EN</th><th>Qté</th><th>Prix</th><th>Date</th></tr></thead>
     <tbody>${rows.map(r => `<tr>
       <td class="mono">${esc(r.po_number) || '-'}</td>
       <td class="mono">${esc(r.code_article) || '-'}</td>
       <td class="mono">${esc(r.ean13) || '-'}</td>
       <td>${esc(r.designation_fr || r.designation) || '-'}</td>
       <td style="color:var(--muted);font-style:italic;">${esc(r.designation_en) || '-'}</td>
+      <td class="mono" style="text-align:right">${r.quantite != null ? Number(r.quantite).toLocaleString('fr-FR') : '-'}</td>
       <td style="text-align:right">${r.prix != null ? Number(r.prix).toFixed(3) + ' $' : '-'}</td>
       <td>${fmt(r.date_mail, 'date')}</td>
     </tr>`).join('')}</tbody></table></div>` : '<div class="empty">Aucun résultat</div>';
@@ -2802,16 +2803,32 @@ async function loadArticle() {
     const histRows = (hist.data || []).slice(0, 3);
     const enCours = (cmd.data || []).filter(r => !r.est_livre);
 
+    // Repli sans limite de date (demande Marlene 03/09/2026) : quand achat.commande
+    // (perimetre IMPORT, juin 2024 a aujourd'hui) ne sort aucun prix, l'API renvoie
+    // les 3 derniers prix des commandes fournisseur Sylob depuis 2013. Hors
+    // perimetre Import la devise n'est pas forcement le dollar : on n'affiche donc
+    // le symbole que sur les prix du perimetre, et on annonce la provenance.
+    const histRepli = hist.source === 'sylob_hors_perimetre';
+    const prixCell = (r) => r.prix == null
+      ? '<td class="mono" title="Prix absent de la source, ce n\'est pas un prix a zero">-</td>'
+      : (histRepli
+          ? `<td class="mono">${Number(r.prix).toLocaleString('fr-FR',{minimumFractionDigits:3,maximumFractionDigits:3})}${r.devise_etrangere ? ` <span class="unit" title="Achat en devise etrangere. Equivalent Sylob : ${r.prix_unitaire_eur != null ? Number(r.prix_unitaire_eur).toFixed(3) : '?'} EUR">devise</span>` : ' &euro;'}</td>`
+          : `<td class="mono">$${Number(r.prix).toLocaleString('fr-FR',{minimumFractionDigits:3,maximumFractionDigits:3})}</td>`);
+    const qteCell = (r) => r.quantite == null
+      ? '<td class="mono" title="Quantite absente de la source">-</td>'
+      : `<td class="mono">${Number(r.quantite).toLocaleString('fr-FR')}${r.unite ? ' <span class="unit">'+esc(r.unite)+'</span>' : ''}</td>`;
+
     const histTable = histRows.length
       ? `<div class="table-wrap"><table>
-          <thead><tr><th>PO#</th><th>Fournisseur</th><th>Prix</th><th>Date</th></tr></thead>
+          <thead><tr><th>PO#</th><th>Fournisseur</th><th>Qt&eacute;</th><th>Prix</th><th>Date</th></tr></thead>
           <tbody>${histRows.map(r => `<tr>
             <td class="mono">${esc(r.po_number)||'-'}</td>
-            <td>${esc(r.fournisseur)||'-'}</td>
-            <td class="mono">$${Number(r.prix||0).toLocaleString('fr-FR',{minimumFractionDigits:3,maximumFractionDigits:3})}</td>
+            <td>${esc(r.fournisseur)||'-'}${histRepli && r.societe ? ' <span class="unit">'+esc(r.societe)+'</span>' : ''}</td>
+            ${qteCell(r)}
+            ${prixCell(r)}
             <td>${esc(r.date_mail)||'-'}</td>
           </tr>`).join('')}</tbody></table></div>`
-      : '<div class="empty">Aucun historique de prix pour cet article</div>';
+      : '<div class="empty">Aucun prix d\'achat connu pour cet article, ni dans le suivi Import ni dans les commandes Sylob</div>';
 
     const cmdTable = enCours.length
       ? `<div class="table-wrap"><table>
@@ -2838,8 +2855,12 @@ async function loadArticle() {
         ${cmdTable}
       </div>
       <div class="a360-card">
-        ${a360Head('3 derniers prix (tous fournisseurs confondus)', 'Commandes Sylob V25', 'badge-blue',
-                   'Source : Commandes historiques Sylob V25 / IMPORT 2026.xlsx')}
+        ${histRepli
+          ? a360Head('3 derniers prix (hors périmètre Import, sans limite de date)',
+                     'Commandes Sylob toutes sociétés', 'badge-yellow',
+                     'Aucun prix dans le suivi Import (juin 2024 à aujourd\'hui) : repli sur les commandes fournisseur Sylob depuis 2013, GDD + SE + Cie. Montants HT en devise de la commande.')
+          : a360Head('3 derniers prix (tous fournisseurs confondus)', 'Commandes Sylob V25', 'badge-blue',
+                     'Source : Commandes historiques Sylob V25 / IMPORT 2026.xlsx')}
         ${histTable}
       </div>`;
   } catch (e) {
