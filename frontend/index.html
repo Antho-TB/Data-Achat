@@ -2812,7 +2812,7 @@ async function loadArticle() {
     const prixCell = (r) => r.prix == null
       ? '<td class="mono" title="Prix absent de la source, ce n\'est pas un prix a zero">-</td>'
       : (histRepli
-          ? `<td class="mono">${Number(r.prix).toLocaleString('fr-FR',{minimumFractionDigits:3,maximumFractionDigits:3})}${r.devise_etrangere ? ` <span class="unit" title="Achat en devise etrangere. Equivalent Sylob : ${r.prix_unitaire_eur != null ? Number(r.prix_unitaire_eur).toFixed(3) : '?'} EUR">devise</span>` : ' &euro;'}</td>`
+          ? `<td class="mono">${Number(r.prix).toLocaleString('fr-FR',{minimumFractionDigits:3,maximumFractionDigits:3})}${r.devise_etrangere ? ` <span class="unit" title="Prix en devise de la commande (Sylob ne fournit pas le code devise sur cette vue). Contre-valeur euro calculee par Sylob.">${r.prix_unitaire_eur != null ? '&asymp; ' + Number(r.prix_unitaire_eur).toLocaleString('fr-FR',{minimumFractionDigits:3,maximumFractionDigits:3}) + ' &euro;' : 'devise'}</span>` : ' &euro;'}</td>`
           : `<td class="mono">$${Number(r.prix).toLocaleString('fr-FR',{minimumFractionDigits:3,maximumFractionDigits:3})}</td>`);
     const qteCell = (r) => r.quantite == null
       ? '<td class="mono" title="Quantite absente de la source">-</td>'
@@ -2823,7 +2823,7 @@ async function loadArticle() {
           <thead><tr><th>PO#</th><th>Fournisseur</th><th>Qt&eacute;</th><th>Prix</th><th>Date</th></tr></thead>
           <tbody>${histRows.map(r => `<tr>
             <td class="mono">${esc(r.po_number)||'-'}</td>
-            <td>${esc(r.fournisseur)||'-'}${histRepli && r.societe ? ' <span class="unit">'+esc(r.societe)+'</span>' : ''}</td>
+            <td>${esc(r.fournisseur)||'-'}${histRepli && r.societe ? ' <span class="unit" title="Societe TB acheteuse dans Sylob">('+esc(r.societe)+')</span>' : ''}</td>
             ${qteCell(r)}
             ${prixCell(r)}
             <td>${esc(r.date_mail)||'-'}</td>
