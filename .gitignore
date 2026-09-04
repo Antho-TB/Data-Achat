@@ -71,3 +71,13 @@ deploy/logs/
 sql/*.out
 sql/*.out.err
 sql/*.log.err
+
+# --- Terraform (deploy/terraform) ---
+# Le state est distant (storage stplatformtfstatestbprod) : rien d'utile ni de
+# secret ne doit atterrir dans le depot.
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+tfplan
+*.tfplan
+crash.log

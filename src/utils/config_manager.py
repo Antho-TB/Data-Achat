@@ -48,6 +48,14 @@ def get_base_path() -> Path:
 class Config:
     # Azure Key Vault (prod)
     KEY_VAULT_NAME: str = os.getenv("KEY_VAULT_NAME", "")
+    # Noms des secrets portant les credentials PostgreSQL. Par defaut le compte
+    # nominal historique, utilise par l'ETL sur le poste metier ; l'application
+    # hebergee en Azure pointe un compte de service dedie via ces variables
+    # (regle azure-tb : jamais de compte nominal derriere un service).
+    PG_SECRET_LOGIN: str = os.getenv(
+        "PG_SECRET_LOGIN", "psql-prod-sylob-anthony-bezille-login")
+    PG_SECRET_PASSWORD: str = os.getenv(
+        "PG_SECRET_PASSWORD", "psql-prod-sylob-anthony-bezille-password")
 
     # PostgreSQL  -- valeurs fallback pour dev local (.env)
     PG_HOST: str = os.getenv("PG_HOST", "")
@@ -153,6 +161,15 @@ class Config:
     API_PORT: int = int(os.getenv("API_PORT", "5050"))
     # Clé exigée sur les endpoints d'écriture (header X-API-Key).
     # Vide = écriture refusée (fail-closed) : la définir dans config/.env.
+    # Mode d'authentification des endpoints d'ecriture.
+    #   apikey : poste metier et dev local, la cle X-API-Key est exigee.
+    #   entra  : application hebergee derriere l'authentification de plateforme
+    #            App Service. L'identite est injectee par Azure dans les en-tetes
+    #            X-MS-CLIENT-PRINCIPAL-*, aucune cle partagee ne circule.
+    # Toute autre valeur est refusee au demarrage plutot que traitee en douce :
+    # une faute de frappe ne doit pas ouvrir les ecritures.
+    AUTH_MODE: str = os.getenv("AUTH_MODE", "apikey").strip().lower()
+
     API_KEY: str = os.getenv("API_KEY", "")
     # Hot-reload uvicorn (dev uniquement). Désactivé par défaut : WatchFiles
     # s'est montré non fiable sous Windows (workers orphelins, reloads manqués).
@@ -310,8 +327,8 @@ class Config:
         vault_url = f"https://{cls.KEY_VAULT_NAME}.vault.azure.net/"
         client = SecretClient(vault_url=vault_url, credential=DefaultAzureCredential())
 
-        user = client.get_secret("psql-prod-sylob-anthony-bezille-login").value
-        password = client.get_secret("psql-prod-sylob-anthony-bezille-password").value
+        user = client.get_secret(cls.PG_SECRET_LOGIN).value
+        password = client.get_secret(cls.PG_SECRET_PASSWORD).value
 
         return URL.create(
             drivername="postgresql+psycopg2",

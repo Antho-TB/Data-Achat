@@ -72,7 +72,12 @@ async def lifespan(app: FastAPI):
         logger.error("[ECHEC] Impossible de joindre PostgreSQL au demarrage.")
     else:
         logger.info("[SUCCES] API ERP Achat prete -- schema : %s", SCHEMA)
-    if not Config.API_KEY:
+    if Config.AUTH_MODE == "entra":
+        logger.info(
+            "[INFO] Authentification deleguee a la plateforme Entra ID "
+            "(mode heberge) -- aucune cle applicative attendue."
+        )
+    elif not Config.API_KEY:
         logger.warning(
             "[ATTENTION] API_KEY absente de config/.env -- "
             "les endpoints d'ecriture sont desactives (fail-closed)."
@@ -87,17 +92,66 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=Config.CORS_ORIGINS,
     allow_methods=["GET", "PUT"],
-    allow_headers=["Content-Type", "X-API-Key"],
+    allow_headers=["Content-Type", "X-API-Key", "X-MS-CLIENT-PRINCIPAL-NAME"],
 )
 
 
 # -- Securite ------------------------------------------------------------------
-def require_api_key(x_api_key: str = Header(default="")) -> None:
-    """Protege les endpoints d'ecriture. Fail-closed si API_KEY non configuree."""
+# Deux contextes d'execution, deux barrieres, jamais les deux desactivees.
+#
+#   AUTH_MODE=apikey (poste metier, dev local) : la cle X-API-Key est exigee sur
+#   les ecritures, fail-closed si la cle n'est pas configuree cote serveur.
+#
+#   AUTH_MODE=entra (application hebergee en Azure, decision du 03/09/2026) :
+#   l'authentification de plateforme App Service redirige tout visiteur non
+#   authentifie vers le login Microsoft 365. L'utilisateur est donc deja connu
+#   quand la requete arrive, et Azure injecte son identite dans les en-tetes
+#   X-MS-CLIENT-PRINCIPAL-NAME / -ID. On refuse quand meme l'ecriture si ces
+#   en-tetes sont absents : cela signifierait que l'authentification de
+#   plateforme est desactivee ou contournee, et le silence serait pire que
+#   l'erreur.
+def require_utilisateur(
+    x_api_key: str = Header(default=""),
+    x_ms_client_principal_name: str = Header(default=""),
+    x_ms_client_principal_id: str = Header(default=""),
+) -> str:
+    """
+    Autorise une ecriture et retourne l'identifiant de l'auteur.
+
+    Junior Tip : FastAPI convertit le nom de l'argument en nom d'en-tete HTTP
+    (les tirets bas deviennent des tirets), donc `x_ms_client_principal_name`
+    lit bien l'en-tete `X-MS-CLIENT-PRINCIPAL-NAME` pose par App Service.
+
+    Returns:
+        Identite de l'auteur, a tracer dans les tables d'annotation.
+    Raises:
+        HTTPException: 503 si le serveur est mal configure, 401 si l'appelant
+            n'est pas authentifie.
+    """
+    if Config.AUTH_MODE == "entra":
+        identite = x_ms_client_principal_name or x_ms_client_principal_id
+        if not identite:
+            raise HTTPException(
+                status_code=401,
+                detail="Non authentifie : aucune identite Microsoft 365 transmise par la plateforme.",
+            )
+        return identite
+
+    if Config.AUTH_MODE != "apikey":
+        raise HTTPException(
+            status_code=503,
+            detail=f"AUTH_MODE invalide cote serveur : {Config.AUTH_MODE!r}. Valeurs admises : apikey, entra.",
+        )
+
     if not Config.API_KEY:
         raise HTTPException(status_code=503, detail="Ecriture desactivee : API_KEY non configuree cote serveur.")
     if not secrets.compare_digest(x_api_key, Config.API_KEY):
         raise HTTPException(status_code=401, detail="Cle API invalide ou absente (header X-API-Key).")
+    return "poste-metier"
+
+
+# Nom historique conserve : les dependances des endpoints d'ecriture le citent.
+require_api_key = require_utilisateur
 
 
 def internal_error(exc: Exception) -> HTTPException:
