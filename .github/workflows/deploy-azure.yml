@@ -82,16 +82,23 @@ jobs:
           package: paquet.zip
 
       - name: Verifier la sante apres deploiement
-        # L'application est derriere l'authentification Entra ID : un appel
-        # anonyme est redirige (302), ce qui prouve a la fois que le site repond
-        # et que l'authentification est bien active. Un 200 anonyme serait une
-        # alerte, pas un succes.
+        # Deux controles complementaires :
+        #   /api/health est volontairement exclu de l'authentification (sonde de
+        #   plateforme) et doit repondre 200 : l'application tourne et joint la
+        #   base privee.
+        #   La racine, elle, doit etre redirigee vers le login Microsoft. Un 200
+        #   anonyme sur la racine serait une faille, pas un succes.
         run: |
-          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
-                 "https://${NOM_WEBAPP}.azurewebsites.net/api/health")
-          echo "Code HTTP anonyme : ${code}"
-          case "${code}" in
-            302|401|403) echo "[SUCCES] Site en ligne et protege par Entra ID." ;;
-            200) echo "[ECHEC] Endpoint accessible sans authentification." && exit 1 ;;
-            *) echo "[ECHEC] Reponse inattendue : ${code}" && exit 1 ;;
+          sante=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 \
+                  "https://${NOM_WEBAPP}.azurewebsites.net/api/health")
+          echo "Sante anonyme : ${sante}"
+          test "${sante}" = "200" || { echo "[ECHEC] Application non fonctionnelle."; exit 1; }
+
+          racine=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+                   "https://${NOM_WEBAPP}.azurewebsites.net/")
+          echo "Racine anonyme : ${racine}"
+          case "${racine}" in
+            302|401|403) echo "[SUCCES] Application en ligne et protegee par Entra ID." ;;
+            200) echo "[ECHEC] Interface accessible sans authentification." && exit 1 ;;
+            *) echo "[ECHEC] Reponse inattendue : ${racine}" && exit 1 ;;
           esac

@@ -198,6 +198,12 @@ resource "azurerm_linux_web_app" "app" {
     login {
       token_store_enabled = true
     }
+
+    # La sonde de sante d'App Service n'a pas d'identite : derriere Easy Auth
+    # elle recoit une redirection et finirait par declarer l'instance en
+    # mauvaise sante. /api/health ne renvoie qu'un etat de connexion a la base,
+    # aucune donnee metier, il peut rester anonyme.
+    excluded_paths = ["/api/health"]
   }
 
   lifecycle {
