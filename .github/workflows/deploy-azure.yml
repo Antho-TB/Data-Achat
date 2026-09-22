@@ -1,0 +1,104 @@
+# =============================================================================
+# [CI] FUSEAU - DEPLOIEMENT DE L'API SUR AZURE APP SERVICE
+# =============================================================================
+# Deploie uniquement l'application (API FastAPI plus frontend statique).
+# L'ETL reste on-premise : classeur IMPORT sur le partage reseau, DWH Sylob
+# on-premise, boite Gmail Achats. Il continue de tourner en tache planifiee.
+#
+# Authentification a Azure par OIDC (federation d'identite), sans secret de
+# longue duree stocke dans GitHub. Les trois variables AZURE_CLIENT_ID,
+# AZURE_TENANT_ID et AZURE_SUBSCRIPTION_ID sont des secrets de depot.
+#
+# L'infrastructure n'est PAS appliquee ici : Terraform reste lance a la main
+# apres relecture du plan (doctrine PROD, pas d'apply automatique sur la prod).
+# =============================================================================
+
+name: Deploiement FUSEAU (Azure App Service)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "src/**"
+      - "frontend/**"
+      - "requirements.txt"
+      - ".github/workflows/deploy-azure.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploiement-fuseau-prod
+  cancel-in-progress: false
+
+env:
+  NOM_WEBAPP: app-shsv-fuseau-prod
+  VERSION_PYTHON: "3.11"
+
+jobs:
+  deployer:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Recuperer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.VERSION_PYTHON }}
+
+      - name: Verifier que le code demarre
+        # Garde-fou minimal : un import qui casse doit echouer ici, pas en prod
+        # cinq minutes plus tard sur un conteneur qui redemarre en boucle.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -c "import ast, pathlib; [ast.parse(p.read_text(encoding='utf-8')) for p in pathlib.Path('app').rglob('*.py')]"
+          AUTH_MODE=entra python -c "from app.main import app; print('[SUCCES] Application importee :', app.title)"
+
+      - name: Se connecter a Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Construire le paquet de deploiement
+        # On n'envoie que ce que l'application sert : ni ETL Excel, ni scripts
+        # de deploiement du poste metier, ni donnees.
+        run: |
+          zip -r paquet.zip app src frontend requirements.txt \
+            -x "src/scripts/etl/*" -x "*__pycache__*" -x "*.pyc"
+
+      - name: Deployer sur la Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.NOM_WEBAPP }}
+          package: paquet.zip
+
+      - name: Verifier la sante apres deploiement
+        # Deux controles complementaires :
+        #   /api/health est volontairement exclu de l'authentification (sonde de
+        #   plateforme) et doit repondre 200 : l'application tourne et joint la
+        #   base privee.
+        #   La racine, elle, doit etre redirigee vers le login Microsoft. Un 200
+        #   anonyme sur la racine serait une faille, pas un succes.
+        run: |
+          sante=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 \
+                  "https://${NOM_WEBAPP}.azurewebsites.net/api/health")
+          echo "Sante anonyme : ${sante}"
+          test "${sante}" = "200" || { echo "[ECHEC] Application non fonctionnelle."; exit 1; }
+
+          racine=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+                   "https://${NOM_WEBAPP}.azurewebsites.net/")
+          echo "Racine anonyme : ${racine}"
+          case "${racine}" in
+            302|401|403) echo "[SUCCES] Application en ligne et protegee par Entra ID." ;;
+            200) echo "[ECHEC] Interface accessible sans authentification." && exit 1 ;;
+            *) echo "[ECHEC] Reponse inattendue : ${racine}" && exit 1 ;;
+          esac

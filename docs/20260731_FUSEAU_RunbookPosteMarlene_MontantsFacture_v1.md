@@ -111,8 +111,19 @@ préférable.
 az keyvault secret set --vault-name kv-dtpf-prod --name GEMINI-API-KEY --value <cle fournie par Antho>
 ```
 
-**Voie fichier local**, si le Key Vault n'est pas accessible depuis ce poste :
-ajouter dans `config\.env` la ligne `GEMINI_API_KEY=<cle>`.
+**Voie fichier local** — c'est la **seule qui fonctionne sur ce poste** :
+`KEY_VAULT_NAME` y est vide par choix, et `get_gemini_api_key()` ne tente le Key
+Vault que si cette variable est renseignée. Ajouter dans `config\.env` :
+
+```
+GEMINI_API_KEY=AIza...
+```
+
+> ⚠️ **Sans chevrons, sans guillemets, sans espace autour du `=`.** Le 06/08, la
+> clé a été collée sous la forme `GEMINI_API_KEY=<AIza...>` en recopiant les
+> chevrons du gabarit : les 100 % des appels sont partis en `API_KEY_INVALID`.
+> Les `<...>` de cette documentation marquent un emplacement à remplacer, ils ne
+> font jamais partie de la valeur.
 
 Ne pas demander la clé à Marlène, ne pas l'afficher, ne pas la recopier dans le
 compte rendu.
@@ -143,14 +154,32 @@ classeur Google du transitaire, lui, porte toujours le BL.
 
 Relevé sur le poste d'Antho le 31/07 au matin : 146 conteneurs, 36 avec un BL.
 
-**Bascule** : dans `config\.env`, remplacer la ligne `SUIVI_MARITIME_PATH=...` par
-les deux lignes suivantes. Conserver l'ancien chemin comme repli, ne pas le
-supprimer.
+> ⚠️ **Corrigé le 06/08 — cette bascule n'est plus à faire.** La mesure sur le
+> poste a montré qu'aucune ligne `SUIVI_MARITIME_PATH` n'existe dans le
+> `config\.env`, et que le défaut du code est déjà `gsheet`
+> ([config_manager.py](../src/utils/config_manager.py)). La bascule était donc
+> déjà effective : ce n'était pas la configuration qui bloquait.
+>
+> La vraie cause était double. Le classeur du transitaire est un **`.xlsx`
+> déposé dans Drive**, pas un Google Sheet natif, et l'API Sheets refuse un
+> fichier Office. Cet échec était ensuite avalé par le `except` large de
+> [extract.py](../src/scripts/etl/extract.py), qui repliait en silence sur la
+> copie serveur à 14 colonnes, celle qui n'a pas de colonne BL. Corrigé par
+> `lire_classeur()`. **Ne pas modifier `config\.env`**, passer directement à la
+> vérification ci-dessous.
+
+<details>
+<summary>Instruction d'origine du 31/07, conservée pour mémoire (ne pas appliquer)</summary>
+
+Dans `config\.env`, remplacer la ligne `SUIVI_MARITIME_PATH=...` par les deux
+lignes suivantes. Conserver l'ancien chemin comme repli, ne pas le supprimer.
 
 ```
 SUIVI_MARITIME_PATH=gsheet
 SUIVI_MARITIME_PATH_FICHIER=\\192.168.102.55\partage\ADA\METIER\SUIVI CDES IMPORT\2026\TRANSITAIRE\2026 SUIVI MARITIME.xlsx
 ```
+
+</details>
 
 **Vérifier que le classeur est lisible avant de lancer quoi que ce soit** :
 

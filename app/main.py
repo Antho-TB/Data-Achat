@@ -72,7 +72,12 @@ async def lifespan(app: FastAPI):
         logger.error("[ECHEC] Impossible de joindre PostgreSQL au demarrage.")
     else:
         logger.info("[SUCCES] API ERP Achat prete -- schema : %s", SCHEMA)
-    if not Config.API_KEY:
+    if Config.AUTH_MODE == "entra":
+        logger.info(
+            "[INFO] Authentification deleguee a la plateforme Entra ID "
+            "(mode heberge) -- aucune cle applicative attendue."
+        )
+    elif not Config.API_KEY:
         logger.warning(
             "[ATTENTION] API_KEY absente de config/.env -- "
             "les endpoints d'ecriture sont desactives (fail-closed)."
@@ -87,17 +92,66 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=Config.CORS_ORIGINS,
     allow_methods=["GET", "PUT"],
-    allow_headers=["Content-Type", "X-API-Key"],
+    allow_headers=["Content-Type", "X-API-Key", "X-MS-CLIENT-PRINCIPAL-NAME"],
 )
 
 
 # -- Securite ------------------------------------------------------------------
-def require_api_key(x_api_key: str = Header(default="")) -> None:
-    """Protege les endpoints d'ecriture. Fail-closed si API_KEY non configuree."""
+# Deux contextes d'execution, deux barrieres, jamais les deux desactivees.
+#
+#   AUTH_MODE=apikey (poste metier, dev local) : la cle X-API-Key est exigee sur
+#   les ecritures, fail-closed si la cle n'est pas configuree cote serveur.
+#
+#   AUTH_MODE=entra (application hebergee en Azure, decision du 03/09/2026) :
+#   l'authentification de plateforme App Service redirige tout visiteur non
+#   authentifie vers le login Microsoft 365. L'utilisateur est donc deja connu
+#   quand la requete arrive, et Azure injecte son identite dans les en-tetes
+#   X-MS-CLIENT-PRINCIPAL-NAME / -ID. On refuse quand meme l'ecriture si ces
+#   en-tetes sont absents : cela signifierait que l'authentification de
+#   plateforme est desactivee ou contournee, et le silence serait pire que
+#   l'erreur.
+def require_utilisateur(
+    x_api_key: str = Header(default=""),
+    x_ms_client_principal_name: str = Header(default=""),
+    x_ms_client_principal_id: str = Header(default=""),
+) -> str:
+    """
+    Autorise une ecriture et retourne l'identifiant de l'auteur.
+
+    Junior Tip : FastAPI convertit le nom de l'argument en nom d'en-tete HTTP
+    (les tirets bas deviennent des tirets), donc `x_ms_client_principal_name`
+    lit bien l'en-tete `X-MS-CLIENT-PRINCIPAL-NAME` pose par App Service.
+
+    Returns:
+        Identite de l'auteur, a tracer dans les tables d'annotation.
+    Raises:
+        HTTPException: 503 si le serveur est mal configure, 401 si l'appelant
+            n'est pas authentifie.
+    """
+    if Config.AUTH_MODE == "entra":
+        identite = x_ms_client_principal_name or x_ms_client_principal_id
+        if not identite:
+            raise HTTPException(
+                status_code=401,
+                detail="Non authentifie : aucune identite Microsoft 365 transmise par la plateforme.",
+            )
+        return identite
+
+    if Config.AUTH_MODE != "apikey":
+        raise HTTPException(
+            status_code=503,
+            detail=f"AUTH_MODE invalide cote serveur : {Config.AUTH_MODE!r}. Valeurs admises : apikey, entra.",
+        )
+
     if not Config.API_KEY:
         raise HTTPException(status_code=503, detail="Ecriture desactivee : API_KEY non configuree cote serveur.")
     if not secrets.compare_digest(x_api_key, Config.API_KEY):
         raise HTTPException(status_code=401, detail="Cle API invalide ou absente (header X-API-Key).")
+    return "poste-metier"
+
+
+# Nom historique conserve : les dependances des endpoints d'ecriture le citent.
+require_api_key = require_utilisateur
 
 
 def internal_error(exc: Exception) -> HTTPException:
@@ -577,10 +631,10 @@ def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
                        p.designation_en,
                        COALESCE(p.designation_fr, p.designation_en, t.designation) AS designation,
                        p.ean13,
-                       t.fournisseur, t.prix, t.date_mail
+                       t.fournisseur, t.prix, t.quantite, t.date_mail
                 FROM (
                     SELECT po_number, code_article, designation, fournisseur,
-                           prix_unitaire AS prix, date_commande AS date_mail,
+                           prix_unitaire AS prix, quantite, date_commande AS date_mail,
                            ROW_NUMBER() OVER (PARTITION BY code_article
                                               ORDER BY date_commande DESC NULLS LAST) AS rn
                     FROM {SCHEMA}.commande
@@ -591,7 +645,40 @@ def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
                 WHERE rn <= 3
                 ORDER BY t.code_article, t.date_mail DESC NULLS LAST
             """), params)
-            return {"source": "commande_fallback", "data": rows_to_dicts(r)}
+            lignes = rows_to_dicts(r)
+            if lignes:
+                return {"source": "commande_fallback", "data": lignes}
+
+            # Repli sans limite de date (mail Marlene MONTBRIZON du 03/09/2026).
+            # achat.commande ne porte que le perimetre IMPORT (juin 2024 a
+            # aujourd'hui) : 788 articles du referentiel n'y ont aucun prix. Quand
+            # la recherche ne sort rien, on va chercher les 3 derniers prix dans
+            # achat.historique_prix_sylob, construit sur les commandes fournisseur
+            # Sylob depuis 2013, toutes societes confondues, sans borne de date.
+            # La source est renvoyee au front pour que l'interface annonce d'ou
+            # vient le prix : hors perimetre Import, la devise peut ne pas etre le
+            # dollar.
+            if not code_article:
+                return {"source": "commande_fallback", "data": []}
+
+            repli = conn.execute(text(f"""
+                SELECT h.po_number, h.code_article,
+                       COALESCE(p.designation_fr, h.designation) AS designation_fr,
+                       p.designation_en,
+                       COALESCE(p.designation_fr, p.designation_en, h.designation) AS designation,
+                       p.ean13,
+                       h.fournisseur, h.prix_unitaire AS prix, h.quantite,
+                       h.date_commande AS date_mail,
+                       h.societe, h.devise_etrangere, h.prix_unitaire_eur, h.unite
+                FROM {SCHEMA}.historique_prix_sylob h
+                LEFT JOIN {SCHEMA}.produit p ON p.code_article = h.code_article
+                WHERE h.code_article = :code_article
+                ORDER BY h.rang
+            """), {"code_article": code_article})
+            lignes_repli = rows_to_dicts(repli)
+            logger.info("[INFO] Historique prix %s : repli Sylob, %d ligne(s)",
+                        code_article, len(lignes_repli))
+            return {"source": "sylob_hors_perimetre", "data": lignes_repli}
         except Exception as e:
             raise internal_error(e)
 

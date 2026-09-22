@@ -46,6 +46,7 @@ import argparse
 import json
 import logging
 import mimetypes
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -156,6 +157,16 @@ def _appel_modele(client: Any, chemin: Path, modele: str) -> dict[str, Any]:
     """
     Envoie la piece au modele et renvoie sa reponse structuree.
 
+    Borne dans le temps et reprend sur erreur de TRANSPORT. Sans timeout, un
+    appel qui ne rend jamais la main fige le lot entier : constate le 06/08/2026
+    sur le poste de Marlene, plus de 4 minutes sur un PDF de 0,4 Mo.
+
+    Junior Tip : on ne reprend QUE les pannes de transport (timeout, 429, 503).
+    Une reponse vide ou non JSON n'est pas reprise, parce que la temperature est
+    nulle : le meme document redonnerait exactement la meme mauvaise reponse, et
+    la reprise ne ferait que payer trois fois la meme erreur. Distinguer les deux
+    familles est ce qui separe une reprise utile d'une boucle couteuse.
+
     Args:
         client: client google-genai deja instancie.
         chemin: fichier a lire (PDF ou image).
@@ -164,29 +175,53 @@ def _appel_modele(client: Any, chemin: Path, modele: str) -> dict[str, Any]:
         Dictionnaire conforme a SCHEMA_REPONSE.
     Raises:
         ValueError: si la reponse du modele n'est pas un JSON exploitable.
+        TimeoutError: si toutes les tentatives de transport ont echoue.
     """
     from google.genai import types
 
+    est_escalade = modele == Config.MODELE_FACTURE_ESCALADE
+    timeout_ms = (Config.GEMINI_TIMEOUT_ESCALADE_MS if est_escalade
+                  else Config.GEMINI_TIMEOUT_MS)
+
     piece = types.Part.from_bytes(
         data=chemin.read_bytes(), mime_type=_mime_type(chemin))
-    reponse = client.models.generate_content(
-        model=modele,
-        contents=[piece, CONSIGNE],
-        config=types.GenerateContentConfig(
-            # Temperature nulle : sur une extraction comptable, on veut le meme
-            # resultat au deuxieme passage, pas une variante plausible.
-            temperature=0.0,
-            response_mime_type="application/json",
-            response_schema=SCHEMA_REPONSE,
-        ),
+    config = types.GenerateContentConfig(
+        # Temperature nulle : sur une extraction comptable, on veut le meme
+        # resultat au deuxieme passage, pas une variante plausible.
+        temperature=0.0,
+        response_mime_type="application/json",
+        response_schema=SCHEMA_REPONSE,
+        http_options=types.HttpOptions(timeout=timeout_ms),
     )
-    brut = (reponse.text or "").strip()
-    if not brut:
-        raise ValueError("reponse vide du modele")
-    try:
-        return json.loads(brut)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"reponse non JSON : {brut[:200]}") from exc
+
+    derniere: Optional[Exception] = None
+    for tentative in range(1, Config.GEMINI_TENTATIVES + 1):
+        try:
+            reponse = client.models.generate_content(
+                model=modele, contents=[piece, CONSIGNE], config=config)
+            brut = (reponse.text or "").strip()
+            if not brut:
+                raise ValueError("reponse vide du modele")
+            try:
+                return json.loads(brut)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"reponse non JSON : {brut[:200]}") from exc
+        except ValueError:
+            raise
+        except Exception as exc:
+            derniere = exc
+            if tentative >= Config.GEMINI_TENTATIVES:
+                break
+            attente = 2 * (3 ** (tentative - 1))   # 2 s puis 6 s
+            logger.warning(
+                "[ATTENTION] %s : tentative %d/%d echouee (%s), reprise dans %d s.",
+                chemin.name, tentative, Config.GEMINI_TENTATIVES,
+                type(exc).__name__, attente)
+            time.sleep(attente)
+
+    raise TimeoutError(
+        f"{Config.GEMINI_TENTATIVES} tentatives echouees sur {chemin.name} "
+        f"(timeout {timeout_ms} ms) : {derniere}")
 
 
 def _normaliser(donnees: dict[str, Any], chemin: Path, modele: str) -> dict[str, Any]:
@@ -284,21 +319,58 @@ def parse_facture(chemin: Path, client: Any = None) -> Optional[dict[str, Any]]:
     return resultat
 
 
-def parse_dossier(dossier: Path) -> list[dict[str, Any]]:
-    """Analyse recursivement un dossier de pieces jointes."""
+def parse_dossier(dossier: Path, tri: Optional[bool] = None) -> list[dict[str, Any]]:
+    """
+    Analyse recursivement un dossier de pieces jointes.
+
+    Args:
+        dossier: racine des PJ telechargees par fetch_attachments.py.
+        tri: force le tri prealable. None = valeur de Config.TRI_PREALABLE_PIECE.
+            Mettre False sert au test de non-regression du tri : on repasse tout
+            au modele et on compare ses verdicts a ceux du tri.
+    Returns:
+        Pieces comptables normalisees, pretes pour achat.facture_fournisseur.
+    Raises:
+        RuntimeError: extraction indisponible, ou coupe-circuit de lot declenche.
+    """
+    from src.scripts.gmail.triage_piece import trier_dossier
+
+    if Config.TRI_PREALABLE_PIECE if tri is None else tri:
+        a_analyser, ecartes = trier_dossier(dossier)
+        for fichier, verdict in ecartes:
+            logger.info("[TRI] %s ecarte sans appel modele (%s : %s).",
+                        fichier.name, verdict.etage, verdict.motif)
+    else:
+        a_analyser = [p for p in sorted(dossier.rglob("*"))
+                      if p.is_file() and p.suffix.lower() in EXTENSIONS_SUPPORTEES]
+        logger.warning("[ATTENTION] Tri prealable desactive : les %d piece(s) "
+                       "partent toutes au modele.", len(a_analyser))
+
     client = _client_gemini()
     resultats: list[dict[str, Any]] = []
-    fichiers = [p for p in sorted(dossier.rglob("*"))
-                if p.is_file() and p.suffix.lower() in EXTENSIONS_SUPPORTEES]
-    logger.info("[INFO] %d piece(s) jointe(s) analysable(s) dans %s",
-                len(fichiers), dossier)
-    for fichier in fichiers:
+    # Coupe-circuit : on ne compte que les TimeoutError, seules a couter cher.
+    # Une reponse non JSON echoue en une seconde et n'annonce pas une panne d'API,
+    # alors qu'une serie de timeouts signifie que le service ne repond plus et que
+    # continuer ferait tourner la tache planifiee des heures pour rien.
+    timeouts_consecutifs = 0
+    for fichier in a_analyser:
         try:
             piece = parse_facture(fichier, client=client)
+            timeouts_consecutifs = 0
             if piece:
                 resultats.append(piece)
         except RuntimeError:
             raise
+        except TimeoutError as exc:
+            timeouts_consecutifs += 1
+            logger.error("[ECHEC] %s : %s", fichier.name, exc)
+            if timeouts_consecutifs >= Config.GEMINI_ECHECS_CONSECUTIFS_MAX:
+                raise RuntimeError(
+                    f"{timeouts_consecutifs} timeouts consecutifs : le service "
+                    f"Gemini ne repond plus, lot interrompu apres "
+                    f"{len(resultats)} piece(s) extraite(s). Relancer le lot "
+                    "quand le service repond, l'extraction est idempotente."
+                ) from exc
         except Exception as exc:
             logger.error("[ECHEC] %s : %s", fichier.name, exc)
     return resultats
@@ -313,13 +385,21 @@ def main() -> int:
     ap.add_argument("--file", type=str, help="Une piece jointe.")
     ap.add_argument("--folder", type=str, help="Dossier de PJ (recursif).")
     ap.add_argument("--out", type=str, default="", help="Fichier JSON de sortie.")
+    ap.add_argument("--sans-tri", action="store_true",
+                    help="Desactive le tri prealable et envoie TOUTES les pieces "
+                         "au modele. Sert au test de non-regression du tri : "
+                         "aucun document ecarte par le tri ne doit avoir ete "
+                         "retenu par le modele.")
     args = ap.parse_args()
 
     if args.file:
+        # Le tri ne s'applique pas a --file : demander explicitement l'analyse
+        # d'un fichier precis est une action humaine, qui doit toujours aboutir.
         piece = parse_facture(Path(args.file))
         resultats = [piece] if piece else []
     elif args.folder:
-        resultats = parse_dossier(Path(args.folder))
+        resultats = parse_dossier(Path(args.folder),
+                                  tri=False if args.sans_tri else None)
     else:
         ap.error("Fournir --file ou --folder.")
         return 2

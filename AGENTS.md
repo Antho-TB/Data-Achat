@@ -1,4 +1,4 @@
-# Data-Achat / FUSEAU — Contexte Claude
+# Data-Achat / FUSEAU — Contexte Codex
 
 ## Rôle
 Dashboard Achats TB Groupe (nom de code **FUSEAU**) — reporting, KPIs achats, détection anomalies. Onglets Article (historique prix), Promo/Opé, Qualité, suivi conteneurs/maritime.
@@ -30,11 +30,21 @@ Toute nouvelle fonctionnalité prod doit rester validée avec le métier avant g
 - `logger = logging.getLogger(__name__)` via `src.utils.logging_setup.setup_logging()` — jamais `print()`, sauf sortie de données d'un CLI pipeable
 - Connexion DB via Key Vault (réutiliser le pattern MyReport)
 
-## Règle d'écriture en base (à ne jamais enfreindre)
-`achat.commande` et `achat.qualite` sont rechargées en **full-refresh** (TRUNCATE + INSERT) par l'ETL. Aucun module ne doit y écrire directement : ce serait effacé au prochain run nocturne.
-- Saisies utilisateur → `achat.commande_annotation`
-- Enrichissements automatiques (réception Sylob, NCR mail) → `achat.commande_enrichissement`
-- Reprojection par `src/scripts/etl/apply_enrichissement.py`, étape ENRICH en fin de `pipeline.py`
+## Règle d'écriture et de suppression en base (Stricte & Permanente - Toutes sessions)
+1. **INTERDICTION ABSOLUE ET STRICTE DE DESTRUCTIFS AUTOMATIQUES :**
+   Il est STRICTEMENT INTERDIT d'exécuter toute commande SQL destructive (`DROP TABLE`, `DROP VIEW`, `DROP SCHEMA`, `DROP DATABASE`, `TRUNCATE`, ou `DELETE`) de manière automatique ou scriptée.
+   Chaque opération de suppression ou nettoyage de structure/données doit OBLIGATOIREMENT faire l'objet d'une confirmation explicite, écrite et préalable d'Anthony Bezille pour chaque table concernée, sans AUCUNE exception.
+
+2. **Écritures applicatives FUSEAU :**
+   `achat.commande` et `achat.qualite` sont rechargées en **full-refresh** (TRUNCATE + INSERT) par l'ETL. Aucun module applicatif ne doit y écrire directement : ce serait effacé au prochain run nocturne.
+   - Saisies utilisateur → `achat.commande_annotation`
+   - Enrichissements automatiques (réception Sylob, NCR mail) → `achat.commande_enrichissement`
+   - Reprojection par `src/scripts/etl/apply_enrichissement.py`, étape ENRICH en fin de `pipeline.py`
+
+## Imported Claude Cowork project instructions
+
+Investiguer tous les workflow du service Achat et structurer la donnée
+
 
 ## ⚠️ Alertes actives
 

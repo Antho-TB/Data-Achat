@@ -158,3 +158,154 @@ def read_sheet_as_dicts(
     """Lit un onglet Google Sheet et renvoie directement la liste de dicts (header en 1re ligne)."""
     values = read_sheet_values(spreadsheet_id, range_name, credentials_path, token_path)
     return grid_to_dicts(values)
+
+
+# ===========================================================================
+# CLASSEURS OFFICE STOCKES DANS DRIVE
+# ===========================================================================
+# L'API Sheets ne sait lire QUE des Google Sheets natifs. Sur un fichier Office
+# elle refuse net : "This operation is not supported for this document. The
+# document must not be an Office file."
+#
+# Or le suivi maritime du transitaire est un .xlsx depose dans Drive
+# (SUIVI MARITIME TARRERIAS 2026.xlsx, proprietaire lbonnet@qualitairsea.com),
+# pas un Google Sheet. Constate le 06/08/2026 : ce n'etait ni un probleme de
+# scope ni un probleme de partage, les deux avaient ete regles le matin meme.
+# C'etait la mauvaise API.
+#
+# Convertir le fichier en Google Sheet est ecarte volontairement : il appartient
+# au transitaire, qui l'alimente quotidiennement. La conversion creerait un
+# doublon fige, et FUSEAU lirait une copie morte pendant que QUALITAIR
+# continuerait de mettre a jour l'original.
+
+MIME_GOOGLE_SHEET = "application/vnd.google-apps.spreadsheet"
+
+
+def _service_drive(
+    credentials_path: Optional[Path] = None,
+    token_path: Optional[Path] = None,
+):
+    """Client Drive v3, meme authentification partagee que le client Sheets."""
+    from googleapiclient.discovery import build
+
+    racine = get_base_path()
+    creds = get_credentials(
+        credentials_path or (racine / "config" / "credentials.json"),
+        token_path or (racine / "config" / "token.json"))
+    return build("drive", "v3", credentials=creds, cache_discovery=False)
+
+
+def metadonnees_drive(
+    file_id: str,
+    credentials_path: Optional[Path] = None,
+    token_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    """
+    Nom, type MIME et date de modification d'un objet Drive.
+
+    modifiedTime est la date a laquelle le TRANSITAIRE a modifie le classeur.
+    C'est une meilleure date de transmission que le mtime d'une copie locale, qui
+    ne dit que la date du telechargement.
+
+    Raises:
+        RuntimeError: si l'objet est inaccessible (partage revoque, scope absent).
+    """
+    try:
+        return _service_drive(credentials_path, token_path).files().get(
+            fileId=file_id, fields="name, mimeType, modifiedTime, size").execute()
+    except Exception as e:
+        raise RuntimeError(
+            f"Objet Drive {file_id} inaccessible : {e}. Verifier le partage du "
+            "fichier et le scope drive.readonly du token (supprimer "
+            "config/token.json pour reconsentir)."
+        ) from e
+
+
+def lire_xlsx_drive(
+    file_id: str,
+    credentials_path: Optional[Path] = None,
+    token_path: Optional[Path] = None,
+) -> list[tuple[str, list[list[Any]]]]:
+    """
+    Telecharge un classeur Office depuis Drive et rend ses onglets en grilles.
+
+    Junior Tip : les cellules sont lues en dtype=str puis les vides remplacees
+    par une chaine vide, exactement comme _read_rows du transformateur maritime le
+    fait sur le fichier serveur. Ce n'est pas un detail de style : les dates
+    Excel, selon la facon dont on les lit, ressortent en texte, en horodatage ou
+    en numero de serie. Aligner les deux chemins de lecture garantit que le
+    parseur de dates voit la meme chose, quelle que soit la source.
+
+    Args:
+        file_id: identifiant Drive du fichier.
+    Returns:
+        Liste de couples (nom d'onglet, grille de cellules), meme forme que
+        read_all_tabs, pour que les appelants ne voient pas la difference.
+    Raises:
+        RuntimeError: si le telechargement ou le parsing echoue. On leve au lieu
+            de renvoyer une liste vide : cette fonction sert une tache planifiee,
+            et un classeur vide doit se distinguer d'une panne d'acces.
+    """
+    import io
+
+    import pandas as pd
+    from googleapiclient.http import MediaIoBaseDownload
+
+    try:
+        drive = _service_drive(credentials_path, token_path)
+        tampon = io.BytesIO()
+        telechargement = MediaIoBaseDownload(
+            tampon, drive.files().get_media(fileId=file_id))
+        termine = False
+        while not termine:
+            _, termine = telechargement.next_chunk()
+        tampon.seek(0)
+    except Exception as e:
+        raise RuntimeError(
+            f"Telechargement du classeur Drive {file_id} impossible : {e}") from e
+
+    try:
+        classeur = pd.ExcelFile(tampon)
+        resultat: list[tuple[str, list[list[Any]]]] = []
+        for nom in classeur.sheet_names:
+            df = classeur.parse(nom, header=None, dtype=str)
+            grille = df.fillna("").astype(str).values.tolist()
+            logger.info("[INFO] Onglet '%s' : %d ligne(s).", nom, len(grille))
+            resultat.append((nom, grille))
+        return resultat
+    except Exception as e:
+        raise RuntimeError(
+            f"Classeur Drive {file_id} telecharge mais illisible : {e}") from e
+
+
+def lire_classeur(
+    file_id: str,
+    credentials_path: Optional[Path] = None,
+    token_path: Optional[Path] = None,
+) -> list[tuple[str, list[list[Any]]]]:
+    """
+    Lit un classeur Drive, qu'il soit un Google Sheet natif ou un fichier Office.
+
+    Le type est determine par une lecture des metadonnees Drive, et non en
+    rattrapant le message d'erreur de l'API Sheets. Un test sur le libelle
+    "Office file" fonctionnerait aujourd'hui et casserait le jour ou Google
+    reformule sa phrase, sans que rien ne le signale.
+
+    Args:
+        file_id: identifiant du classeur.
+    Returns:
+        Liste de couples (nom d'onglet, grille de cellules).
+    Raises:
+        RuntimeError: classeur inaccessible ou illisible.
+    """
+    meta = metadonnees_drive(file_id, credentials_path, token_path)
+    mime = meta.get("mimeType", "")
+    if mime == MIME_GOOGLE_SHEET:
+        logger.info("[INFO] '%s' est un Google Sheet natif, lecture via l'API Sheets.",
+                    meta.get("name", file_id))
+        return read_all_tabs(file_id, credentials_path, token_path)
+
+    logger.info("[INFO] '%s' est un fichier Office (%s), lecture via Drive. "
+                "Derniere modification par le proprietaire : %s.",
+                meta.get("name", file_id), mime, meta.get("modifiedTime", "inconnue"))
+    return lire_xlsx_drive(file_id, credentials_path, token_path)

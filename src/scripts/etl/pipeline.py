@@ -184,7 +184,8 @@ def run(dry_run: bool = False) -> dict[str, int]:
 
     stats: dict[str, int] = {
         "produits": 0, "commandes": 0, "artwork": 0, "ot_transport": 0, "qualite": 0,
-        "acompte": 0, "receptions_sylob": 0, "enrichissements_appliques": 0, "erreurs": 0
+        "acompte": 0, "receptions_sylob": 0, "historique_prix_sylob": 0,
+        "enrichissements_appliques": 0, "erreurs": 0
     }
     data_dir = _get_data_dir()
 
@@ -258,8 +259,20 @@ def run(dry_run: bool = False) -> dict[str, int]:
     try:
         from src.scripts.etl.apply_enrichissement import apply_enrichissement
         from src.scripts.etl.enrich_reception_sylob import enrich_receptions_sylob
+        from src.scripts.etl.enrich_historique_prix_sylob import enrich_historique_prix_sylob
 
         stats["receptions_sylob"] = enrich_receptions_sylob()["enrichissements_ecrits"]
+        # Repli prix hors perimetre Import (demande Marlene 03/09/2026) : table
+        # purement derivee, rechargee en full-refresh depuis les commandes
+        # fournisseur Sylob. Isolee dans son propre try : une indisponibilite du
+        # DWH ne doit pas empecher la reprojection des enrichissements metier,
+        # qui elle est indispensable apres le rechargement de achat.commande.
+        try:
+            stats["historique_prix_sylob"] = \
+                enrich_historique_prix_sylob()["lignes_chargees"]
+        except Exception as exc_prix:
+            logger.warning("[ATTENTION] Repli prix Sylob non rafraichi : %s", exc_prix)
+            stats["erreurs"] += 1
         applique = apply_enrichissement()
         stats["enrichissements_appliques"] = applique["commandes_maj"] + applique["qualite_maj"]
     except Exception as exc:
