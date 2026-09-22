@@ -16,19 +16,18 @@
 --
 -- Non destructif : aucun DROP, aucun DELETE. Idempotent.
 --
--- PREREQUIS : definir le mot de passe hors de ce fichier, puis le deposer dans
--- kv-dtpf-prod sous psql-prod-fuseau-api-login / psql-prod-fuseau-api-password.
--- Ne jamais commiter le mot de passe.
+-- PREREQUIS : creer le role et lire son mot de passe depuis Key Vault avec
+-- `python -m deploy.appliquer_role_api_fuseau`. Ce fichier ne manipule aucun
+-- secret et sert de migration de droits relisible.
 --
--- Execution (a lancer avec le compte owner du schema, platform_team) :
+-- Execution manuelle possible APRES creation du role :
 --   psql "host=psql-dtpf-psql-prod.postgres.database.azure.com ..." \
---        -v mot_de_passe="'<secret>'" -f sql/20260903_role_api_fuseau.sql
+--        -f sql/20260903_role_api_fuseau.sql
 -- =============================================================================
 
 \set ON_ERROR_STOP on
 
--- Garde-fou : le mot de passe doit etre fourni, sinon on ne cree pas un role
--- sans authentification utilisable.
+-- Garde-fou : le script Python doit avoir cree le role au prealable.
 DO $$
 BEGIN
     IF current_setting('is_superuser') = 'off'
@@ -38,23 +37,17 @@ BEGIN
             'Ce script doit etre execute par platform_team (proprietaire du schema achat), pas par %',
             current_user;
     END IF;
-END
-$$;
-
--- 1. Role de connexion dedie a l'API hebergee.
-DO $$
-BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'dtpf_fuseau_api_prod') THEN
-        EXECUTE format('CREATE ROLE dtpf_fuseau_api_prod LOGIN PASSWORD %L', :mot_de_passe);
-        RAISE NOTICE '[SUCCES] Role dtpf_fuseau_api_prod cree.';
-    ELSE
-        EXECUTE format('ALTER ROLE dtpf_fuseau_api_prod PASSWORD %L', :mot_de_passe);
-        RAISE NOTICE '[INFO] Role dtpf_fuseau_api_prod deja present, mot de passe mis a jour.';
+        RAISE EXCEPTION
+            'Role dtpf_fuseau_api_prod absent. Executer deploy.appliquer_role_api_fuseau.';
     END IF;
 END
 $$;
 
--- 2. Lecture sur le schema achat et sur public.articles3 (recherche article).
+-- 1. Lecture sur le schema achat et sur public.articles3 (recherche article).
+--    CONNECT d'abord : sans lui le role existe mais la connexion est refusee au
+--    niveau de la base ("permission denied for database").
+GRANT CONNECT ON DATABASE dtpf_sylob_prod TO dtpf_fuseau_api_prod;
 GRANT USAGE ON SCHEMA achat  TO dtpf_fuseau_api_prod;
 GRANT USAGE ON SCHEMA public TO dtpf_fuseau_api_prod;
 
@@ -67,7 +60,7 @@ GRANT SELECT ON TABLE public.articles3 TO dtpf_fuseau_api_prod;
 ALTER DEFAULT PRIVILEGES FOR ROLE platform_team IN SCHEMA achat
     GRANT SELECT ON TABLES TO dtpf_fuseau_api_prod;
 
--- 3. Ecriture strictement limitee aux tables de saisie metier.
+-- 2. Ecriture strictement limitee aux tables de saisie metier.
 --    achat.commande, achat.produit, achat.qualite et achat.historique_prix_sylob
 --    sont rechargees en full-refresh par l'ETL : l'API n'y ecrit jamais.
 --    Verifie le 03/09/2026 dans app/main.py : les seules ecritures de l'API
@@ -81,7 +74,7 @@ GRANT SELECT, INSERT, UPDATE ON TABLE
 
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA achat TO dtpf_fuseau_api_prod;
 
--- 4. Verification : lister ce que le role peut ecrire, pour relecture humaine.
+-- 3. Verification : lister ce que le role peut ecrire, pour relecture humaine.
 SELECT table_name, string_agg(privilege_type, ', ' ORDER BY privilege_type) AS droits
 FROM information_schema.table_privileges
 WHERE grantee = 'dtpf_fuseau_api_prod'
