@@ -89,10 +89,26 @@ jobs:
         #   La racine, elle, doit etre redirigee vers le login Microsoft. Un 200
         #   anonyme sur la racine serait une faille, pas un succes.
         run: |
-          sante=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 \
-                  "https://${NOM_WEBAPP}.azurewebsites.net/api/health")
-          echo "Sante anonyme : ${sante}"
-          test "${sante}" = "200" || { echo "[ECHEC] Application non fonctionnelle."; exit 1; }
+          # App Service recycle le conteneur apres le deploiement : il faut
+          # attendre le tirage de l'image, l'activation de l'environnement Oryx
+          # puis la sonde de demarrage. Mesure du premier deploiement reel, le
+          # 22/09/2026 : 4 min 30 entre la fin du deploiement et "Site started",
+          # dont 51 s de sonde seule. Un controle immediat echoue donc
+          # systematiquement, sur une application parfaitement saine, et fait
+          # passer une livraison reussie pour un echec.
+          echo "Attente du redemarrage du conteneur, 8 minutes au plus..."
+          sante="000"
+          for tentative in $(seq 1 32); do
+            sante=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 \
+                    "https://${NOM_WEBAPP}.azurewebsites.net/api/health" || echo "000")
+            if [ "${sante}" = "200" ]; then
+              echo "Sante anonyme : 200, obtenu a la tentative ${tentative}."
+              break
+            fi
+            echo "  tentative ${tentative}/32 : ${sante}, nouvel essai dans 15 s"
+            sleep 15
+          done
+          test "${sante}" = "200" || { echo "[ECHEC] Application non fonctionnelle apres 8 minutes."; exit 1; }
 
           racine=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
                    "https://${NOM_WEBAPP}.azurewebsites.net/")

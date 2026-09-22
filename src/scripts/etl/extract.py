@@ -87,6 +87,32 @@ def extract_import(file_path: str | Path) -> pd.DataFrame:
     sheet = sorted(feuilles)[-1]  # année la plus récente si plusieurs
     logger.info("[INFO] Onglet retenu : %s", sheet)
 
+    # Garde-fou de péremption, ajouté le 22/09/2026.
+    #
+    # Retenir "le plus récent des onglets présents" rend le rollover d'année
+    # indolore, mais ne dit rien de la fraîcheur du fichier. Constaté ce jour sur
+    # le poste de Marlène : un fichier nommé "IMPORT 2026.xlsx", en réalité une
+    # copie de juin ne contenant que l'onglet IMPORT 2025. Le pipeline a basculé
+    # dessus et journalisé un [SUCCÈS] avec 636 commandes de 2025, là où la base
+    # en portait 802 à jour. Un chargement réel aurait écrasé une année de
+    # données, en silence, sans la moindre erreur.
+    #
+    # On refuse donc de traiter un onglet plus ancien que l'année du nom de
+    # fichier, quand ce nom en porte une. C'est la seule référence disponible
+    # localement : l'année courante ne convient pas, un rollover tardif en
+    # janvier ferait échouer un fichier légitime encore sur l'année précédente.
+    annee_onglet = int(re.search(r"\d{4}", sheet).group())
+    annee_fichier = re.search(r"\d{4}", path.stem)
+    if annee_fichier and annee_onglet < int(annee_fichier.group()):
+        raise ValueError(
+            f"Fichier périmé ou incomplet : '{path.name}' annonce "
+            f"{annee_fichier.group()} mais ne contient que l'onglet '{sheet}' "
+            f"(onglets présents : {xls.sheet_names}). Charger cet onglet "
+            f"écraserait les données courantes par celles de {annee_onglet}. "
+            f"Vérifier que DATA_DIR pointe le fichier vivant du partage réseau "
+            f"et non une copie locale."
+        )
+
     df = pd.read_excel(xls, sheet_name=sheet, header=3)
 
     # Supprimer les lignes sans PO#, ce sont soit des lignes vides,

@@ -1268,7 +1268,12 @@ def health():
         "status": "ok" if db_ok else "degraded",
         "db": "connected" if db_ok else "unreachable",
         "schema": SCHEMA,
-        "write_enabled": bool(Config.API_KEY),
+        # Deux facons d'autoriser l'ecriture, et le mode heberge n'utilise PAS
+        # de cle : la plateforme Entra injecte l'identite de l'appelant, que
+        # require_utilisateur accepte telle quelle. Ne regarder que l'API_KEY
+        # faisait donc annoncer "ecriture desactivee" par une API ou l'ecriture
+        # marche, ce qui envoie chercher une panne qui n'existe pas.
+        "write_enabled": Config.AUTH_MODE == "entra" or bool(Config.API_KEY),
     }
 
 
