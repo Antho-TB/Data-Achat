@@ -71,7 +71,65 @@ Les deux cases qui restaient vrac/inconnues dans la carte mentale d'Andréa ont 
 Sortir du bus factor « poste de Marlène ». Chantier porté avec **Samuel** (IT
 Réseau / Nubo).
 
+### 3.0 Pivot Azure App Service du 03/09/2026
+
+La cible de l'API et du frontend n'est plus le Windows Server décrit au §3.1.
+L'architecture retenue est une Web App Azure Linux avec authentification Entra,
+intégration au VNet et accès privé au PostgreSQL Azure. L'ETL et le pipeline
+Gmail restent sur site, car ils dépendent du partage réseau, du DWH Sylob
+on-premise et de la boîte Gmail Achats. Le runbook exécutable est
+`deploy/terraform/README.md`.
+
+État revérifié sur Azure le 22/09/2026. **Les relevés du 04/09 étaient périmés :
+ils annonçaient comme restant à faire des actions déjà exécutées le jour même.**
+Les lignes ci-dessous sont établies par `terraform plan`, l'interrogation de la
+base et Azure CLI, pas par relecture du code.
+
+- [x] Infrastructure App Service, authentification Entra, VNet, peering, Key
+  Vault et CI/CD décrits en Terraform.
+- [x] Sonde `/health` exclue de l'authentification de plateforme afin de permettre
+  la supervision sans ouvrir les endpoints métier.
+- [x] Compte PostgreSQL dédié `dtpf_fuseau_api_prod` préparé au moindre
+  privilège : lecture de `achat.*` et `public.articles3`, écriture limitée à
+  `achat.commande_annotation` et `achat.artwork_statut`.
+- [x] Secrets `psql-prod-fuseau-api-login` et `psql-prod-fuseau-api-password`
+  déposés dans `kv-dtpf-prod` (04/09, 06:45).
+- [x] Rôle `dtpf_fuseau_api_prod` effectivement créé en base. Droits d'écriture
+  constatés le 22/09 : `commande_annotation` et `artwork_statut` en INSERT et
+  UPDATE, rien d'autre. Conforme à la cible.
+- [x] Accès au backend Terraform opérationnel (authentification Entra sur le plan
+  de données), state `shsv-fuseau.tfstate` initialisé, subnet importé.
+- [x] Plan Terraform appliqué. `terraform plan` du 22/09 répond `No changes` :
+  aucune dérive entre le code et l'infrastructure réelle.
+- [x] `app-shsv-fuseau-prod` en état Running, peering DTPF vers SHSV actif.
+- [x] Identité de déploiement GitHub Actions créée en IaC (`cicd.tf`) :
+  fédération OIDC, aucun secret de longue durée, rôle `Website Contributor`
+  limité à la seule Web App.
+- [x] Secret Easy Auth déposé dans `MICROSOFT_PROVIDER_AUTHENTICATION_SECRET`
+  (22/09).
+- [ ] **Créer les trois secrets du dépôt GitHub** (`AZURE_CLIENT_ID`,
+  `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`), valeurs dans les sorties
+  Terraform `cicd_azure_*`. Action manuelle d'Antho : le jeton de l'agent n'a
+  pas la permission sur les secrets du dépôt.
+- [ ] Merger la branche pour déclencher le premier déploiement applicatif.
+  Aucun code n'a jamais été publié sur la Web App : `/health` répond 503 tant
+  que ce n'est pas fait.
+- [ ] Exécuter la recette : réseau, authentification, lecture PostgreSQL,
+  écriture d'annotation et logs.
+- [ ] Après validation métier, basculer les utilisateurs vers l'URL Azure. Garder
+  temporairement le poste de Marlène comme retour arrière, sans lancer deux ETL
+  concurrents.
+
+> **Nubo n'est pas un point de passage.** Une version antérieure de cette section
+> conditionnait l'apply à une relecture avec Nubo. C'est faux : Nubo intervient en
+> support (droits RBAC, policies, réseau). L'arbitrage d'architecture revient à
+> Antho.
+
 ### 3.1 Windows Server dédié
+
+> **Cible API remplacée le 03/09/2026 par Azure App Service, voir §3.0.** Cette
+> section reste utile uniquement pour l'hébergement sur site de l'ETL et des
+> binaires OCR. Ne pas y déployer une seconde API sans nouvel arbitrage.
 
 Procédure complète rédigée le 27/07 :
 `docs/20260727_FUSEAU_Procedure_Deploiement_WindowsServer_v1.md`. Cible
@@ -753,3 +811,5 @@ dans `05_ARCHIVES/Versions_Anterieures/`.
 | 28/07 (après-midi) | Branchement de l'ETL sur le partage réseau via le compte de service AD. Trois pannes silencieuses corrigées derrière : mauvais fichier IMPORT résolu par un motif trop large, fichier transitaire passé de 18 à 14 colonnes donc plus aucune mise à jour d'ETA, colonne de travail bloquant le chargement avant qualité et acompte. ETL rejoué en production. Refonte de la fiche Article 360 en cartes et grille alignée. Accès LAN d'Andréa préparé depuis le poste de Marlène, reste la règle de pare-feu qui exige des droits administrateur |
 | 28/07 | **Levée des réserves métier & infra** : réponses validées pour Q-A à Q-F (priorité DS, quarantaine Bext, PO critique = conteneur bloquant, BE GDD pour plans de prod, Clarisse/Andréa pour emballage). Purge définitive de l'ancien Sylob 102.21:5433 au profit de 102.41:5432. Compte AD `svc-dataachat` confirmé. |
 | 28/07 (soir) | Deux règles métier corrigées après relecture : la conformité qualité est actée **par mail** comme la non-conformité, et la packing list vient de **TB China par mail**, pas de la Fiche Achat. Les deux ont une conséquence directe sur le périmètre de captation Gmail |
+| 03-04/09 | Pivot d'hébergement de l'API vers Azure App Service : IaC, authentification Entra, réseau privé et CI/CD préparés. Rôle PostgreSQL dédié sécurisé via Key Vault, non encore appliqué. L'ETL et Gmail restent sur site. |
+| 22/09 | Audit de l'état réel Azure : l'infrastructure était déjà appliquée et sans dérive depuis le 04/09, contrairement à ce qu'annonçait le §3.0. Trou trouvé et comblé : aucune fédération OIDC n'existait pour ce dépôt, le pipeline aurait échoué au login. Identité de déploiement déclarée en IaC (`cicd.tf`) avec `Website Contributor` limité à la Web App, secret Easy Auth déposé. Reste les trois secrets du dépôt GitHub, puis le merge. |
