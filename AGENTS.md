@@ -45,3 +45,15 @@ Toute nouvelle fonctionnalité prod doit rester validée avec le métier avant g
 
 Investiguer tous les workflow du service Achat et structurer la donnée
 
+
+## ⚠️ Alertes actives
+
+- Qualité de donnée `achat.ot_transport` : la colonne `n_bl` mélange BL, numéros
+  de commande et codes transitaire, et `ot_transport_bl` ne couvre que 29 lignes
+  sur 147 avec un `fournisseur` nul. Constaté le 2026-09-03 depuis le projet
+  `fiche_de_controle`, qui lit ces tables. À traiter avant de s'appuyer dessus :
+  `docs/20260903_FUSEAU_QualiteDonnee_OtTransport_v1.md`.
+- `fiche_de_controle` (service qualité) LIT désormais `achat.ot_transport` et
+  `achat.ot_transport_bl`. Dépendance unidirectionnelle : ce domaine n'écrit
+  jamais dans `achat.*`, mais un changement de schéma sur ces deux tables le
+  casse. Prévenir avant de les modifier.
