@@ -33,6 +33,10 @@ terraform {
     container_name       = "tfstates"
     key                  = "shsv-fuseau.tfstate"
     subscription_id      = "70d5f67e-2e75-416d-a322-457493d18263"
+    # Authentification Entra ID sur le plan de donnees du storage, pas de cle de
+    # compte : la cle partagee est un secret de longue duree que personne ne fait
+    # tourner, et le compte de stockage du state peut l'avoir desactivee.
+    use_azuread_auth = true
   }
 }
 
