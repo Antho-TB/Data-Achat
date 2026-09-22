@@ -32,3 +32,22 @@ output "peering_actif" {
   description = "Vrai si le peering direct shsv vers dtpf a ete cree."
   value       = var.creer_peering_dtpf
 }
+# -----------------------------------------------------------------------------
+# Valeurs a reporter dans les secrets du depot GitHub (Settings > Secrets and
+# variables > Actions). Aucune n'est confidentielle : ce sont des identifiants,
+# pas des cles. La confiance repose sur la federation, pas sur leur secret.
+# -----------------------------------------------------------------------------
+output "cicd_azure_client_id" {
+  description = "A reporter dans le secret AZURE_CLIENT_ID du depot."
+  value       = azuread_application.cicd.client_id
+}
+
+output "cicd_azure_tenant_id" {
+  description = "A reporter dans le secret AZURE_TENANT_ID du depot."
+  value       = data.azurerm_client_config.actuel.tenant_id
+}
+
+output "cicd_azure_subscription_id" {
+  description = "A reporter dans le secret AZURE_SUBSCRIPTION_ID du depot."
+  value       = var.subscription_shsv
+}

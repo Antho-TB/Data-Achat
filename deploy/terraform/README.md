@@ -51,14 +51,18 @@ d'abord le chemin par le hub.
    avec un mot de passe genere hors du depot :
 
    ```powershell
-   # Generer, deposer au Key Vault, puis appliquer le script SQL
+   # Generer et deposer le secret au Key Vault, sans le commiter
    az keyvault secret set --vault-name kv-dtpf-prod --name psql-prod-fuseau-api-login    --value dtpf_fuseau_api_prod
    az keyvault secret set --vault-name kv-dtpf-prod --name psql-prod-fuseau-api-password --value "<secret genere>"
-   psql "<chaine platform_team>" -v mot_de_passe="'<secret genere>'" -f ../../sql/20260903_role_api_fuseau.sql
+   cd ../..
+   python -m deploy.appliquer_role_api_fuseau --dry-run
+   python -m deploy.appliquer_role_api_fuseau
    ```
 
-   Le script est idempotent, non destructif, et affiche en fin d'execution la
-   liste des tables ou le role peut ecrire, pour relecture.
+   Le script Python lit le secret directement dans Key Vault : le mot de passe
+   ne passe ni dans un argument de ligne de commande, ni dans un fichier SQL.
+   Il est idempotent, non destructif, et affiche en fin d'execution la liste des
+   tables ou le role peut ecrire, pour relecture.
 
 3. **Import du subnet.** Le subnet existe deja (decoupage Nubo) et il est vide.
    Terraform lui ajoute seulement la delegation App Service, il ne le cree pas :
@@ -87,6 +91,27 @@ $secret = terraform output -raw secret_auth_a_deposer
 az webapp config appsettings set -g rg-shsv-fuseau-prod -n app-shsv-fuseau-prod `
   --settings MICROSOFT_PROVIDER_AUTHENTICATION_SECRET=$secret
 ```
+
+Puis cabler le pipeline de deploiement. L'identite GitHub Actions est declaree
+dans `cicd.tf` (federation OIDC, aucun secret de longue duree). Il reste a
+reporter trois identifiants dans le depot, sous Settings, Secrets and variables,
+Actions :
+
+```powershell
+terraform output cicd_azure_client_id        # -> secret AZURE_CLIENT_ID
+terraform output cicd_azure_tenant_id        # -> secret AZURE_TENANT_ID
+terraform output cicd_azure_subscription_id  # -> secret AZURE_SUBSCRIPTION_ID
+```
+
+Ces trois valeurs ne sont pas confidentielles : ce sont des identifiants, pas
+des cles. La confiance repose sur la federation, qui n'accepte un jeton que s'il
+vient de ce depot et de son environnement `production`.
+
+ATTENTION, piege deja rencontre : le job `deployer` porte `environment:
+production`, donc GitHub emet un jeton dont le sujet est
+`repo:<depot>:environment:production`, et non `...:ref:refs/heads/main`. La
+federation est posee sur l'environnement. Si l'environnement disparait un jour
+du workflow, c'est `cicd.tf` qu'il faut corriger, pas les secrets du depot.
 
 Enfin, deployer le code : pousser sur `main` declenche
 `.github/workflows/deploy-azure.yml`, ou lancer le workflow a la main.

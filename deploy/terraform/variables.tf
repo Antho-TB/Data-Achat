@@ -162,3 +162,8 @@ variable "tags" {
   description = "Tags obligatoires (policy de tags active sur le tenant)."
   type        = map(string)
 }
+variable "depot_github" {
+  description = "Depot GitHub autorise a deployer, au format proprietaire/nom. Sert de sujet a la federation d'identite OIDC."
+  type        = string
+  default     = "Antho-TB/Data-Achat"
+}
