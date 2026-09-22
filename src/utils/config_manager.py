@@ -171,6 +171,19 @@ class Config:
     AUTH_MODE: str = os.getenv("AUTH_MODE", "apikey").strip().lower()
 
     API_KEY: str = os.getenv("API_KEY", "")
+    # Empreinte du commit reellement servi, posee par le pipeline de deploiement
+    # dans les app settings de la Web App.
+    #
+    # Sans elle, le pipeline ne peut pas distinguer "l'application repond" de
+    # "l'application repond avec le code que je viens de deployer". Constate le
+    # 22/09/2026 : un deploiement marque actif a 13:54 n'avait pas recycle le
+    # conteneur, qui a continue de servir le code du matin en repondant 200 a
+    # chaque controle de sante. Un pipeline vert sur une livraison sans effet est
+    # plus dangereux qu'un pipeline rouge, parce que personne ne va verifier.
+    #
+    # Vaut "inconnu" hors App Service : sur le poste metier le code vient d'un
+    # git pull, et c'est git qui fait foi.
+    COMMIT_DEPLOYE: str = os.getenv("FUSEAU_COMMIT", "inconnu")
     # Hot-reload uvicorn (dev uniquement). Désactivé par défaut : WatchFiles
     # s'est montré non fiable sous Windows (workers orphelins, reloads manqués).
     API_RELOAD: bool = os.getenv("API_RELOAD", "0") == "1"

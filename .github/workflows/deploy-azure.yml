@@ -36,6 +36,7 @@ concurrency:
 
 env:
   NOM_WEBAPP: app-shsv-fuseau-prod
+  GROUPE_RESSOURCES: rg-shsv-fuseau-prod
   VERSION_PYTHON: "3.11"
 
 jobs:
@@ -81,35 +82,83 @@ jobs:
           app-name: ${{ env.NOM_WEBAPP }}
           package: paquet.zip
 
-      - name: Verifier la sante apres deploiement
-        # Deux controles complementaires :
-        #   /api/health est volontairement exclu de l'authentification (sonde de
-        #   plateforme) et doit repondre 200 : l'application tourne et joint la
-        #   base privee.
-        #   La racine, elle, doit etre redirigee vers le login Microsoft. Un 200
-        #   anonyme sur la racine serait une faille, pas un succes.
+      - name: Estampiller la version deployee
+        # Pose le SHA du commit dans les app settings. Deux effets, tous deux
+        # voulus : l'application peut declarer ce qu'elle sert, et la
+        # modification d'un app setting provoque le recyclage du conteneur.
+        #
+        # Ce recyclage n'est pas garanti par le deploiement lui-meme. Constate
+        # le 22/09/2026 : un paquet marque actif a 13:54 n'avait pas recycle le
+        # conteneur, qui a continue de servir le code du matin pendant que le
+        # controle de sante repondait 200. L'etape suivante ne fait donc pas
+        # confiance a ce recyclage, elle le verifie.
         run: |
-          # App Service recycle le conteneur apres le deploiement : il faut
-          # attendre le tirage de l'image, l'activation de l'environnement Oryx
-          # puis la sonde de demarrage. Mesure du premier deploiement reel, le
-          # 22/09/2026 : 4 min 30 entre la fin du deploiement et "Site started",
-          # dont 51 s de sonde seule. Un controle immediat echoue donc
-          # systematiquement, sur une application parfaitement saine, et fait
-          # passer une livraison reussie pour un echec.
-          echo "Attente du redemarrage du conteneur, 8 minutes au plus..."
-          sante="000"
-          for tentative in $(seq 1 32); do
-            sante=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 \
-                    "https://${NOM_WEBAPP}.azurewebsites.net/api/health" || echo "000")
-            if [ "${sante}" = "200" ]; then
-              echo "Sante anonyme : 200, obtenu a la tentative ${tentative}."
-              break
-            fi
-            echo "  tentative ${tentative}/32 : ${sante}, nouvel essai dans 15 s"
-            sleep 15
-          done
-          test "${sante}" = "200" || { echo "[ECHEC] Application non fonctionnelle apres 8 minutes."; exit 1; }
+          az webapp config appsettings set \
+            --resource-group "${GROUPE_RESSOURCES}" \
+            --name "${NOM_WEBAPP}" \
+            --settings FUSEAU_COMMIT="${GITHUB_SHA}" \
+            --output none
+          echo "Version estampillee : ${GITHUB_SHA}"
 
+      - name: Verifier la sante apres deploiement
+        # Trois controles, dans cet ordre :
+        #   1. /api/health repond 200 : l'application tourne et joint la base privee.
+        #   2. le commit qu'elle declare est celui qu'on vient de deployer.
+        #   3. la racine est protegee par Entra ID.
+        #
+        # Le point 2 est le plus important, et c'est celui qui manquait. Sans
+        # lui, le controle valide n'importe quelle version en cours d'execution :
+        # le 22/09/2026, le conteneur n'ayant pas ete recycle, il a repondu 200
+        # avec le code de la veille et le pipeline est passe au vert sur une
+        # livraison sans effet. Un pipeline vert a tort est plus couteux qu'un
+        # pipeline rouge a tort, parce que personne ne va verifier derriere.
+        run: |
+          attendu="${GITHUB_SHA}"
+          url="https://${NOM_WEBAPP}.azurewebsites.net/api/health"
+
+          # Interroge la sonde et renvoie le commit declare, ou une chaine vide.
+          commit_servi() {
+            curl -s --max-time 20 "${url}" 2>/dev/null \
+              | sed -n 's/.*"commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+          }
+
+          # Le conteneur met du temps a repartir : tirage de l'image, activation
+          # de l'environnement Oryx, sonde de demarrage. Mesure du 22/09 : 4 min 30
+          # au total, dont 51 s de sonde seule. On laisse 8 minutes.
+          attendre_le_bon_commit() {
+            for tentative in $(seq 1 32); do
+              obtenu="$(commit_servi)"
+              if [ "${obtenu}" = "${attendu}" ]; then
+                echo "[SUCCES] Version servie conforme (${obtenu}), tentative ${tentative}."
+                return 0
+              fi
+              echo "  tentative ${tentative}/32 : servi='${obtenu:-aucune reponse}'"
+              sleep 15
+            done
+            return 1
+          }
+
+          echo "Attente du recyclage du conteneur, 8 minutes au plus..."
+          if ! attendre_le_bon_commit; then
+            # Repli : le recyclage declenche par l'app setting n'a pas eu lieu.
+            # On force un redemarrage, une seule fois. Il n'est volontairement
+            # pas systematique : il coute environ 2 min 30 d'indisponibilite,
+            # mesurees le 22/09.
+            echo "[ATTENTION] Version attendue non servie. Redemarrage force de la Web App."
+            az webapp restart \
+              --resource-group "${GROUPE_RESSOURCES}" \
+              --name "${NOM_WEBAPP}" \
+              --output none
+
+            if ! attendre_le_bon_commit; then
+              echo "[ECHEC] Apres redemarrage, l'application ne sert toujours pas ${attendu}."
+              echo "        Derniere valeur observee : '$(commit_servi)'."
+              exit 1
+            fi
+          fi
+
+          # Controle de protection : la racine ne doit jamais repondre 200 a un
+          # appel anonyme.
           racine=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
                    "https://${NOM_WEBAPP}.azurewebsites.net/")
           echo "Racine anonyme : ${racine}"
