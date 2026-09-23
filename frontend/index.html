@@ -2485,16 +2485,33 @@ function renderFrsDetailRows() {
     || (r.designation_en || '').toLowerCase().includes(q)
     || (r.ean13 || '').toLowerCase().includes(q)
     || (r.po_number || '').toLowerCase().includes(q));
+  // Le symbole monetaire se decide LIGNE PAR LIGNE. Le tableau suffixait tout
+  // en dollars, ce qui etait juste tant qu'il ne lisait que le perimetre Import.
+  // Depuis la fusion avec Sylob (23/09/2026), une partie des lignes est en
+  // devise de la commande : afficher un dollar dessus serait un faux montant,
+  // pas une approximation d'affichage.
+  const prixFrs = (r) => {
+    if (r.prix == null) return '<span title="Prix absent de la source, ce n\'est pas un prix a zero">-</span>';
+    const v = Number(r.prix).toLocaleString('fr-FR', {minimumFractionDigits: 3, maximumFractionDigits: 3});
+    if (r.provenance !== 'sylob') return '$' + v;
+    if (!r.devise_etrangere) return v + ' &euro;';
+    const eur = r.prix_unitaire_eur != null
+      ? '&asymp; ' + Number(r.prix_unitaire_eur).toLocaleString('fr-FR', {minimumFractionDigits: 3, maximumFractionDigits: 3}) + ' &euro;'
+      : 'devise';
+    return `${v} <span class="unit" title="Prix en devise de la commande (Sylob ne fournit pas le code devise sur cette vue). Contre-valeur euro calculee par Sylob.">${eur}</span>`;
+  };
+
   document.getElementById('frs-detail-table').innerHTML = rows.length ? `<div class="table-wrap"><table>
-    <thead><tr><th>PO#</th><th>Article</th><th>EAN13</th><th>Désignation FR</th><th>Désignation EN</th><th>Qté</th><th>Prix</th><th>Date</th></tr></thead>
+    <thead><tr><th>PO#</th><th>Article</th><th>EAN13</th><th>Désignation FR</th><th>Désignation EN</th><th>Fournisseur</th><th>Qté</th><th>Prix</th><th>Date</th></tr></thead>
     <tbody>${rows.map(r => `<tr>
       <td class="mono">${esc(r.po_number) || '-'}</td>
       <td class="mono">${esc(r.code_article) || '-'}</td>
       <td class="mono">${esc(r.ean13) || '-'}</td>
       <td>${esc(r.designation_fr || r.designation) || '-'}</td>
       <td style="color:var(--muted);font-style:italic;">${esc(r.designation_en) || '-'}</td>
+      <td>${esc(r.fournisseur) || '-'}${r.provenance === 'sylob' && r.societe ? ' <span class="unit" title="Societe TB acheteuse dans Sylob">('+esc(r.societe)+')</span>' : ''}</td>
       <td class="mono" style="text-align:right">${r.quantite != null ? Number(r.quantite).toLocaleString('fr-FR') : '-'}</td>
-      <td style="text-align:right">${r.prix != null ? Number(r.prix).toFixed(3) + ' $' : '-'}</td>
+      <td class="mono" style="text-align:right">${prixFrs(r)}</td>
       <td>${fmt(r.date_mail, 'date')}</td>
     </tr>`).join('')}</tbody></table></div>` : '<div class="empty">Aucun résultat</div>';
 }
@@ -2514,13 +2531,19 @@ async function loadFrsDetail(frs) {
         '<div class="empty"><div class="empty-icon">📉</div>Aucun historique de prix disponible</div>';
       return;
     }
-    const src = r.source === 'historique_prix'
-      ? '<span class="badge badge-green">historique_prix</span>'
-      : '<span class="badge badge-yellow">achat.commande (fallback)</span>';
+    // Le badge comparait la source a 'historique_prix', un nom que l'API ne
+    // renvoie plus depuis la suppression de cette table le 28/07/2026. La
+    // branche etait donc morte et affichait en permanence un "fallback" jaune,
+    // y compris sur des donnees parfaitement normales. Marlene l'a lu comme un
+    // mode degrade en demo le 22/09, a juste titre.
+    const nImport = rows.filter(x => x.provenance !== 'sylob').length;
+    const nSylob = rows.length - nImport;
+    const src = `<span class="badge badge-blue">${nImport} IMPORT</span> `
+              + `<span class="badge badge-green">${nSylob} Sylob</span>`;
 
     _frsDetailRows = rows;
     document.getElementById('frs-detail-content').innerHTML = `
-      <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Historique prix - 3 dernières commandes par article - Source : ${src}</p>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Historique complet des prix, ${rows.length} commande${rows.length > 1 ? 's' : ''} sur les articles de ce fournisseur, tous fournisseurs confondus pour permettre la comparaison &middot; ${src}</p>
       <input id="frs-art" type="text" placeholder="Filtrer par article, EAN13, désignation (FR/EN) ou PO..." oninput="renderFrsDetailRows()" style="margin-bottom:8px;width:380px;">
       <div id="frs-detail-table"></div>`;
     renderFrsDetailRows();
@@ -2808,10 +2831,15 @@ async function loadArticle() {
     // les 3 derniers prix des commandes fournisseur Sylob depuis 2013. Hors
     // perimetre Import la devise n'est pas forcement le dollar : on n'affiche donc
     // le symbole que sur les prix du perimetre, et on annonce la provenance.
-    const histRepli = hist.source === 'sylob_hors_perimetre';
+    // La provenance se lit LIGNE PAR LIGNE depuis le 23/09/2026. Avant, un seul
+    // indicateur valait pour toute la reponse, parce que l'API renvoyait soit du
+    // perimetre Import, soit du Sylob, jamais les deux. Les sources etant
+    // desormais fusionnees, un indicateur global afficherait des dollars sur des
+    // prix en euros, ou l'inverse.
+    const estSylob = (r) => r.provenance === 'sylob';
     const prixCell = (r) => r.prix == null
       ? '<td class="mono" title="Prix absent de la source, ce n\'est pas un prix a zero">-</td>'
-      : (histRepli
+      : (estSylob(r)
           ? `<td class="mono">${Number(r.prix).toLocaleString('fr-FR',{minimumFractionDigits:3,maximumFractionDigits:3})}${r.devise_etrangere ? ` <span class="unit" title="Prix en devise de la commande (Sylob ne fournit pas le code devise sur cette vue). Contre-valeur euro calculee par Sylob.">${r.prix_unitaire_eur != null ? '&asymp; ' + Number(r.prix_unitaire_eur).toLocaleString('fr-FR',{minimumFractionDigits:3,maximumFractionDigits:3}) + ' &euro;' : 'devise'}</span>` : ' &euro;'}</td>`
           : `<td class="mono">$${Number(r.prix).toLocaleString('fr-FR',{minimumFractionDigits:3,maximumFractionDigits:3})}</td>`);
     const qteCell = (r) => r.quantite == null
@@ -2823,7 +2851,7 @@ async function loadArticle() {
           <thead><tr><th>PO#</th><th>Fournisseur</th><th>Qt&eacute;</th><th>Prix</th><th>Date</th></tr></thead>
           <tbody>${histRows.map(r => `<tr>
             <td class="mono">${esc(r.po_number)||'-'}</td>
-            <td>${esc(r.fournisseur)||'-'}${histRepli && r.societe ? ' <span class="unit" title="Societe TB acheteuse dans Sylob">('+esc(r.societe)+')</span>' : ''}</td>
+            <td>${esc(r.fournisseur)||'-'}${estSylob(r) && r.societe ? ' <span class="unit" title="Societe TB acheteuse dans Sylob">('+esc(r.societe)+')</span>' : ''}</td>
             ${qteCell(r)}
             ${prixCell(r)}
             <td>${esc(r.date_mail)||'-'}</td>
@@ -2855,12 +2883,9 @@ async function loadArticle() {
         ${cmdTable}
       </div>
       <div class="a360-card">
-        ${histRepli
-          ? a360Head('3 derniers prix (hors périmètre Import, sans limite de date)',
-                     'Commandes Sylob toutes sociétés', 'badge-yellow',
-                     'Aucun prix dans le suivi Import (juin 2024 à aujourd\'hui) : repli sur les commandes fournisseur Sylob depuis 2013, GDD + SE + Cie. Montants HT en devise de la commande.')
-          : a360Head('3 derniers prix (tous fournisseurs confondus)', 'Commandes Sylob V25', 'badge-blue',
-                     'Source : Commandes historiques Sylob V25 / IMPORT 2026.xlsx')}
+        ${a360Head(`Historique des prix, ${histRows.length} commande${histRows.length > 1 ? 's' : ''} (tous fournisseurs confondus)`,
+                   'IMPORT + Sylob depuis 2013', 'badge-blue',
+                   'Suivi Import (juin 2024 à aujourd\'hui) et commandes fournisseur Sylob depuis 2013, GDD + SE + Cie, fusionnés et dédoublonnés. Les lignes Sylob sont en devise de la commande, celles du périmètre Import en dollars.')}
         ${histTable}
       </div>`;
   } catch (e) {
