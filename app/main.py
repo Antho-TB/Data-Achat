@@ -1268,6 +1268,11 @@ def health():
         "status": "ok" if db_ok else "degraded",
         "db": "connected" if db_ok else "unreachable",
         "schema": SCHEMA,
+        # Empreinte du code REELLEMENT servi, pas de celui qu'on croit avoir
+        # deploye. C'est ce que le pipeline compare au commit qu'il vient de
+        # publier : sans cette comparaison, un controle de sante valide
+        # l'ancienne version quand le conteneur n'a pas ete recycle.
+        "commit": Config.COMMIT_DEPLOYE,
         # Deux facons d'autoriser l'ecriture, et le mode heberge n'utilise PAS
         # de cle : la plateforme Entra injecte l'identite de l'appelant, que
         # require_utilisateur accepte telle quelle. Ne regarder que l'API_KEY
