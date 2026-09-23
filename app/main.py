@@ -590,15 +590,22 @@ def get_fournisseurs():
 
 @app.get("/api/fournisseurs/{fournisseur}/historique-prix")
 def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
-    """Historique des prix d'achat, calculé depuis achat.commande.
+    """Historique complet des prix d'achat, fusionné depuis l'IMPORT et Sylob.
 
-    C'est le besoin numéro 1 d'Andréa : savoir en deux secondes combien on a
-    payé la dernière fois avant de négocier avec le fournisseur.
+    C'est le besoin numéro 1 du service Achats : savoir en deux secondes combien
+    on a payé la dernière fois avant de négocier avec le fournisseur.
 
-    Le code tentait d'abord une table achat.historique_prix qui n'a jamais
-    existé, échouait, faisait un rollback puis retombait sur achat.commande.
-    Une exception PostgreSQL par appel, invisible car loguée en INFO. La
-    branche morte a été supprimée le 28/07.
+    Refonte du 23/09/2026 après la démo du 22/09. Deux limites se cumulaient et
+    se masquaient l'une l'autre. Un plafond de 3 commandes par article, et le
+    fait que Sylob n'était consulté QUE si achat.commande ne renvoyait rien.
+    Résultat : dès qu'un article existait dans le périmètre IMPORT, son
+    historique s'arrêtait à juin 2024, alors que Sylob le connaît depuis 2013.
+    C'est ce que Marlène a signalé en démo, et ce n'était pas un défaut
+    d'affichage mais de requête.
+
+    Les deux sources sont désormais fusionnées, sans plafond, dédoublonnées sur
+    (code_article, po_number). Chaque ligne porte sa `provenance`, import ou
+    sylob, car hors périmètre IMPORT la devise peut ne pas être le dollar.
 
     Le chemin d'appel réel du front est /api/fournisseurs/all/historique-prix
     avec un code_article : le segment "all" est alors ignoré, la recherche est
@@ -608,8 +615,21 @@ def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
     engine = get_engine()
     params: dict[str, Any] = {}
 
+    # Perimetre d'articles a historiser. C'est le pivot de toute la fonction :
+    # le rapprochement entre l'IMPORT et Sylob se fait par CODE ARTICLE et
+    # jamais par fournisseur. Mesure du 23/09/2026 : 580 des 593 articles
+    # tarifes de achat.commande existent aussi dans Sylob, alors qu'un seul nom
+    # de fournisseur sur 29 concorde entre les deux ("HONGXING" cote IMPORT
+    # contre "JIEYANG HONGXING STAINLESS STEEL PRODUCTS MANUFACTORY (HX)" cote
+    # Sylob). Le code frn_codes de achat.fournisseur_ca ne comble pas l'ecart
+    # non plus : il donne 00001217 pour HONGXING quand la vue Sylob donne
+    # 00000922. Toute jointure par fournisseur est donc a proscrire tant que ce
+    # pont n'a pas ete instruit.
     if code_article:
-        where_clause = "WHERE code_article = :code_article"
+        # CAST(... AS text) et non :code_article::text : le double deux-points du
+        # cast PostgreSQL entre en collision avec la syntaxe des parametres
+        # nommes de SQLAlchemy, qui rend un "syntax error at or near :".
+        cte_articles = "SELECT CAST(:code_article AS text) AS code_article"
         params["code_article"] = code_article
     elif fournisseur.lower() == "all":
         raise HTTPException(
@@ -617,68 +637,72 @@ def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
             detail="Le fournisseur 'all' exige un code_article : préciser ?code_article=...",
         )
     else:
-        where_clause = "WHERE fournisseur = :fournisseur"
+        # Vue fournisseur : on part de ses articles connus du perimetre IMPORT,
+        # puis on remonte tout leur historique, y compris chez d'autres
+        # fournisseurs. Arbitre avec Antho le 23/09, et conforme au retour
+        # metier du 07/07 qui veut la comparaison de prix entre fournisseurs.
+        cte_articles = (f"SELECT DISTINCT code_article FROM {SCHEMA}.commande "
+                        "WHERE fournisseur = :fournisseur AND code_article IS NOT NULL")
         params["fournisseur"] = fournisseur
 
     with engine.connect() as conn:
         try:
-            # 3 dernieres commandes PAR ARTICLE (besoin metier : evolution recente du prix).
-            # ROW_NUMBER fenetre par code_article, on garde les 3 plus recentes.
-            # LEFT JOIN produit : ean13, designation_fr, designation_en -- retour 27/07.
+            # Fusion des deux sources, plus aucun plafond de 3 commandes par
+            # article (demande de Marlene en demo le 22/09 : "remonter toutes
+            # les dernieres commandes"). achat.commande couvre juin 2024 a
+            # aujourd'hui, achat.historique_prix_sylob remonte a 2013.
+            #
+            # Dedoublonnage sur (code_article, po_number), avec priorite a la
+            # ligne IMPORT : c'est celle que le service Achats a saisie et
+            # rapprochee, Sylob n'en est que le reflet comptable.
             r = conn.execute(text(f"""
-                SELECT t.po_number, t.code_article,
-                       COALESCE(p.designation_fr, t.designation) AS designation_fr,
+                WITH articles AS ({cte_articles}),
+                import AS (
+                    SELECT c.po_number, c.code_article, c.designation, c.fournisseur,
+                           c.prix_unitaire AS prix, c.quantite::numeric AS quantite,
+                           c.date_commande AS date_mail,
+                           NULL::text AS societe, FALSE AS devise_etrangere,
+                           NULL::numeric AS prix_unitaire_eur, NULL::text AS unite,
+                           'import'::text AS provenance
+                    FROM {SCHEMA}.commande c
+                    JOIN articles a ON a.code_article = c.code_article
+                    WHERE c.prix_unitaire IS NOT NULL
+                ),
+                sylob AS (
+                    SELECT h.po_number, h.code_article, h.designation, h.fournisseur,
+                           h.prix_unitaire AS prix, h.quantite::numeric AS quantite,
+                           h.date_commande AS date_mail,
+                           h.societe, h.devise_etrangere, h.prix_unitaire_eur, h.unite,
+                           'sylob'::text AS provenance
+                    FROM {SCHEMA}.historique_prix_sylob h
+                    JOIN articles a ON a.code_article = h.code_article
+                ),
+                fusion AS (
+                    SELECT * FROM import
+                    UNION ALL
+                    SELECT s.* FROM sylob s
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM import i
+                        WHERE i.code_article = s.code_article
+                          AND i.po_number IS NOT DISTINCT FROM s.po_number
+                    )
+                )
+                SELECT f.po_number, f.code_article,
+                       COALESCE(p.designation_fr, f.designation) AS designation_fr,
                        p.designation_en,
-                       COALESCE(p.designation_fr, p.designation_en, t.designation) AS designation,
+                       COALESCE(p.designation_fr, p.designation_en, f.designation) AS designation,
                        p.ean13,
-                       t.fournisseur, t.prix, t.quantite, t.date_mail
-                FROM (
-                    SELECT po_number, code_article, designation, fournisseur,
-                           prix_unitaire AS prix, quantite, date_commande AS date_mail,
-                           ROW_NUMBER() OVER (PARTITION BY code_article
-                                              ORDER BY date_commande DESC NULLS LAST) AS rn
-                    FROM {SCHEMA}.commande
-                    {where_clause}
-                      AND prix_unitaire IS NOT NULL
-                ) t
-                LEFT JOIN {SCHEMA}.produit p ON p.code_article = t.code_article
-                WHERE rn <= 3
-                ORDER BY t.code_article, t.date_mail DESC NULLS LAST
+                       f.fournisseur, f.prix, f.quantite, f.date_mail,
+                       f.societe, f.devise_etrangere, f.prix_unitaire_eur, f.unite,
+                       f.provenance
+                FROM fusion f
+                LEFT JOIN {SCHEMA}.produit p ON p.code_article = f.code_article
+                ORDER BY f.code_article, f.date_mail DESC NULLS LAST
             """), params)
             lignes = rows_to_dicts(r)
-            if lignes:
-                return {"source": "commande_fallback", "data": lignes}
-
-            # Repli sans limite de date (mail Marlene MONTBRIZON du 03/09/2026).
-            # achat.commande ne porte que le perimetre IMPORT (juin 2024 a
-            # aujourd'hui) : 788 articles du referentiel n'y ont aucun prix. Quand
-            # la recherche ne sort rien, on va chercher les 3 derniers prix dans
-            # achat.historique_prix_sylob, construit sur les commandes fournisseur
-            # Sylob depuis 2013, toutes societes confondues, sans borne de date.
-            # La source est renvoyee au front pour que l'interface annonce d'ou
-            # vient le prix : hors perimetre Import, la devise peut ne pas etre le
-            # dollar.
-            if not code_article:
-                return {"source": "commande_fallback", "data": []}
-
-            repli = conn.execute(text(f"""
-                SELECT h.po_number, h.code_article,
-                       COALESCE(p.designation_fr, h.designation) AS designation_fr,
-                       p.designation_en,
-                       COALESCE(p.designation_fr, p.designation_en, h.designation) AS designation,
-                       p.ean13,
-                       h.fournisseur, h.prix_unitaire AS prix, h.quantite,
-                       h.date_commande AS date_mail,
-                       h.societe, h.devise_etrangere, h.prix_unitaire_eur, h.unite
-                FROM {SCHEMA}.historique_prix_sylob h
-                LEFT JOIN {SCHEMA}.produit p ON p.code_article = h.code_article
-                WHERE h.code_article = :code_article
-                ORDER BY h.rang
-            """), {"code_article": code_article})
-            lignes_repli = rows_to_dicts(repli)
-            logger.info("[INFO] Historique prix %s : repli Sylob, %d ligne(s)",
-                        code_article, len(lignes_repli))
-            return {"source": "sylob_hors_perimetre", "data": lignes_repli}
+            logger.info("[INFO] Historique prix (%s) : %d ligne(s) fusionnees",
+                        code_article or fournisseur, len(lignes))
+            return {"source": "fusion", "data": lignes}
         except Exception as e:
             raise internal_error(e)
 

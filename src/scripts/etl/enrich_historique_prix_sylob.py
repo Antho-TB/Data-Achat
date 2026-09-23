@@ -2,17 +2,22 @@
 """
 [ETL]
 =============================================================================
-HISTORIQUE PRIX SYLOB - REPLI SANS LIMITE DE DATE
+HISTORIQUE PRIX SYLOB - HISTORIQUE COMPLET SANS LIMITE DE DATE
 =============================================================================
 
 Alimente achat.historique_prix_sylob depuis le DWH Sylob (tarrerias_production_dwh).
 
 Besoin metier (mail Marlene MONTBRIZON du 03/09/2026) : l'onglet Article ne sort
-les 3 derniers prix que depuis achat.commande, alimente par IMPORT 2026.xlsx, qui
-ne couvre que juin 2024 a aujourd'hui. Sur 1 199 articles du referentiel, 788
-n'ont aucun prix. Les commandes fournisseur Sylob couvrent 2013 a aujourd'hui et
-retrouvent un prix pour environ 566 de ces articles : c'est le repli demande,
-"les 3 derniers prix quelle que soit la date".
+les prix que depuis achat.commande, alimente par IMPORT 2026.xlsx, qui ne couvre
+que juin 2024 a aujourd'hui. Sur 1 199 articles du referentiel, 788 n'ont aucun
+prix. Les commandes fournisseur Sylob couvrent 2013 a aujourd'hui et retrouvent
+un prix pour une large part de ces articles.
+
+Evolution du 23/09/2026, demande formulee en demo le 22/09 : "remonter toutes
+les dernieres commandes, pas seulement les 3 dernieres annees". Les plafonds de
+3 prix par article et 5 par societe sont leves, la table porte desormais
+l'historique complet. Le champ `rang` subsiste et sert uniquement l'ordre
+d'affichage, 1 designant le prix le plus recent.
 
 Perimetre : les 3 societes (GDD, SE, Cie), tous fournisseurs confondus, un
 classement global par article (le plus recent gagne, la societe n'entre pas dans
@@ -46,13 +51,19 @@ SCHEMAS: dict[str, str] = {
     "Cie": "TARRERIAS_TARRERIAS_BONJEAN_ET_CIE_Achat",
 }
 
-# Prix conserves par article et par societe cote Sylob. On en tire plus que les 3
-# finaux : le classement definitif est global, il faut donc de la marge avant de
-# fusionner les societes.
-PRIX_PAR_SOCIETE = 5
-
-# Prix finalement exposes par article, toutes societes confondues (demande metier).
-PRIX_PAR_ARTICLE = 3
+# Plafonds leves le 23/09/2026, demande de Marlene MONTBRIZON en demo le 22/09 :
+# "remonter toutes les dernieres commandes, pas seulement les 3 dernieres annees".
+#
+# On ne conservait que les 3 derniers prix par article, ce qui privait le metier
+# de l'historique long alors qu'il existe cote Sylob depuis 2013. Volume mesure
+# avant de trancher : 95 193 lignes sans plafond contre 18 181 avec, soit 9,5
+# prix par article en moyenne. Negligeable pour PostgreSQL, et c'est exactement
+# ce que le metier demande a voir.
+#
+# None signifie aucune limite. Remettre un entier si le volume devenait un sujet,
+# mais mesurer avant : le plafond de 3 avait ete pose sans jamais l'etre.
+PRIX_PAR_SOCIETE: int | None = None
+PRIX_PAR_ARTICLE: int | None = None
 
 # Plancher de volume : sous cette fraction du contenu actuel, on refuse d'ecraser.
 SEUIL_VOLUME_MIN = 0.5
@@ -82,7 +93,7 @@ SQL_SYLOB = """
           -- la tete du classement "dernier prix". On l'ecarte.
           AND commande_creee_le <= CURRENT_DATE
     ) t
-    WHERE rn <= :n
+    {filtre_rang}
 """
 
 
@@ -101,8 +112,13 @@ def _fetch_societe(conn: Any, societe: str, schema: str) -> list[dict[str, Any]]
     Returns:
         Liste de lignes de prix, societe renseignee.
     """
+    # Le filtre de rang n'est pose que si un plafond est configure. Passer un
+    # entier tres grand plutot qu'omettre la clause ferait porter a PostgreSQL un
+    # tri inutile sur la totalite de la vue.
+    filtre_rang = "WHERE rn <= :n" if PRIX_PAR_SOCIETE else ""
+    parametres = {"n": PRIX_PAR_SOCIETE} if PRIX_PAR_SOCIETE else {}
     rows = conn.execute(
-        text(SQL_SYLOB.format(schema=schema)), {"n": PRIX_PAR_SOCIETE}
+        text(SQL_SYLOB.format(schema=schema, filtre_rang=filtre_rang)), parametres
     ).mappings().all()
     logger.info("[INFO] %s : %d lignes de prix candidates", societe, len(rows))
     return [{**dict(r), "societe": societe} for r in rows]
@@ -129,7 +145,8 @@ def _classer(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     retenues: list[dict[str, Any]] = []
     for code, lignes in par_article.items():
         lignes.sort(key=lambda x: (x["date_commande"] is not None, x["date_commande"]), reverse=True)
-        for rang, ligne in enumerate(lignes[:PRIX_PAR_ARTICLE], start=1):
+        conservees = lignes[:PRIX_PAR_ARTICLE] if PRIX_PAR_ARTICLE else lignes
+        for rang, ligne in enumerate(conservees, start=1):
             prix = ligne["prix_unitaire"]
             prix_eur = ligne["prix_unitaire_eur"]
             retenues.append({
@@ -152,8 +169,8 @@ def _classer(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "rang": rang,
             })
     logger.info(
-        "[INFO] %d articles distincts, %d lignes retenues (max %d par article)",
-        len(par_article), len(retenues), PRIX_PAR_ARTICLE,
+        "[INFO] %d articles distincts, %d lignes retenues (plafond par article : %s)",
+        len(par_article), len(retenues), PRIX_PAR_ARTICLE or "aucun",
     )
     return retenues
 
