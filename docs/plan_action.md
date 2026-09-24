@@ -17,20 +17,27 @@
 
 ## 1. Où on en est
 
-**L'application est en production** sur le poste de Marlène depuis le 23/07.
-Dix onglets opérationnels, 18 endpoints, 22 tables et 7 vues dans le schéma
-`achat`. Andréa y accède depuis son poste via le LAN.
+**L'application est en production sur Azure App Service** :
+`https://app-shsv-fuseau-prod.azurewebsites.net`, authentification Entra.
+Marlène l'utilise depuis le 22/09/2026. Chaque merge sur `main` est déployé
+automatiquement, et `/api/health` expose le commit servi.
 
-Trois automatisations tournent :
+**L'API locale du poste de Marlène est caduque** depuis cette bascule : ne plus
+la mettre à jour ni la dépanner. En revanche, **l'ETL et le pipeline Gmail
+tournent toujours sur ce poste**, car ils ont besoin du partage réseau, du DWH
+Sylob on-premise et de la boîte Gmail Achats (§3.0).
+
+Automatisations du poste de Marlène, état du 28/07 :
 
 | Automatisation | Type | Fréquence | Point de fragilité |
 |---|---|---|---|
-| `run_api.py` | **Processus manuel** (la tâche `FUSEAU-API` n'a jamais été installée sur ce poste, constat du 28/07) | Lancement à la main | Ne redémarre pas seule après reboot ou fermeture de session |
+| ~~`run_api.py`~~ | **Caduque depuis le 22/09**, remplacée par la Web App Azure | — | — |
 | `FUSEAU_Gmail_ETL` | Tâche planifiée Windows | Toutes les 2 h, 08h-18h | Idem, mais ne dépend pas de Cowork |
 | `fuseau-gmail-threads-achat` | Tâche Cowork (extraction LLM) | Non fixée | S'arrête si l'app Claude est fermée |
 
 **Le risque numéro un du projet n'est pas fonctionnel, il est structurel** :
-tout tourne sur la session Windows d'une personne. C'est l'objet du chantier 3.
+l'API en est sortie, mais l'ETL et le pipeline Gmail tournent encore sur la
+session Windows d'une personne. C'est ce qui reste du chantier 3.
 
 ---
 
@@ -87,7 +94,7 @@ base et Azure CLI, pas par relecture du code.
 
 - [x] Infrastructure App Service, authentification Entra, VNet, peering, Key
   Vault et CI/CD décrits en Terraform.
-- [x] Sonde `/health` exclue de l'authentification de plateforme afin de permettre
+- [x] Sonde `/api/health` exclue de l'authentification de plateforme afin de permettre
   la supervision sans ouvrir les endpoints métier.
 - [x] Compte PostgreSQL dédié `dtpf_fuseau_api_prod` préparé au moindre
   privilège : lecture de `achat.*` et `public.articles3`, écriture limitée à
@@ -107,18 +114,21 @@ base et Azure CLI, pas par relecture du code.
   limité à la seule Web App.
 - [x] Secret Easy Auth déposé dans `MICROSOFT_PROVIDER_AUTHENTICATION_SECRET`
   (22/09).
-- [ ] **Créer les trois secrets du dépôt GitHub** (`AZURE_CLIENT_ID`,
-  `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`), valeurs dans les sorties
-  Terraform `cicd_azure_*`. Action manuelle d'Antho : le jeton de l'agent n'a
-  pas la permission sur les secrets du dépôt.
-- [ ] Merger la branche pour déclencher le premier déploiement applicatif.
-  Aucun code n'a jamais été publié sur la Web App : `/health` répond 503 tant
-  que ce n'est pas fait.
-- [ ] Exécuter la recette : réseau, authentification, lecture PostgreSQL,
-  écriture d'annotation et logs.
-- [ ] Après validation métier, basculer les utilisateurs vers l'URL Azure. Garder
-  temporairement le poste de Marlène comme retour arrière, sans lancer deux ETL
-  concurrents.
+- [x] Trois secrets du dépôt GitHub (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
+  `AZURE_SUBSCRIPTION_ID`) créés le 22/09. Le jeton `gh` a la portée `repo`,
+  qui suffit : l'ancienne mention « action manuelle d'Antho » était fausse.
+- [x] Déploiement continu opérationnel : les runs des PR #3, #4 et #5 sont
+  verts. Le CI vérifie que le commit servi correspond au commit mergé.
+- [x] Recette technique du 24/09 : `/api/health` répond 200, base connectée,
+  écriture active, commit `3a42f02`. La racine répond 401 sans session, donc
+  Easy Auth est actif.
+- [x] Bascule des utilisateurs : Marlène utilise la version Azure depuis le 22/09.
+- [ ] **Recette de l'écriture depuis Azure** : aucune ligne de
+  `achat.commande_annotation` n'a été modifiée depuis le 20/09 (constat du 24/09).
+  Faire une saisie de test avec Marlène et vérifier `updated_by` et `updated_at`.
+- [ ] Arrêter l'API du poste de Marlène (processus `run_api.py` et tâche
+  `FUSEAU-API`), en laissant tourner l'ETL et la tâche Gmail. Deux API
+  qui écrivent en parallèle dans `commande_annotation`, c'est à proscrire.
 
 > **Nubo n'est pas un point de passage.** Une version antérieure de cette section
 > conditionnait l'apply à une relecture avec Nubo. C'est faux : Nubo intervient en
@@ -145,6 +155,10 @@ encore déployé**, Samuel prépare la machine.
 ✅ **Incohérence levée (28/07)** : l'adresse obsolète `192.168.102.21:5433` a été éliminée de la procédure de déploiement et du code (`config_manager.py`). La cible unique retenue est le DWH Sylob V25 `SRV-ERP-DATA 192.168.102.41:5432`.
 
 ### 3.1 bis Accès d'Andréa en attendant le serveur
+
+> **Caduc depuis le 22/09/2026** : l'accès passe par l'URL Azure et
+> l'authentification Entra. Section conservée pour l'historique, ne plus
+> l'exécuter.
 
 Solution provisoire retenue le 28/07 : **aucune installation sur son poste.**
 FUSEAU est une application web, Andréa l'ouvre dans son navigateur sur l'adresse
@@ -813,3 +827,5 @@ dans `05_ARCHIVES/Versions_Anterieures/`.
 | 28/07 (soir) | Deux règles métier corrigées après relecture : la conformité qualité est actée **par mail** comme la non-conformité, et la packing list vient de **TB China par mail**, pas de la Fiche Achat. Les deux ont une conséquence directe sur le périmètre de captation Gmail |
 | 03-04/09 | Pivot d'hébergement de l'API vers Azure App Service : IaC, authentification Entra, réseau privé et CI/CD préparés. Rôle PostgreSQL dédié sécurisé via Key Vault, non encore appliqué. L'ETL et Gmail restent sur site. |
 | 22/09 | Audit de l'état réel Azure : l'infrastructure était déjà appliquée et sans dérive depuis le 04/09, contrairement à ce qu'annonçait le §3.0. Trou trouvé et comblé : aucune fédération OIDC n'existait pour ce dépôt, le pipeline aurait échoué au login. Identité de déploiement déclarée en IaC (`cicd.tf`) avec `Website Contributor` limité à la Web App, secret Easy Auth déposé. Reste les trois secrets du dépôt GitHub, puis le merge. |
+| 22-23/09 | Secrets GitHub créés, premier déploiement vert, PR #3 à #5 livrées en continu. Marlène bascule sur la version Azure : l'API locale de son poste devient caduque, l'ETL et Gmail y restent |
+| 24/09 | `achat.historique_prix_sylob` rechargé sans plafond (18 184 → 95 216 lignes, 9 530 articles). §3.0 réaligné sur l'état réel. Écriture depuis Azure pas encore constatée en base |
