@@ -27,13 +27,15 @@ la mettre à jour ni la dépanner. En revanche, **l'ETL et le pipeline Gmail
 tournent toujours sur ce poste**, car ils ont besoin du partage réseau, du DWH
 Sylob on-premise et de la boîte Gmail Achats (§3.0).
 
-Automatisations du poste de Marlène, état du 28/07 :
+Automatisations du poste de Marlène, état constaté sur le poste le 24/09 :
 
-| Automatisation | Type | Fréquence | Point de fragilité |
+| Automatisation | Fréquence | Dernier run | État |
 |---|---|---|---|
-| ~~`run_api.py`~~ | **Caduque depuis le 22/09**, remplacée par la Web App Azure | — | — |
-| `FUSEAU_Gmail_ETL` | Tâche planifiée Windows | Toutes les 2 h, 08h-18h | Idem, mais ne dépend pas de Cowork |
-| `fuseau-gmail-threads-achat` | Tâche Cowork (extraction LLM) | Non fixée | S'arrête si l'app Claude est fermée |
+| `FUSEAU_Files_ETL` (`run_etl_scheduled.ps1`, fait aussi le `git pull`) | 02h00 | 24/09 08:11, `0x0` | ✅ OK, mais sur l'ancien code du 22 au 24/09 : un `.docx` non suivi bloquait le pull (corrigé PR #7) |
+| `FUSEAU_Daily_ETL` (`run_daily_etl.ps1`) | 07h00 | 24/09 08:11, `0x1` | ⚠️ `crawl_drive_qualite` échoue : `DRIVE_QUALITE_ROOT_ID` absent du `config\.env`. Artwork et CA passent |
+| `FUSEAU_Gmail_ETL` (`run_gmail_etl.ps1`) | 2 h, 08h-18h | 22/09 16:07, `0x800710E0` | ❌ **Ne tourne plus.** Mode Interactive, `DisallowStartIfOnBatteries`, `StartWhenAvailable` désactivé : chaque créneau saute dès que la session est fermée, verrouillée ou sur batterie |
+| `fuseau-gmail-threads-achat` (Cowork) | cron 8-18/2, lun-ven | 24/09 08:47 | ✅ 5 runs OK le 23/09, aucun rejet |
+| ~~`FUSEAU-API`~~ | — | — | Arrêtée et désactivée le 24/09 (pas supprimée, pour le retour arrière). Plus rien n'écoute sur 5050 |
 
 **Le risque numéro un du projet n'est pas fonctionnel, il est structurel** :
 l'API en est sortie, mais l'ETL et le pipeline Gmail tournent encore sur la
@@ -126,9 +128,23 @@ base et Azure CLI, pas par relecture du code.
 - [ ] **Recette de l'écriture depuis Azure** : aucune ligne de
   `achat.commande_annotation` n'a été modifiée depuis le 20/09 (constat du 24/09).
   Faire une saisie de test avec Marlène et vérifier `updated_by` et `updated_at`.
-- [ ] Arrêter l'API du poste de Marlène (processus `run_api.py` et tâche
-  `FUSEAU-API`), en laissant tourner l'ETL et la tâche Gmail. Deux API
-  qui écrivent en parallèle dans `commande_annotation`, c'est à proscrire.
+- [x] API du poste de Marlène arrêtée le 24/09 : 3 processus stoppés, tâche
+  `FUSEAU-API` désactivée, port 5050 libéré. L'ETL et la tâche Gmail sont
+  intacts.
+
+### 3.0 bis Poste de Marlène : actions ouvertes au 24/09
+
+- [ ] **Sortir `docs\20260922_FUSEAU_Rapport_Executions_ThreadsAchat_10j_v1.docx`
+  du dépôt du poste.** Le correctif de la PR #7 ne peut pas arriver tant que
+  l'ancien script bloque le pull. À faire avant le run de 02h00.
+- [ ] **Relancer `FUSEAU_Gmail_ETL`**, arrêté depuis le 22/09 16:07 : activer
+  `StartWhenAvailable`, désactiver `DisallowStartIfOnBatteries` et
+  `StopIfGoingOnBatteries`. Palliatif seulement : la tâche restera liée à une
+  session ouverte tant que l'ETL n'aura pas quitté ce poste (§3.1).
+- [ ] Renseigner `DRIVE_QUALITE_ROOT_ID` dans le `config\.env` du poste, puis
+  relancer `FUSEAU_Daily_ETL` une fois.
+- [ ] Vérifier qu'au run du 25/09 à 02h00, le log `etl_files` montre le pull
+  vers `075f29e` et `historique_prix_sylob` à environ 95 000 lignes.
 
 > **Nubo n'est pas un point de passage.** Une version antérieure de cette section
 > conditionnait l'apply à une relecture avec Nubo. C'est faux : Nubo intervient en
@@ -269,8 +285,8 @@ passage sur le serveur de Samuel, où le repli Python reprendra du sens.
 
 ### Actions
 
-- [ ] Vérifier que la tâche ETL fichiers est installée sur le poste de Marlène (la tâche Gmail l'est, l'API ne l'est pas : ne rien supposer)
-- [ ] **Installer `FUSEAU_Daily_ETL`** (`deploy/run_daily_etl.ps1`, 07h00) : artwork gsheet + Drive qualité
+- [x] Tâche ETL fichiers installée sur le poste de Marlène (`FUSEAU_Files_ETL`, constat du 24/09)
+- [x] `FUSEAU_Daily_ETL` installée (constat du 24/09). Reste `DRIVE_QUALITE_ROOT_ID`, voir §3.0 bis
 - [ ] **Avant l'installation : consentement OAuth à refaire une fois à la main.** Le scope `spreadsheets.readonly` a été ajouté après la création du `token.json` existant ; Google ne le signale qu'à la première requête Sheets. Supprimer `config\token.json`, lancer le script manuellement, valider dans le navigateur. Impossible depuis une tâche planifiée.
 - [ ] Vérifier que le classeur `LIS-CON-28-0` est bien partagé avec le compte Google utilisé par FUSEAU
 
@@ -829,3 +845,4 @@ dans `05_ARCHIVES/Versions_Anterieures/`.
 | 22/09 | Audit de l'état réel Azure : l'infrastructure était déjà appliquée et sans dérive depuis le 04/09, contrairement à ce qu'annonçait le §3.0. Trou trouvé et comblé : aucune fédération OIDC n'existait pour ce dépôt, le pipeline aurait échoué au login. Identité de déploiement déclarée en IaC (`cicd.tf`) avec `Website Contributor` limité à la Web App, secret Easy Auth déposé. Reste les trois secrets du dépôt GitHub, puis le merge. |
 | 22-23/09 | Secrets GitHub créés, premier déploiement vert, PR #3 à #5 livrées en continu. Marlène bascule sur la version Azure : l'API locale de son poste devient caduque, l'ETL et Gmail y restent |
 | 24/09 | `achat.historique_prix_sylob` rechargé sans plafond (18 184 → 95 216 lignes, 9 530 articles). §3.0 réaligné sur l'état réel. Écriture depuis Azure pas encore constatée en base |
+| 24/09 (poste Marlène) | Session autonome du Claude du poste. Pull manuel `6662da1` → `3a42f02`, API locale arrêtée et désactivée. Constats : pull auto bloqué par un `.docx` non suivi depuis le 22/09 (corrigé PR #7), ETL Gmail à l'arrêt depuis le 22/09 16:07, `DRIVE_QUALITE_ROOT_ID` manquant. Le run de 08:14 sur l'ancien code a réécrit l'historique à 18 184 lignes, puis le rechargement d'Antho de 08:29 l'a rétabli à 95 216 |
