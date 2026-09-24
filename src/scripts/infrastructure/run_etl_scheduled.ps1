@@ -111,8 +111,12 @@ Write-Log ("[INFO] Racine du depot : {0}" -f $Repo)
 # --ff-only : on n'invente pas un merge automatique sur un poste sans personne
 # pour le resoudre. Un depot modifie localement annule le pull, et c'est
 # signale en ATTENTION plutot qu'avale en silence.
+# --untracked-files=no : un fichier non suivi (un rapport depose dans docs\)
+# ne gene pas un pull en avance rapide. Il a pourtant bloque la synchro du
+# 22 au 24/09. Si le pull devait l'ecraser, git refuse et on passe par la
+# branche d'erreur ci-dessous.
 $Branche = if ($env:BRANCHE_DEPLOIEMENT) { $env:BRANCHE_DEPLOIEMENT } else { "main" }
-$Modifs = & git -C $Repo status --porcelain
+$Modifs = & git -C $Repo status --porcelain --untracked-files=no
 if ($Modifs) {
     Write-Log "[ATTENTION] Modifications locales non commitees, pull annule. L'ETL tourne sur le code local, qui n'est pas celui de $Branche."
 } else {
