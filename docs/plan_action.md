@@ -132,19 +132,23 @@ base et Azure CLI, pas par relecture du code.
   `FUSEAU-API` désactivée, port 5050 libéré. L'ETL et la tâche Gmail sont
   intacts.
 
-### 3.0 bis Poste de Marlène : actions ouvertes au 24/09
+### 3.0 bis Poste de Marlène : actions du 24/09, état au 25/09
 
-- [ ] **Sortir `docs\20260922_FUSEAU_Rapport_Executions_ThreadsAchat_10j_v1.docx`
-  du dépôt du poste.** Le correctif de la PR #7 ne peut pas arriver tant que
-  l'ancien script bloque le pull. À faire avant le run de 02h00.
-- [ ] **Relancer `FUSEAU_Gmail_ETL`**, arrêté depuis le 22/09 16:07 : activer
-  `StartWhenAvailable`, désactiver `DisallowStartIfOnBatteries` et
-  `StopIfGoingOnBatteries`. Palliatif seulement : la tâche restera liée à une
-  session ouverte tant que l'ETL n'aura pas quitté ce poste (§3.1).
-- [ ] Renseigner `DRIVE_QUALITE_ROOT_ID` dans le `config\.env` du poste, puis
-  relancer `FUSEAU_Daily_ETL` une fois.
-- [ ] Vérifier qu'au run du 25/09 à 02h00, le log `etl_files` montre le pull
-  vers `075f29e` et `historique_prix_sylob` à environ 95 000 lignes.
+- [x] `.docx` sorti du dépôt du poste (24/09). `git status --porcelain` est vide.
+- [x] `FUSEAU_Gmail_ETL` relancée (24/09 09:09, `0x0`, 237 conteneurs mis à jour) :
+  `StartWhenAvailable` activé, `DisallowStartIfOnBatteries` et
+  `StopIfGoingOnBatteries` désactivés. Palliatif seulement : la tâche reste liée
+  à une session ouverte tant que l'ETL n'aura pas quitté ce poste (§3.1).
+- [x] `DRIVE_QUALITE_ROOT_ID` renseigné dans le `config\.env` du poste.
+  `FUSEAU_Daily_ETL` en `0x0`, mais le crawl qualité a trouvé 0 dossier PO.
+- [x] Pull automatique rétabli : le run du 25/09 (08:19, rattrapage du créneau de
+  02h00) a tourné sur le nouveau code, `historique_prix_sylob` = 95 260 lignes.
+- [ ] **Crawl qualité à 0 dossier PO : deux pannes corrigées par la PR #9.** La
+  racine « TARRERIAS BONJEAN - TB » est un Drive partagé, lu sans
+  `supportsAllDrives`. De plus, les sous-dossiers réels (`Inspections`,
+  `Inpesctions`, `Results of Analysis`) ne correspondaient pas aux noms
+  attendus. À vérifier au run `FUSEAU_Daily_ETL` du 26/09 à 07h00 :
+  `achat.qualite_doc` doit dépasser les 8 lignes du pilote manuel.
 
 > **Nubo n'est pas un point de passage.** Une version antérieure de cette section
 > conditionnait l'apply à une relecture avec Nubo. C'est faux : Nubo intervient en
@@ -846,3 +850,4 @@ dans `05_ARCHIVES/Versions_Anterieures/`.
 | 22-23/09 | Secrets GitHub créés, premier déploiement vert, PR #3 à #5 livrées en continu. Marlène bascule sur la version Azure : l'API locale de son poste devient caduque, l'ETL et Gmail y restent |
 | 24/09 | `achat.historique_prix_sylob` rechargé sans plafond (18 184 → 95 216 lignes, 9 530 articles). §3.0 réaligné sur l'état réel. Écriture depuis Azure pas encore constatée en base |
 | 24/09 (poste Marlène) | Session autonome du Claude du poste. Pull manuel `6662da1` → `3a42f02`, API locale arrêtée et désactivée. Constats : pull auto bloqué par un `.docx` non suivi depuis le 22/09 (corrigé PR #7), ETL Gmail à l'arrêt depuis le 22/09 16:07, `DRIVE_QUALITE_ROOT_ID` manquant. Le run de 08:14 sur l'ancien code a réécrit l'historique à 18 184 lignes, puis le rechargement d'Antho de 08:29 l'a rétabli à 95 216 |
+| 25/09 | Les trois actions sur le poste de Marlène sont faites, les trois tâches `FUSEAU_*` en `0x0`, historique de prix à 95 260 lignes sur le nouveau code. Crawl qualité à 0 dossier : racine en Drive partagé, lue sans `supportsAllDrives`, et noms de sous-dossiers comparés à l'identique. Corrigé par la PR #9 |
