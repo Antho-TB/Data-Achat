@@ -1340,6 +1340,9 @@ def health():
         # marche, ce qui envoie chercher une panne qui n'existe pas.
         "write_enabled": Config.AUTH_MODE == "entra" or bool(Config.API_KEY),
         "donnees_maj": _derniere_maj_commande() if db_ok else None,
+        # Le frontend en deduit s'il doit demander une cle avant d'ecrire. En
+        # mode entra, l'identite vient de la plateforme et la cle est ignoree.
+        "auth_mode": Config.AUTH_MODE,
     }
 
 
