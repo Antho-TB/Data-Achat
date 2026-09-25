@@ -322,6 +322,7 @@ button { cursor: pointer; }
 .table-wrap table {
   width: 100%;
   border-collapse: collapse;
+  font-size: 13px;
 }
 .table-wrap th {
   background: #f1f5f9;
@@ -338,21 +339,21 @@ button { cursor: pointer; }
   top: 0;
   z-index: 90;
 }
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
 
 .table-wrap td {
   /* Respiration : les lignes etaient serrees alors que la place ne manquait
      pas. Retour metier du 28/07. */
   padding: 11px 16px;
   line-height: 1.45;
-  border-bottom: 1px solid #f0f4f8;
+  /* Contraste lignes et colonnes (BUG-004, 23/09) : le filet #f0f4f8 et le
+     fond alterne #f7f9fb etaient invisibles sur fond blanc. Gris du design
+     system TB. */
+  border-bottom: 1px solid var(--tb-grey-200);
   vertical-align: middle;
 }
+.table-wrap td + td { border-left: 1px solid var(--tb-grey-100); }
 .table-wrap tr:last-child td { border-bottom: none; }
-.table-wrap tbody tr:nth-child(even) { background: #f7f9fb; }
+.table-wrap tbody tr:nth-child(even) { background: var(--tb-grey-100); }
 .table-wrap tr:hover td { background: #f8fafc; }
 .table-wrap td.mono { font-family: var(--font-mono); font-size: 12px; }
 
