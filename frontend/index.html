@@ -1020,7 +1020,25 @@ function filterPromo() {
   document.getElementById('table-promo').innerHTML = html;
 }
 
+// Mode d'authentification du serveur, lu une seule fois sur /api/health.
+// En mode "entra" (Azure), l'identite Microsoft 365 est transmise par la
+// plateforme et le serveur ignore X-API-Key. Demander une cle y bloquait toute
+// saisie : du 22 au 25/09, aucune annotation n'a ete enregistree depuis Azure.
+let _modeAuth = null;
+async function modeAuth() {
+  if (_modeAuth === null) {
+    try {
+      const r = await fetch(API + '/api/health');
+      _modeAuth = (await r.json()).auth_mode || 'apikey';
+    } catch {
+      return 'apikey';  // pas de mise en cache : on retentera au prochain appel
+    }
+  }
+  return _modeAuth;
+}
+
 // Clé API pour les écritures (header X-API-Key) — demandée une fois, mémorisée
+// Poste métier et développement local seulement (AUTH_MODE=apikey).
 function getApiKey(force = false) {
   let k = localStorage.getItem('erp_api_key');
   if (!k || force) {
@@ -1031,7 +1049,7 @@ function getApiKey(force = false) {
 }
 
 async function apiFetch(path, options = {}) {
-  if (options.method && options.method !== 'GET') {
+  if (options.method && options.method !== 'GET' && await modeAuth() !== 'entra') {
     // Une clé vide (fenêtre de saisie annulée) partait quand même dans l'entête
     // et revenait en 401 « clé invalide », ce qui envoyait chercher une erreur
     // de clé là où il n'y avait qu'une saisie abandonnée. On distingue les deux.
@@ -1043,6 +1061,9 @@ async function apiFetch(path, options = {}) {
     options.headers = { ...(options.headers || {}), 'X-API-Key': cle };
   }
   const r = await fetch(API + path, options);
+  if (r.status === 401 && _modeAuth === 'entra') {
+    throw new Error('Session Microsoft expirée ou absente : rechargez la page pour vous reconnecter.');
+  }
   if (r.status === 401) {
     localStorage.removeItem('erp_api_key');  // clé invalide : re-demander au prochain essai
     throw new Error('Clé API refusée par le serveur — recliquez sur la cellule, '
