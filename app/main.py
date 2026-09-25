@@ -96,6 +96,21 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def revalider_html(request, call_next):
+    """Oblige le navigateur a revalider la page a chaque chargement.
+
+    StaticFiles n'envoie que ETag et Last-Modified. Sans Cache-Control, Chrome
+    garde index.html en cache par heuristique : le 25/09, un correctif deploye
+    restait invisible chez Marlene. no-cache ne supprime pas le cache, il impose
+    la revalidation (304 si la page n'a pas change, donc sans surcout).
+    """
+    response = await call_next(request)
+    if response.headers.get("content-type", "").startswith("text/html"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 # -- Securite ------------------------------------------------------------------
 # Deux contextes d'execution, deux barrieres, jamais les deux desactivees.
 #
@@ -1200,6 +1215,7 @@ def get_previsionnel():
                 "bl_par_conteneur_fournisseur": bl_bloques,
                 "cash_echeances": cash,
                 "cash_par_mois_conteneur": cash_par_mois_conteneur,
+                "donnees_maj": _derniere_maj_commande(),
             }
         except Exception as e:
             raise internal_error(e)
