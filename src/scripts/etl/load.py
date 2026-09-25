@@ -622,15 +622,22 @@ SELECT
         AND c.statut NOT IN ('Livrée','Annulée'))                AS est_en_retard,
     (c.statut = 'Livrée')                                        AS est_livre,
     TO_CHAR(COALESCE(c.etd_reel, c.etd_confirme), 'YYYY-MM')      AS mois_etd,
+    -- Retard de PAIEMENT : echeance = ETD du BL + 15 j (regle metier 07/07),
+    -- comme l'echeancier de /api/previsionnel. Jusqu'au 25/09, la vue comparait
+    -- l'ETD brut a la date du jour : ~158 k USD etaient signales en retard des
+    -- le depart du navire. L'ETD du BL vient du suivi transitaire (ot_transport,
+    -- cle primaire n_conteneur : la jointure ne duplique aucune ligne).
     (COALESCE(a.date_paiement, c.date_paiement) IS NULL
-        AND COALESCE(c.etd_reel, c.etd_confirme) < CURRENT_DATE
+        AND COALESCE(ot.etd_reel, c.etd_reel, c.etd_confirme) + 15 < CURRENT_DATE
         AND c.statut <> 'Annulée')                               AS est_a_payer_en_retard,
     (a.date_paiement IS NOT NULL)                                AS paiement_saisi_manuellement
 FROM achat.commande c
 LEFT JOIN achat.qualite q
     ON q.po_number = c.po_number AND q.code_article = c.code_article
 LEFT JOIN achat.commande_annotation a
-    ON a.po_number = c.po_number AND a.code_article = c.code_article;
+    ON a.po_number = c.po_number AND a.code_article = c.code_article
+LEFT JOIN achat.ot_transport ot
+    ON ot.n_conteneur = c.n_conteneur;
 """
 
 
