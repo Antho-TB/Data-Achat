@@ -814,7 +814,11 @@ button { cursor: pointer; }
     <div id="prev-mesures" class="artwork-stats"></div>
     <div class="section-header"><span class="section-title">B/L en attente ou bloqués — par conteneur puis fournisseur</span><span class="badge badge-green" style="margin-left:8px;" title="BL, n° de facture, ETD réel et ETA : Suivi Maritime Transitaire (Qualitairsea) + PJ Gmail.">BL / dates : Maritime + Gmail</span><span class="badge badge-orange" style="margin-left:6px;" title="Les colonnes Valeur et Reste à payer viennent de achat.commande, alimentée par IMPORT 2026.xlsx et Sylob. AUCUN montant n'est lu dans les factures reçues par mail à ce jour : ce n'est pas le montant de la liasse documentaire.">Montants : IMPORT 2026.xlsx</span></div>
     <p style="font-size:12px;color:var(--muted);margin:4px 0 8px;">« Bloqué » = en retard de livraison ET pas encore parti. Paiement : même logique que l'onglet Conteneurs (Payé / À payer / À payer en retard), ventilée ici par fournisseur au sein de chaque conteneur.</p>
-    <p style="font-size:12px;color:#855400;background:var(--sand,#FFF6E5);border:1px solid #F3D299;border-radius:6px;padding:7px 12px;margin:4px 0 8px;">⚠ <b>Ne pas payer sur ces montants sans la liasse.</b> Les deux colonnes de montants proviennent du fichier IMPORT, pas des factures reçues par mail — l'extraction des montants de facture n'est pas encore en place. La colonne <b>Justificatif</b> indique, ligne par ligne, si un BL ou un n° de facture corrobore la ligne ; « Aucun » = montant issu du seul fichier IMPORT.</p>
+    <!-- Etat de la source des montants, calcule a chaque chargement
+         (renderBlSource). Remplace le 25/09 un avertissement fixe que plus
+         personne ne lisait : on dit de quand date la donnee et combien de
+         lignes sont corroborees, et on n'alerte que s'il y a lieu. -->
+    <p id="prev-bl-source" style="font-size:12px;margin:4px 0 8px;"></p>
     <div class="toolbar" style="margin-bottom:8px;">
       <input id="f-prev-conteneur" type="text" placeholder="N° conteneur, BL ou fournisseur…"
              oninput="filterBlBloques()" style="min-width:280px;">
@@ -3248,6 +3252,7 @@ async function openArtworkCommentaire(codeArticle, field, current) {
 async function loadPrevisionnel() {
   try {
     const r = await apiFetch('/api/previsionnel');
+    _blDonneesMaj = r.donnees_maj || null;
     renderCash(r.cash_par_mois_conteneur || []);
     renderBlBloques(r.bl_par_conteneur_fournisseur || []);
     loadPrevisionnelMesures();
@@ -3262,6 +3267,44 @@ async function loadPrevisionnel() {
 // sein d'un conteneur), la ligne d'en-tete conteneur agrege le total.
 // Jeu de lignes complet, conserve pour filtrer sans rappeler l'API.
 let _blBloquesRows = [];
+// Date du dernier chargement de achat.commande, source des montants.
+let _blDonneesMaj = null;
+
+// Ligne d'etat au-dessus de la liste : date de la donnee et part des lignes
+// corroborees par un BL ou une facture. Les montants restent ceux du fichier
+// IMPORT (aucun montant n'est lu dans les factures) : on le rappelle en une
+// phrase, et on n'alerte que pour les lignes sans aucun justificatif.
+function renderBlSource() {
+  const el = document.getElementById('prev-bl-source');
+  if (!el) return;
+  const rows = _blBloquesRows || [];
+  const aJustif = r => !!((r.n_bl && String(r.n_bl).trim()) || (r.n_facture && String(r.n_facture).trim()));
+  const sans = rows.filter(r => !aJustif(r));
+  const duSans = sans.reduce((s, r) => s + (Number(r.valeur_a_payer) || 0), 0);
+  let quand = 'date de chargement inconnue';
+  let perime = true;
+  if (_blDonneesMaj) {
+    const d = new Date(_blDonneesMaj);
+    const heures = (Date.now() - d.getTime()) / 36e5;
+    perime = heures > FRAICHEUR_MAX_HEURES;
+    const age = heures < 1 ? "il y a moins d'une heure"
+      : heures < 48 ? `il y a ${Math.floor(heures)} h` : `il y a ${Math.floor(heures / 24)} j`;
+    quand = `chargés le ${d.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })} (${age})`;
+  }
+  let html = `Montants du fichier IMPORT, ${quand}. `
+    + `${rows.length - sans.length} ligne(s) sur ${rows.length} corroborée(s) par un BL ou une facture.`;
+  if (sans.length) {
+    html += ` <b>⚠ ${sans.length} sans justificatif`
+      + (duSans ? `, ${duSans.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} à payer` : '')
+      + ' : ne pas les payer sans la liasse.</b>';
+  }
+  const alerte = perime || sans.length;
+  el.style.cssText = 'font-size:12px;margin:4px 0 8px;padding:6px 12px;border-radius:6px;'
+    + (perime ? 'color:#fff;background:var(--red,#E2001A);'
+       : alerte ? 'color:#855400;background:var(--sand,#FFF6E5);border:1px solid #F3D299;'
+       : 'color:var(--muted);background:var(--tb-grey-50,#f7f7f7);');
+  el.innerHTML = html;
+}
 
 // ── Filtres multi-valeurs + selection totalisee (retour Marlene 29/07) ──────
 // Le jour de paiement, Marlene ne solde pas "tout HONGXING" : elle choisit 2
@@ -3463,6 +3506,7 @@ function filterBlBloques() {
 function renderBlBloques(rows, filtre = false) {
   if (!filtre) {
     _blBloquesRows = rows;
+    renderBlSource();
     // Les cles disparues du jeu de donnees ne doivent pas continuer a peser
     // dans les totaux apres un rechargement.
     const vivantes = new Set(rows.map(_blKey));
