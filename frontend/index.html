@@ -650,6 +650,11 @@ button { cursor: pointer; }
   </div>
 </div>
 
+<!-- Fraicheur des donnees (BUG-002) : achat.commande n'a pas ete rechargee du
+     28/07 au 22/09 sans que rien ne le montre, et des conteneurs payes
+     s'affichaient a payer. Rempli par checkHealth(). -->
+<div id="bandeau-fraicheur" role="alert" style="display:none;background:var(--red,#E2001A);color:#fff;padding:8px 24px;font-size:13px;font-weight:600;"></div>
+
 <!-- ── Tabs bar ─────────────────────────────────────────────────────────────── -->
 <div class="tabs-bar">
   <button class="tab-btn active" onclick="switchTab('dashboard')">&#9632; Dashboard</button>
@@ -1765,6 +1770,21 @@ async function exportFicheExcel() {
 })();
 
 // ── DB Health ──────────────────────────────────────────────────────────────
+// L'ETL recharge les commandes chaque nuit a 02h00 : au-dela de 26 h, un run a
+// saute et les statuts de paiement ne sont plus fiables.
+const FRAICHEUR_MAX_HEURES = 26;
+
+function afficherFraicheur(iso) {
+  const el = document.getElementById('bandeau-fraicheur');
+  if (!el || !iso) return;
+  const heures = (Date.now() - new Date(iso).getTime()) / 36e5;
+  if (heures <= FRAICHEUR_MAX_HEURES) { el.style.display = 'none'; return; }
+  const depuis = new Date(iso).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+  el.textContent = `⚠ Données commandes non rechargées depuis le ${depuis} (${Math.floor(heures / 24)} j). `
+    + `Les statuts de paiement et les restes à payer peuvent être faux : ne pas payer sur cette base, prévenir Antho.`;
+  el.style.display = 'block';
+}
+
 async function checkHealth() {
   try {
     const h = await apiFetch('/api/health');
@@ -1772,6 +1792,7 @@ async function checkHealth() {
     const lbl = document.getElementById('db-status');
     dot.className = 'dot ' + (h.db === 'connected' ? 'ok' : 'err');
     lbl.textContent = h.db === 'connected' ? 'DWH connecté' : 'DWH hors ligne';
+    afficherFraicheur(h.donnees_maj);
   } catch {
     document.getElementById('db-dot').className = 'dot err';
     document.getElementById('db-status').textContent = 'API hors ligne';
@@ -2991,7 +3012,7 @@ function renderQualite(rows, warning) {
 const PREV_PHASES = {
   achete:        { lbl: 'Acheté',        color: 'var(--blue-light)', def: 'Lignes commandées (hors annulées). Montant = prix unitaire x quantité, en USD.' },
   a_payer:       { lbl: 'À payer',       color: 'var(--orange)',     def: 'Lignes non encore payées (hors annulées). Montant restant dû, en USD.' },
-  a_payer_en_retard: { lbl: 'À payer EN RETARD', color: 'var(--red,#c0392b)', def: 'Retard de PAIEMENT : lignes non payées dont l ETD est dépassé. Le paiement se déclenche au BL.' },
+  a_payer_en_retard: { lbl: 'À payer EN RETARD', color: 'var(--red,#c0392b)', def: 'Retard de PAIEMENT : lignes non payées dont l échéance (ETD du BL + 15 j) est dépassée. Le paiement se déclenche au BL.' },
   en_inspection: { lbl: 'En inspection', color: 'var(--blue-light)', def: 'Lignes en cours d inspection qualité (non encore livrées).' },
   parti:         { lbl: 'Parti',         color: 'var(--blue-light)', def: 'Lignes dont la marchandise est partie (ETD atteint), pas encore livrées.' },
   en_retard:     { lbl: 'En retard',     color: 'var(--red,#c0392b)', def: 'Retard de LIVRAISON : ETD dépassé et pas encore livré.' },
@@ -3019,7 +3040,9 @@ async function loadPrevisionnelMesures() {
     const frs = r.par_fournisseur || [];
     document.getElementById('prev-frs').innerHTML = frs.length ? `<div class="table-wrap"><table>
       <thead><tr><th>Fournisseur</th><th title="Nombre de lignes à payer.">À payer · nb</th><th title="Nombre de lignes en inspection qualité.">Inspection · nb</th><th title="Nombre de lignes parties (ETD atteint), pas livrées.">Parti · nb</th>
-      <th title="Nombre de lignes en retard de livraison (ETD dépassé, pas livré).">En retard · nb</th><th title="Montant des lignes en retard, en USD.">Montant retard · USD</th></tr></thead>
+      <th title="Nombre de lignes en retard de livraison (ETD dépassé, pas livré).">En retard · nb</th><th title="Montant des lignes en retard, en USD.">Montant retard · USD</th>
+      <th title="Reste dû total du fournisseur, en USD (IMPORT).">À payer · USD</th>
+      <th title="Part du reste dû sans conteneur (commandes en production ou non encore expédiées). Elle n'apparaît pas dans la liste par conteneur : c'est l'écart entre les deux totaux.">dont sans conteneur · USD</th></tr></thead>
       <tbody>${frs.map(f => `<tr>
         <td>${esc(f.fournisseur)||'-'}</td>
         <td class="mono">${f.a_payer??0}</td>
@@ -3027,6 +3050,8 @@ async function loadPrevisionnelMesures() {
         <td class="mono">${f.parti??0}</td>
         <td class="mono" style="color:var(--red,#c0392b)">${f.en_retard??0}</td>
         <td class="mono">${Number(f.montant_retard).toLocaleString('en-US', {style:'currency', currency:'USD'})}</td>
+        <td class="mono">${Number(f.montant_a_payer || 0).toLocaleString('en-US', {style:'currency', currency:'USD'})}</td>
+        <td class="mono" style="color:var(--muted)">${Number(f.montant_a_payer_sans_conteneur || 0).toLocaleString('en-US', {style:'currency', currency:'USD'})}</td>
       </tr>`).join('')}</tbody></table></div>` : '<div class="empty">Aucune donnée</div>';
   } catch (e) {
     document.getElementById('prev-mesures').innerHTML =

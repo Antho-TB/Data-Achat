@@ -1041,7 +1041,7 @@ def get_previsionnel():
                     MAX(ot.transport)                        AS navire,
                     MAX(ot.transitaire)                      AS transitaire,
                     MAX(ot.lieu_livraison)                   AS destinataire,
-                    MAX(COALESCE(ot.etd_reel, c.etd_confirme)) AS etd,
+                    MAX(COALESCE(ot.etd_reel, c.etd_reel, c.etd_confirme)) AS etd,
                     MAX(ot.eta)                              AS eta,
                     MAX(ot.date_livraison)                   AS date_livraison,
                     COUNT(DISTINCT c.po_number)              AS nb_po,
@@ -1098,10 +1098,18 @@ def get_previsionnel():
             bl_bloques = rows_to_dicts(conn.execute(text(f"""
                 SELECT
                     c.n_conteneur,
+                    -- BL du fournisseur, par ordre de fiabilite (BUG-001, 25/09) :
+                    -- 1. l'IMPORT, saisi par Marlene au grain du fournisseur ;
+                    -- 2. la liste du suivi transitaire ;
+                    -- 3. ot_transport.n_bl, seulement s'il a la forme d'un BL.
+                    -- Le lecteur de PJ Gmail y range des n° de PO ou des mots
+                    -- ("becomes", "GUANGWEI") : 44 conteneurs ouverts sur 100
+                    -- affichaient un BL faux ou vide alors que l'IMPORT l'avait.
                     COALESCE(
-                        MAX(ot.n_bl),
+                        MAX(NULLIF(NULLIF(TRIM(c.n_bl), ''), '/')),
                         (SELECT MIN(b.n_bl) FROM {SCHEMA}.ot_transport_bl b
-                          WHERE b.n_conteneur = c.n_conteneur)
+                          WHERE b.n_conteneur = c.n_conteneur),
+                        MAX(ot.n_bl) FILTER (WHERE ot.n_bl ~ '^[A-Z]{4,5}[0-9]{7,8}$')
                     )                                         AS n_bl,
                     (SELECT COUNT(*) FROM {SCHEMA}.ot_transport_bl b
                       WHERE b.n_conteneur = c.n_conteneur)     AS nb_bl,
@@ -1111,7 +1119,7 @@ def get_previsionnel():
                     COUNT(*)                                   AS nb_articles,
                     ROUND(SUM(CASE WHEN c.code_article IS NULL THEN COALESCE(c.total_prix, 0)
                                    ELSE COALESCE(c.prix_unitaire * c.quantite, 0) END), 2) AS valeur,
-                    MAX(COALESCE(ot.etd_reel, c.etd_confirme)) AS etd,
+                    MAX(COALESCE(ot.etd_reel, c.etd_reel, c.etd_confirme)) AS etd,
                     MAX(ot.eta)                                AS eta,
                     COUNT(*) FILTER (WHERE v.est_en_retard AND NOT v.est_parti) AS nb_bloques,
                     BOOL_OR(v.est_en_retard AND NOT v.est_parti)               AS est_bloque,
@@ -1126,10 +1134,13 @@ def get_previsionnel():
                 FROM {SCHEMA}.commande c
                 LEFT JOIN {SCHEMA}.ot_transport ot ON ot.n_conteneur = c.n_conteneur
                 LEFT JOIN {SCHEMA}.v_previsionnel v ON v.id = c.id
-                WHERE c.n_conteneur IS NOT NULL AND c.n_conteneur <> ''
+                -- " /" est la saisie IMPORT d'une ligne sans conteneur : elle
+                -- formait un faux conteneur "/" dans la liste.
+                WHERE NULLIF(NULLIF(TRIM(c.n_conteneur), ''), '/') IS NOT NULL
                   AND c.statut <> 'Annulée'
                 GROUP BY c.n_conteneur, c.fournisseur
-                HAVING BOOL_OR(c.statut <> 'Livrée' OR v.est_a_payer)
+                -- Une ligne "Payée" sans reste du est soldee, comme une "Livrée".
+                HAVING BOOL_OR(c.statut NOT IN ('Livrée', 'Payée') OR v.est_a_payer)
                 ORDER BY c.n_conteneur, nb_bloques DESC
             """)))
 
@@ -1146,16 +1157,16 @@ def get_previsionnel():
                         CASE WHEN c.code_article IS NULL THEN COALESCE(c.total_prix, 0)
                              ELSE COALESCE(c.prix_unitaire * c.quantite, 0) END AS montant,
                         CASE
-                            WHEN (COALESCE(ot.etd_reel, c.etd_confirme) + 15) <  CURRENT_DATE      THEN '1. En retard'
-                            WHEN (COALESCE(ot.etd_reel, c.etd_confirme) + 15) <= CURRENT_DATE + 30 THEN '2. <= 30 j'
-                            WHEN (COALESCE(ot.etd_reel, c.etd_confirme) + 15) <= CURRENT_DATE + 60 THEN '3. 31-60 j'
-                            WHEN (COALESCE(ot.etd_reel, c.etd_confirme) + 15) <= CURRENT_DATE + 90 THEN '4. 61-90 j'
+                            WHEN (COALESCE(ot.etd_reel, c.etd_reel, c.etd_confirme) + 15) <  CURRENT_DATE      THEN '1. En retard'
+                            WHEN (COALESCE(ot.etd_reel, c.etd_reel, c.etd_confirme) + 15) <= CURRENT_DATE + 30 THEN '2. <= 30 j'
+                            WHEN (COALESCE(ot.etd_reel, c.etd_reel, c.etd_confirme) + 15) <= CURRENT_DATE + 60 THEN '3. 31-60 j'
+                            WHEN (COALESCE(ot.etd_reel, c.etd_reel, c.etd_confirme) + 15) <= CURRENT_DATE + 90 THEN '4. 61-90 j'
                             ELSE '5. > 90 j'
                         END AS tranche
                     FROM {SCHEMA}.commande c
                     LEFT JOIN {SCHEMA}.ot_transport ot ON ot.n_conteneur = c.n_conteneur
                     WHERE c.statut <> 'Annulée' AND c.date_paiement IS NULL
-                      AND COALESCE(ot.etd_reel, c.etd_confirme) IS NOT NULL
+                      AND COALESCE(ot.etd_reel, c.etd_reel, c.etd_confirme) IS NOT NULL
                 ) t
                 GROUP BY tranche
                 ORDER BY tranche
@@ -1167,7 +1178,7 @@ def get_previsionnel():
             # empile (1 barre par mois, 1 segment par conteneur).
             cash_par_mois_conteneur = rows_to_dicts(conn.execute(text(f"""
                 SELECT
-                    TO_CHAR((COALESCE(ot.etd_reel, c.etd_confirme) + 15), 'YYYY-MM') AS mois,
+                    TO_CHAR((COALESCE(ot.etd_reel, c.etd_reel, c.etd_confirme) + 15), 'YYYY-MM') AS mois,
                     COALESCE(NULLIF(NULLIF(TRIM(c.n_conteneur), ''), '/'), 'Sans conteneur') AS n_conteneur,
                     ROUND(SUM(CASE WHEN c.code_article IS NULL THEN COALESCE(c.total_prix, 0)
                                    ELSE COALESCE(c.prix_unitaire * c.quantite, 0) END), 2) AS valeur_totale,
@@ -1178,7 +1189,7 @@ def get_previsionnel():
                 FROM {SCHEMA}.commande c
                 LEFT JOIN {SCHEMA}.ot_transport ot ON ot.n_conteneur = c.n_conteneur
                 WHERE c.statut <> 'Annulée'
-                  AND COALESCE(ot.etd_reel, c.etd_confirme) IS NOT NULL
+                  AND COALESCE(ot.etd_reel, c.etd_reel, c.etd_confirme) IS NOT NULL
                 GROUP BY 1, 2
                 ORDER BY 1, 2
             """)))
@@ -1239,12 +1250,21 @@ def get_conteneurs():
                            (SELECT string_agg(b.n_bl, ' · ' ORDER BY b.n_bl)
                             FROM {SCHEMA}.ot_transport_bl b
                             WHERE b.n_conteneur = ot.n_conteneur),
-                           ot.n_bl
+                           -- Repli sur l'IMPORT, puis sur ot.n_bl s'il a la
+                           -- forme d'un BL (voir bl_bloques, BUG-001).
+                           (SELECT string_agg(DISTINCT TRIM(c.n_bl), ' · ')
+                            FROM {SCHEMA}.commande c
+                            WHERE c.n_conteneur = ot.n_conteneur
+                              AND NULLIF(NULLIF(TRIM(c.n_bl), ''), '/') IS NOT NULL),
+                           CASE WHEN ot.n_bl ~ '^[A-Z]{4,5}[0-9]{7,8}$' THEN ot.n_bl END
                        ) AS n_bl,
                        COALESCE(
-                           (SELECT count(*) FROM {SCHEMA}.ot_transport_bl b
-                            WHERE b.n_conteneur = ot.n_conteneur),
-                           CASE WHEN ot.n_bl IS NULL THEN 0 ELSE 1 END
+                           NULLIF((SELECT count(*) FROM {SCHEMA}.ot_transport_bl b
+                                   WHERE b.n_conteneur = ot.n_conteneur), 0),
+                           NULLIF((SELECT count(DISTINCT TRIM(c.n_bl)) FROM {SCHEMA}.commande c
+                                   WHERE c.n_conteneur = ot.n_conteneur
+                                     AND NULLIF(NULLIF(TRIM(c.n_bl), ''), '/') IS NOT NULL), 0),
+                           CASE WHEN ot.n_bl ~ '^[A-Z]{4,5}[0-9]{7,8}$' THEN 1 ELSE 0 END
                        ) AS nb_bl,
                        ot.transport AS navire, ot.transitaire,
                        ot.lieu_livraison AS destinataire,
@@ -1303,7 +1323,26 @@ def health():
         # faisait donc annoncer "ecriture desactivee" par une API ou l'ecriture
         # marche, ce qui envoie chercher une panne qui n'existe pas.
         "write_enabled": Config.AUTH_MODE == "entra" or bool(Config.API_KEY),
+        "donnees_maj": _derniere_maj_commande() if db_ok else None,
     }
+
+
+def _derniere_maj_commande() -> Optional[str]:
+    """Horodatage du dernier chargement de achat.commande, ou None si illisible.
+
+    achat.commande est rechargee par l'ETL du poste de Marlene. Du 28/07 au
+    22/09, elle ne l'a pas ete sans que rien ne le signale : des conteneurs
+    payes s'affichaient "A payer (retard)" (BUG-002). L'interface affiche un
+    bandeau quand cette date vieillit. Une erreur ne doit jamais faire echouer
+    la sonde, dont depend le controle de deploiement.
+    """
+    try:
+        with get_engine().connect() as conn:
+            maj = conn.execute(text(f"SELECT MAX(updated_at) FROM {SCHEMA}.commande")).scalar()
+        return maj.isoformat() if maj else None
+    except Exception:  # noqa: BLE001
+        logger.warning("[ATTENTION] Fraicheur de achat.commande illisible.", exc_info=True)
+        return None
 
 
 @app.get("/api/qualite")
@@ -1401,8 +1440,17 @@ def get_previsionnel_mesures():
                        COUNT(*) FILTER (WHERE est_en_inspection) AS en_inspection,
                        COUNT(*) FILTER (WHERE est_parti)         AS parti,
                        COUNT(*) FILTER (WHERE est_en_retard)     AS en_retard,
-                       COALESCE(ROUND(SUM(montant) FILTER (WHERE est_en_retard), 2), 0) AS montant_retard
-                FROM {SCHEMA}.v_previsionnel
+                       COALESCE(ROUND(SUM(montant) FILTER (WHERE est_en_retard), 2), 0) AS montant_retard,
+                       -- Reconciliation avec la liste par conteneur (BUG-001) :
+                       -- elle ne montre que les lignes rattachees a un conteneur,
+                       -- soit ~10 % du reste du au 25/09. La difference est ici.
+                       COALESCE(ROUND(SUM(montant) FILTER (WHERE est_a_payer), 2), 0) AS montant_a_payer,
+                       COALESCE(ROUND(SUM(montant) FILTER (
+                           WHERE est_a_payer AND NULLIF(NULLIF(TRIM(n_conteneur), ''), '/') IS NULL
+                       ), 2), 0) AS montant_a_payer_sans_conteneur
+                FROM (SELECT v.*, cc.n_conteneur
+                      FROM {SCHEMA}.v_previsionnel v
+                      JOIN {SCHEMA}.commande cc ON cc.id = v.id) p
                 WHERE fournisseur IS NOT NULL
                 GROUP BY fournisseur
                 ORDER BY en_retard DESC, montant_retard DESC
