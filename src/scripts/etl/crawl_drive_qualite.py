@@ -47,6 +47,7 @@ Usage (poste, VPN si besoin d'ecrire en DB) :
 from __future__ import annotations
 
 import argparse
+import difflib
 import logging
 import re
 from dataclasses import dataclass, field
@@ -56,11 +57,15 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(name)s -- %(message)s")
 logger = logging.getLogger("crawl_drive_qualite")
 
-# Sous-dossiers cibles a l'interieur de chaque dossier PO. "Results of analysis"
-# vient du nommage observe sur le pilote 02/07 ; "Reports of analysis" vient du
-# mail Andrea 25/06 (docs/plan_action.md) -- les deux graphies coexistent selon
-# les commandes, on accepte les deux plutot que d'en rater une silencieusement.
-TARGET_SUBFOLDERS = {"Inspection", "Results of analysis", "Reports of analysis"}
+# Sous-dossiers cibles a l'interieur de chaque dossier PO. Les noms sont saisis
+# a la main et varient : "Results of analysis" (pilote 02/07), "Reports of
+# analysis" (mail Andrea 25/06), puis "Results of Analysis", "Inspections" et
+# meme "Inpesctions" sur les dossiers crees le 23/09. Une comparaison exacte
+# les ratait tous, sans erreur. On classe donc par mot-cle, avec une tolerance
+# aux fautes de frappe pour "inspection".
+MOTIF_ANALYSE = "analys"
+REFERENCE_INSPECTION = "inspection"
+SEUIL_SIMILARITE_INSPECTION = 0.8
 
 FOLDER_MIME = "application/vnd.google-apps.folder"
 
@@ -121,6 +126,10 @@ def _list_children(service, folder_id: str) -> list[dict]:
                 fields="nextPageToken, files(id, name, mimeType)",
                 pageToken=page_token,
                 pageSize=200,
+                # La racine qualite est un Drive partage : sans ces deux
+                # parametres, l'API renvoie une liste vide, sans erreur.
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
             )
             .execute()
         )
@@ -128,6 +137,25 @@ def _list_children(service, folder_id: str) -> list[dict]:
         page_token = resp.get("nextPageToken")
         if not page_token:
             return out
+
+
+def _type_sous_dossier(nom: str) -> str | None:
+    """
+    Classe un sous-dossier de PO en type de document achat.qualite_doc.
+
+    Args:
+        nom: Nom du sous-dossier Drive, tel que saisi par l'equipe.
+    Returns:
+        "analyse", "inspection", ou None pour un sous-dossier hors perimetre
+        (Artworks, Purchase Sheets...).
+    """
+    n = nom.strip().casefold()
+    if MOTIF_ANALYSE in n:
+        return "analyse"
+    ratio = difflib.SequenceMatcher(None, n.rstrip("s"), REFERENCE_INSPECTION).ratio()
+    if ratio >= SEUIL_SIMILARITE_INSPECTION:
+        return "inspection"
+    return None
 
 
 def _parse_filename(po_from_folder: str | None, filename: str) -> dict:
@@ -167,6 +195,11 @@ def crawl(service, root_folder_id: str) -> list[dict]:
     rows: list[dict] = []
     po_folders = [f for f in _list_children(service, root_folder_id) if f["mimeType"] == FOLDER_MIME]
     logger.info("[INFO] %d dossier(s) PO trouve(s) sous la racine.", len(po_folders))
+    if not po_folders:
+        # Une racine configuree sans aucun dossier PO n'est jamais un etat
+        # normal : mauvais ID, droits manquants ou Drive partage mal interroge.
+        # Echouer ici evite un [SUCCES] trompeur a 0 ligne.
+        raise RuntimeError(f"Aucun dossier PO sous la racine Drive {root_folder_id}")
 
     for po_folder in po_folders:
         m_po = RE_PO.search(po_folder["name"])
@@ -174,7 +207,8 @@ def crawl(service, root_folder_id: str) -> list[dict]:
         subfolders = [f for f in _list_children(service, po_folder["id"]) if f["mimeType"] == FOLDER_MIME]
 
         for sub in subfolders:
-            if sub["name"] not in TARGET_SUBFOLDERS:
+            type_doc = _type_sous_dossier(sub["name"])
+            if type_doc is None:
                 continue
             files = [f for f in _list_children(service, sub["id"]) if f["mimeType"] != FOLDER_MIME]
             for f in files:
@@ -187,7 +221,7 @@ def crawl(service, root_folder_id: str) -> list[dict]:
                     "drive_file_id": f["id"],
                     "po_number": parsed["po_number"],
                     "societe": "TB",
-                    "type": "analyse",
+                    "type": type_doc,
                     "stade": parsed["stade"],
                     "ref_rapport": parsed["ref_rapport"],
                     "composant": None,  # cf. limites connues -- pas extrait automatiquement
@@ -211,7 +245,11 @@ def main() -> int:
         return 1
 
     service = build_drive_service(cfg)
-    rows = crawl(service, cfg.root_folder_id)
+    try:
+        rows = crawl(service, cfg.root_folder_id)
+    except RuntimeError as exc:
+        logger.error("[ÉCHEC] %s : verifier l'ID et les droits du compte OAuth.", exc)
+        return 1
     logger.info("[INFO] %d fichier(s) qualite trouve(s) au total.", len(rows))
 
     if not args.dry_run and not args.commit:
