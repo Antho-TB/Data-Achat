@@ -866,6 +866,13 @@ button { cursor: pointer; }
         <input id="f-cont-bl" type="text" placeholder="N° BL..." oninput="filterConteneurs()">
         <input id="f-cont-trans" type="text" placeholder="Transitaire..." oninput="filterConteneurs()">
         <input id="f-cont-num" type="text" placeholder="N° de conteneur..." oninput="filterConteneurs()">
+        <input id="f-cont-po" type="text" placeholder="N° de PO..." oninput="filterConteneurs()">
+        <select id="f-cont-etat" onchange="filterConteneurs()" title="État de livraison du conteneur">
+          <option value="">Tous les états</option>
+          <option value="attente">En attente de départ</option>
+          <option value="cours">En cours d'acheminement</option>
+          <option value="livre">Livré</option>
+        </select>
       </div>
       <div id="table-conteneurs"><div class="loader"><span class="spinner"></span>Chargement…</div></div>
   </div>
@@ -3659,11 +3666,15 @@ function filterConteneurs() {
   const bl = document.getElementById('f-cont-bl').value.toLowerCase();
   const trans = document.getElementById('f-cont-trans').value.toLowerCase();
   const num = document.getElementById('f-cont-num').value.toLowerCase();
+  const po = document.getElementById('f-cont-po').value.toLowerCase();
+  const etat = document.getElementById('f-cont-etat').value;
   const filtered = _conteneurs.filter(r =>
     (!nav   || (r.navire || '').toLowerCase().includes(nav)) &&
     (!bl    || (r.n_bl || '').toLowerCase().includes(bl)) &&
     (!trans || (r.transitaire || '').toLowerCase().includes(trans)) &&
-    (!num   || (r.n_conteneur || '').toLowerCase().includes(num))
+    (!num   || (r.n_conteneur || '').toLowerCase().includes(num)) &&
+    (!po    || (r.po_list || '').toLowerCase().includes(po)) &&
+    (!etat  || etatLivraison(r).code === etat)
   );
   renderConteneursTable(filtered);
 }
@@ -3735,6 +3746,23 @@ function chgtDot(couleur, nb) {
   return `<span title="${nb} changement(s) transmis depuis la 1ère annonce" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};margin-left:6px;vertical-align:middle;"></span>`;
 }
 
+// Etat de livraison du conteneur (BUG-005, 23/09) : la couleur dit d'un coup
+// d'oeil ce qu'on attend. Livre = date de livraison confirmee et passee ;
+// en cours = parti de Chine (ETD passe) mais pas encore livre ; en attente =
+// pas encore parti, ou ETD inconnu.
+function etatLivraison(r) {
+  const today = new Date().toISOString().slice(0, 10);
+  const livr = r.date_livraison ? String(r.date_livraison).slice(0, 10) : null;
+  const etd = r.etd ? String(r.etd).slice(0, 10) : null;
+  if (livr && livr <= today) return { code: 'livre', badge:
+    `<span class="badge badge-green" title="Livraison confirmée par le transitaire">Livré le ${fmt(r.date_livraison, 'date')}</span>` };
+  if (etd && etd <= today) return { code: 'cours', badge:
+    `<span class="badge badge-blue" title="Parti de Chine le ${fmt(r.etd, 'date')}, pas encore livré sur site">En cours</span>` };
+  return { code: 'attente', badge: etd
+    ? `<span class="badge badge-yellow" title="Départ prévu le ${fmt(r.etd, 'date')}">En attente</span>`
+    : '<span class="badge badge-yellow" title="Date de départ (ETD) pas encore connue">En attente</span>' };
+}
+
 function renderConteneursTable(rows) {
   const el = document.getElementById('table-conteneurs');
   if (!rows || !rows.length) {
@@ -3750,7 +3778,8 @@ function renderConteneursTable(rows) {
       <th title="Date d'arrivée estimée à Fos (ETA).">ETA</th>
       <th title="Estimation = ETA + 7 jours (dédouanement et acheminement). Affichée tant que le transitaire n'a pas confirmé de date ferme ; disparaît dès que la livraison confirmée est connue.">Livr. estimée</th>
       <th title="Date et heure de livraison confirmées par le transitaire, sur site (Pommier / GDD).">Livraison confirmée</th>
-      <th title="Nombre de PO regroupés dans le conteneur.">PO · nb</th>
+      <th title="Livré (vert) : livraison confirmée. En cours (bleu) : parti de Chine, pas encore livré. En attente (jaune) : pas encore parti.">État livraison</th>
+      <th title="N° des PO regroupés dans le conteneur (lignes de l'IMPORT rattachées à ce conteneur).">PO</th>
       <th title="Nombre de lignes article.">Art. · nb</th>
       <th title="Valeur des lignes du conteneur, en USD.">Valeur · USD</th>
       <th title="Statut de paiement du conteneur : Payé (toutes les lignes) / À payer (au moins une ligne non payée) / À payer EN RETARD (au moins une ligne dont l'échéance BL+15j est dépassée). Cliquer sur un badge pour saisir la date de paiement de tout le conteneur.">Paiement ✎</th>
@@ -3771,7 +3800,8 @@ function renderConteneursTable(rows) {
             ? '<span style="color:var(--muted)">—</span>'
             : `<span style="color:var(--muted)" title="Estimation ETA + ${DELAI_LIVRAISON_APRES_ETA_JOURS} j, non confirmée par le transitaire">${fmt(livraisonEstimee(r.eta), 'date')}</span>`}</td>
       <td>${fmt(r.date_livraison, 'datetime')}${chgtDot(r.couleur_livraison, r.nb_changements_livraison)}</td>
-      <td style="text-align:right">${conteneurSansLigne(r) ? '<span style="color:var(--muted)">—</span>' : (r.nb_po ?? 0)}</td>
+      <td>${etatLivraison(r).badge}</td>
+      <td class="mono">${r.po_list ? esc(r.po_list) : '<span style="color:var(--muted)" title="Aucune ligne de l\'IMPORT rattachée à ce conteneur">—</span>'}</td>
       <td style="text-align:right">${conteneurSansLigne(r) ? '<span style="color:var(--muted)">—</span>' : (r.nb_articles ?? 0)}</td>
       <td style="text-align:right">${conteneurValeur(r)}</td>
       ${paiementCell(r, null)}
