@@ -1242,6 +1242,11 @@ def get_conteneurs():
             agg = f"""
                 SELECT c.n_conteneur,
                        COUNT(DISTINCT c.po_number) AS nb_po,
+                       -- Numeros de PO du conteneur (BUG-003) : retrouver la
+                       -- commande a partir du BL ou du conteneur sans quitter
+                       -- l'onglet.
+                       string_agg(DISTINCT c.po_number::text, ' · '
+                                  ORDER BY c.po_number::text)  AS po_list,
                        COUNT(*)                    AS nb_articles,
                        ROUND(SUM(CASE WHEN c.code_article IS NULL THEN COALESCE(c.total_prix, 0)
                                       ELSE COALESCE(c.prix_unitaire * c.quantite, 0) END), 2) AS valeur,
@@ -1285,7 +1290,8 @@ def get_conteneurs():
                        ot.transport AS navire, ot.transitaire,
                        ot.lieu_livraison AS destinataire,
                        ot.etd_reel AS etd, ot.eta, ot.date_livraison,
-                       COALESCE(a.nb_po, 0) AS nb_po, COALESCE(a.nb_articles, 0) AS nb_articles,
+                       COALESCE(a.nb_po, 0) AS nb_po, a.po_list,
+                       COALESCE(a.nb_articles, 0) AS nb_articles,
                        COALESCE(a.valeur, 0) AS valeur,
                        COALESCE(a.nb_a_payer_retard, 0) AS nb_a_payer_retard,
                        COALESCE(a.nb_a_payer, 0)        AS nb_a_payer,
