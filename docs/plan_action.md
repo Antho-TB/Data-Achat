@@ -568,6 +568,8 @@ copies MyReport de `public`.
 | Garde-fou OAuth (§4.5) | 🔧 Branche `fix/garde-fou-scope-oauth`. Second défaut trouvé au passage : le preflight ne vérifiait que 2 scopes sur 3 | Reconsentement sur le poste (prompt, étape 3) |
 | Auto-pull (§4.5) | 🔧 Branche `fix/auto-pull-alerte` : un fichier non suivi ne bloque plus le pull ; un pull bloqué termine la tâche en `0x2` et dépose `deploy\logs\PULL_BLOQUE.txt` | Vérifier au premier run |
 | Mail DEKRA de réservation | Il arrive sur `achat.import@`, pas dans la boîte d'Antho | Exemples à collecter par la session du poste (prompt, étape 6) |
+| BUG-008 : fusion Suivi commandes et Promo/OP | ✅ PR #23 : onglet Promo supprimé, colonne « Intitulé cde » et case « Promo / Opé uniquement ». Règle élargie le 05/10 aux nouveaux produits et nouveaux clients (30 PO) | En ligne après merge de `feat/promo-nouveau-produit` |
+| BUG-007 : onglet Qualité | Cadrage : `docs/20261005_FUSEAU_Cadrage_OngletQualite_BUG007_v1.md`. La CA (commande d'analyse SE vers Cie) existe dans Sylob, intitulé `PO/STADE`, 66 % des PO couverts | Lot 1 livré (`feat/qualite-lot1`) : bloc Évaluation fournisseurs retiré, désignation, filtres PO / stade / statut MAT-SP-BAT, statuts normalisés, décisions mail en infobulle, lien Drive réparé (0 vers 226). Lots 2 et 3 après réponses du métier (§7 du cadrage) |
 
 > **Contrainte d'exploitation, à partir d'octobre 2026 :** Samuel (Nubo) est en
 > arrêt prolongé. Aucune action qui pourrait changer l'IP de DTPF : pas de

@@ -890,26 +890,32 @@ button { cursor: pointer; }
 
   <!-- QUALITE -->
   <div id="tab-qualite" class="tab-panel">
+    <!-- BUG-007 lot 1 : le bloc "Evaluation fournisseurs (inspection / NCR)" est
+         retire a la demande du metier (29/09), juge inutile. -->
     <div class="section-header">
-      <span class="section-title">Évaluation fournisseurs (inspection / NCR)</span>
+      <span class="section-title">Suivi qualité par produit</span>
       <button class="btn btn-ghost btn-sm" onclick="loadQualite()">&#8635; Actualiser</button>
     </div>
-    <div id="table-qualite-frs"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
-
-    <div class="section-header"><span class="section-title">Suivi qualité par produit</span></div>
     <div class="toolbar">
+      <input id="f-qual-po" type="text" placeholder="N° PO..." oninput="filterQualite()">
+      <input id="f-qual-art" type="text" placeholder="Référence ou désignation..." oninput="filterQualite()">
       <input id="f-qual-frs" type="text" placeholder="Fournisseur..." oninput="filterQualite()">
-      <input id="f-qual-art" type="text" placeholder="Référence article..." oninput="filterQualite()">
+      <select id="f-qual-stade" onchange="filterQualite()" title="N'affiche que les lignes concernées par ce stade (statut renseigné).">
+        <option value="">Tous stades</option>
+        <option value="mat">MAT (matière)</option>
+        <option value="sp">SP (semi-production)</option>
+        <option value="bat">BAT (produit fini)</option>
+        <option value="recep">Réception</option>
+      </select>
+      <select id="f-qual-mat" onchange="filterQualite()" title="Statut MAT"></select>
+      <select id="f-qual-sp" onchange="filterQualite()" title="Statut SP"></select>
+      <select id="f-qual-bat" onchange="filterQualite()" title="Statut BAT"></select>
       <select id="f-qual-res" onchange="filterQualite()">
         <option value="">Toutes inspections</option>
         <option>OK</option>
         <option>FAIL</option>
       </select>
-      <select id="f-qual-bat" onchange="filterQualite()">
-        <option value="">Tous BAT</option>
-        <option>Conforme</option>
-        <option>Non reçu</option>
-      </select>
+      <span id="qual-count" style="font-size:12px;color:var(--muted);margin-left:auto;"></span>
     </div>
     <div id="table-qualite"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
   </div>
@@ -1139,7 +1145,7 @@ const SOURCE_INFO = {
   artwork:       "Source : gsheet \"Suivi des artworks-import\" (Clarisse), lecture Drive",
   previsionnel:  "Source : dérivé de commande (Excel) + ot_transport (gsheet SUIVI MARITIME, transitaire QUALITAIR)",
   conteneurs:    "Source : gsheet SUIVI MARITIME TARRERIAS 2026 (transitaire) + PJ Gmail (BL, tâche planifiée poste Marlène)",
-  qualite:       "Source : IMPORT (MAT/SP) + Drive ANALYSES ET INSPECTIONS (rapports DEKRA/SPECTRO)",
+  qualite:       "Source : IMPORT (statuts MAT/SP/BAT/RECEP), décisions qualité reçues par mail, Drive ANALYSES ET INSPECTIONS (rapports DEKRA/SPECTRO), réception Sylob",
   article:       "Source : Matrice TB Import.xlsx + pull direct Sylob V25 (dimensions/prix) + gsheet artwork + Drive qualité",
   fiche:         "Source : pré-remplissage depuis achat.* (Excel + Sylob + Gmail selon le champ) -- formulaire Phase A",
 };
@@ -3104,17 +3110,36 @@ let _artwork = [];
 
 let _qualite = [];
 
+// Statuts normalises par l'API (statut_stade dans app/main.py) : en_cours,
+// conforme, fail, recu, ou null pour "non applicable".
+const STATUT_QUALITE = {
+  en_cours: { lbl: 'en cours', css: 'background:var(--orange);color:#fff' },
+  conforme: { lbl: 'conforme', css: 'background:var(--green);color:#fff' },
+  fail:     { lbl: 'FAIL',     css: 'background:var(--red,#c0392b);color:#fff' },
+  recu:     { lbl: 'reçu',     css: 'background:var(--blue-light);color:#fff' },
+};
+
+function remplirFiltresStatutQualite() {
+  for (const [id, lbl] of [['f-qual-mat', 'MAT'], ['f-qual-sp', 'SP'], ['f-qual-bat', 'BAT']]) {
+    const el = document.getElementById(id);
+    if (!el || el.options.length) continue;
+    el.innerHTML = `<option value="">Statut ${lbl} : tous</option>
+      <option value="en_cours">${lbl} en cours</option>
+      <option value="conforme">${lbl} conforme</option>
+      <option value="fail">${lbl} FAIL</option>
+      <option value="na">${lbl} non applicable</option>`;
+  }
+}
+
 async function loadQualite() {
+  remplirFiltresStatutQualite();
   document.getElementById('table-qualite').innerHTML =
     '<div class="loader"><span class="spinner"></span>Chargement...</div>';
   try {
-    const [q, f] = await Promise.all([
-      apiFetch('/api/qualite'),
-      apiFetch('/api/qualite/fournisseurs'),
-    ]);
+    const q = await apiFetch('/api/qualite');
     _qualite = q.data;
-    renderQualiteFournisseurs(f.data, f.warning);
-    renderQualite(_qualite, q.warning);
+    if (q.warning) { renderQualite([], q.warning); return; }
+    filterQualite();
   } catch (e) {
     document.getElementById('table-qualite').innerHTML =
       `<div class="empty"><div class="empty-icon">!</div>${esc(e.message)}</div>`;
@@ -3123,16 +3148,26 @@ async function loadQualite() {
 }
 
 function filterQualite() {
-  const frs = document.getElementById('f-qual-frs').value.toLowerCase();
-  const art = document.getElementById('f-qual-art').value.toLowerCase();
-  const res = document.getElementById('f-qual-res').value;
-  const bat = document.getElementById('f-qual-bat').value.toLowerCase();
-  renderQualite(_qualite.filter(r =>
-    (!frs || (r.fournisseur||'').toLowerCase().includes(frs)) &&
-    (!art || (r.code_article||'').toLowerCase().includes(art)) &&
-    (!res || r.resultat_inspection === res) &&
-    (!bat || (r.production_bat||'').toLowerCase().includes(bat))
-  ));
+  const val = id => (document.getElementById(id)?.value || '');
+  const po = val('f-qual-po').toLowerCase().replace(/^0+/, '');
+  const art = val('f-qual-art').toLowerCase();
+  const frs = val('f-qual-frs').toLowerCase();
+  const stade = val('f-qual-stade');
+  const res = val('f-qual-res');
+  const filtreStatut = (r, cle, voulu) => !voulu || (voulu === 'na' ? !r[cle] : r[cle] === voulu);
+  const rows = _qualite.filter(r =>
+    (!po || String(r.po_number || '').replace(/^0+/, '').includes(po)) &&
+    (!art || (r.code_article || '').toLowerCase().includes(art) || (r.designation || '').toLowerCase().includes(art)) &&
+    (!frs || (r.fournisseur || '').toLowerCase().includes(frs)) &&
+    (!stade || !!r['statut_' + stade]) &&
+    filtreStatut(r, 'statut_mat', val('f-qual-mat')) &&
+    filtreStatut(r, 'statut_sp', val('f-qual-sp')) &&
+    filtreStatut(r, 'statut_bat', val('f-qual-bat')) &&
+    (!res || r.resultat_inspection === res)
+  );
+  const cnt = document.getElementById('qual-count');
+  if (cnt) cnt.textContent = `${rows.length} ligne${rows.length > 1 ? 's' : ''} / ${_qualite.length}`;
+  renderQualite(rows);
 }
 
 function inspBadge(v) {
@@ -3141,23 +3176,23 @@ function inspBadge(v) {
   return '<span class="badge">-</span>';
 }
 
-function renderQualiteFournisseurs(rows, warning) {
-  const el = document.getElementById('table-qualite-frs');
-  if (warning) { el.innerHTML = `<div style="color:var(--yellow);font-size:13px;padding:8px;">${esc(warning)}</div>`; return; }
-  if (!rows || !rows.length) { el.innerHTML = '<div class="empty">Aucune donnée fournisseur</div>'; return; }
-  el.innerHTML = `<div class="table-wrap"><table>
-    <thead><tr><th>Fournisseur</th><th>Articles</th><th>Inspectés</th><th>OK</th>
-    <th>FAIL</th><th>Taux FAIL</th><th>NCR</th><th>Récep. NC</th></tr></thead>
-    <tbody>${rows.map(r => `<tr>
-      <td>${esc(r.fournisseur)||'-'}</td>
-      <td class="mono">${r.nb_articles??0}</td>
-      <td class="mono">${r.nb_inspectes??0}</td>
-      <td class="mono" style="color:var(--green)">${r.nb_ok??0}</td>
-      <td class="mono" style="color:var(--red,#c0392b)">${r.nb_fail??0}</td>
-      <td class="mono">${r.taux_fail_pct!=null?r.taux_fail_pct+'%':'-'}</td>
-      <td class="mono">${r.nb_ncr??0}</td>
-      <td class="mono">${r.nb_reception_non_conforme??0}</td>
-    </tr>`).join('')}</tbody></table></div>`;
+// Cellule de statut d'un stade : badge normalise, infobulle avec la valeur
+// brute de l'IMPORT et la derniere decision recue par mail. La date d'envoi en
+// analyse viendra de la commande d'analyse Sylob (CA), lot 2 de BUG-007.
+function statutQualiteCell(r, stade, colBrute, cleDecision) {
+  const st = r['statut_' + stade];
+  const dec = (r.decisions || {})[cleDecision];
+  const urlAnalyse = (r.analyses || {})[cleDecision];
+  const lignes = [`IMPORT : ${r[colBrute] || 'vide'}`];
+  if (dec) {
+    lignes.push(`Dernière décision mail${dec.date ? ' du ' + fmt(dec.date, 'date') : ''}${dec.acteur ? ' (' + dec.acteur + ')' : ''} : ${dec.decision === 'non_conforme' ? 'non conforme' : (dec.decision || '?')}${dec.motif ? ', ' + dec.motif : ''}${dec.nb > 1 ? ' [' + dec.nb + ' décisions]' : ''}`);
+  }
+  if (cleDecision !== 'reception') lignes.push("Date d'envoi en analyse : à venir (commande d'analyse Sylob)");
+  const meta = STATUT_QUALITE[st];
+  const badgeHtml = meta ? `<span class="badge" style="${meta.css}">${meta.lbl}</span>` : '<span style="color:var(--muted)">—</span>';
+  const mail = dec ? ` <span title="Décision reçue par mail" style="cursor:help">✉️</span>` : '';
+  const lien = urlAnalyse ? ` <a href="${esc(urlAnalyse)}" target="_blank" rel="noopener" title="Ouvrir le rapport d'analyse dans Drive">🔬</a>` : '';
+  return `<td title="${esc(lignes.join('\n'))}" style="cursor:help;white-space:nowrap">${badgeHtml}${mail}${lien}</td>`;
 }
 
 function renderQualite(rows, warning) {
@@ -3165,27 +3200,27 @@ function renderQualite(rows, warning) {
   if (warning) { el.innerHTML = `<div style="color:var(--yellow);font-size:13px;padding:8px;">${esc(warning)}</div>`; return; }
   if (!rows || !rows.length) { el.innerHTML = '<div class="empty">Aucun suivi qualité</div>'; return; }
   el.innerHTML = `<div class="table-wrap"><table>
-    <thead><tr><th>PO#</th><th>Article</th><th>Fournisseur</th>
-    <th title="Matière déclarée pour l'article.">MAT</th>
-    <th title="Statut de la production semi-finie (semi_production).">SP</th>
-    <th title="Conformité de l'échantillon de pré-série.">Échant.</th>
-    <th title="Conformité du BAT (Bon À Tirer) production.">BAT</th>
-    <th title="Résultat de l'inspection qualité (OK/FAIL) et sa date (achat.qualite.date_inspection).">Inspection</th>
-    <th>N° insp.</th><th title="Conformité de l'analyse labo (chrome/dureté), depuis achat.qualite_analyse.">Conformité</th>
-    <th title="Statut de la réception (conforme / non conforme).">Récep.</th>
+    <thead><tr><th>PO#</th><th>Article</th><th>Désignation</th><th>Fournisseur</th>
+    <th title="Stade matière. Survoler la cellule : valeur de l'IMPORT et dernière décision reçue par mail.">MAT</th>
+    <th title="Stade semi-production. Survoler la cellule pour le détail.">SP</th>
+    <th title="Échantillon de conformité (valeur de l'IMPORT).">Échant.</th>
+    <th title="Stade produit fini (BAT). Survoler la cellule pour le détail.">BAT</th>
+    <th title="Contrôle à réception de la commande. « reçu » : réception magasin constatée dans Sylob.">Récep.</th>
+    <th title="Résultat de l'inspection DEKRA (OK/FAIL) et sa date. 📎 ouvre le rapport dans Drive.">Inspection</th>
+    <th title="Conformité de l'analyse labo (chrome/dureté), depuis achat.qualite_analyse.">Conformité</th>
     <th title="Numéro de non-conformité (NCR) le cas échéant.">NCR</th></tr></thead>
     <tbody>${rows.map(r => `<tr>
       <td class="mono">${esc(r.po_number)||'-'}</td>
       <td class="mono">${esc(r.code_article)||'-'}</td>
+      <td style="font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.designation)||''}">${esc(r.designation)||'-'}</td>
       <td>${esc(r.fournisseur)||'-'}</td>
-      <td>${esc(r.matiere)||'-'}</td>
-      <td>${esc(r.semi_production)||'-'}</td>
-      <td>${esc(r.echantillon_conformite)||'-'}</td>
-      <td>${esc(r.production_bat)||'-'}</td>
-      <td>${inspBadge(r.resultat_inspection)} <small>${esc(r.date_inspection)||''}</small></td>
-      <td class="mono">${r.ref_rapport ? (r.drive_url ? `<a href="${esc(r.drive_url)}" target="_blank" rel="noopener" title="Ouvrir le rapport dans Drive">${esc(r.ref_rapport)} 📎</a>` : (r.drive_file_id ? `<a href="https://drive.google.com/file/d/${esc(r.drive_file_id)}/view" target="_blank" rel="noopener" title="Ouvrir le rapport dans Drive">${esc(r.ref_rapport)} 📎</a>` : esc(r.ref_rapport))) : '-'}</td>
+      ${statutQualiteCell(r, 'mat', 'matiere', 'MAT')}
+      ${statutQualiteCell(r, 'sp', 'semi_production', 'SP')}
+      <td style="font-size:12px">${esc(r.echantillon_conformite)||'-'}</td>
+      ${statutQualiteCell(r, 'bat', 'production_bat', 'BAT')}
+      ${statutQualiteCell(r, 'recep', 'reception', 'reception')}
+      <td style="white-space:nowrap">${inspBadge(r.resultat_inspection)} <small>${esc(r.date_inspection)||''}</small>${r.ref_rapport ? ' <small class="mono">' + (r.drive_url ? `<a href="${esc(r.drive_url)}" target="_blank" rel="noopener" title="Ouvrir le rapport ${esc(r.ref_rapport)} dans Drive">${esc(r.ref_rapport)} 📎</a>` : `<span title="Rapport introuvable sur le Drive qualité">${esc(r.ref_rapport)}</span>`) + '</small>' : ''}</td>
       <td>${esc(r.conformite)||'-'}</td>
-      <td>${esc(r.reception)||'-'}${r.date_reception_sylob ? ` <span class="badge badge-green" style="margin-left:4px;" title="Réceptionné en magasin Sylob le ${fmt(r.date_reception_sylob, 'date')}">📦 ${fmt(r.date_reception_sylob, 'date')}</span>` : ''}</td>
       <td class="mono">${esc(r.ncr)||'-'}</td>
     </tr>`).join('')}</tbody></table></div>`;
 }
