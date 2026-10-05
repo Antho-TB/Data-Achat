@@ -458,8 +458,12 @@ class PaiementConteneur(BaseModel):
     date_paiement: Optional[date] = None
 
 
-@app.put("/api/paiement/conteneur/{n_conteneur}", dependencies=[Depends(require_api_key)])
-def set_paiement_conteneur(n_conteneur: str, payload: PaiementConteneur):
+@app.put("/api/paiement/conteneur/{n_conteneur}")
+def set_paiement_conteneur(
+    n_conteneur: str,
+    payload: PaiementConteneur,
+    auteur: str = Depends(require_utilisateur),
+):
     """
     Renseigne la date de paiement de toutes les lignes d'un conteneur pour un
     fournisseur donne.
@@ -476,6 +480,10 @@ def set_paiement_conteneur(n_conteneur: str, payload: PaiementConteneur):
     COALESCE(saisie, valeur ETL).
 
     Envoyer date_paiement = null efface la saisie et redonne la main a l'ETL.
+
+    Junior Tip : l'auteur est recu en parametre, pas via `dependencies=[...]`.
+    Cette seconde forme execute bien le controle d'acces mais jette sa valeur
+    de retour : jusqu'au 05/10, updated_by restait vide sur toute saisie.
     """
     engine = get_engine()
     params: dict[str, Any] = {"cont": n_conteneur}
@@ -502,17 +510,18 @@ def set_paiement_conteneur(n_conteneur: str, payload: PaiementConteneur):
 
             conn.execute(text(f"""
                 INSERT INTO {SCHEMA}.commande_annotation
-                    (po_number, code_article, date_paiement, updated_at)
-                VALUES (:po, :art, :dt, NOW())
+                    (po_number, code_article, date_paiement, updated_by, updated_at)
+                VALUES (:po, :art, :dt, :auteur, NOW())
                 ON CONFLICT (po_number, code_article)
                 DO UPDATE SET date_paiement = EXCLUDED.date_paiement,
+                              updated_by    = EXCLUDED.updated_by,
                               updated_at    = NOW()
-            """), [{"po": po, "art": art, "dt": payload.date_paiement}
+            """), [{"po": po, "art": art, "dt": payload.date_paiement, "auteur": auteur}
                    for po, art in lignes])
 
-            logger.info("[SUCCES] Paiement %s sur %d ligne(s) du conteneur %s / %s.",
+            logger.info("[SUCCES] Paiement %s sur %d ligne(s) du conteneur %s / %s par %s.",
                         payload.date_paiement or "efface", len(lignes),
-                        n_conteneur, payload.fournisseur or "tous fournisseurs")
+                        n_conteneur, payload.fournisseur or "tous fournisseurs", auteur)
             return {"ok": True, "lignes_maj": len(lignes),
                     "n_conteneur": n_conteneur, "fournisseur": payload.fournisseur,
                     "date_paiement": payload.date_paiement}
@@ -522,8 +531,13 @@ def set_paiement_conteneur(n_conteneur: str, payload: PaiementConteneur):
             raise internal_error(e)
 
 
-@app.put("/api/commandes/{po_number}/{code_article}", dependencies=[Depends(require_api_key)])
-def annotate_commande(po_number: str, code_article: str, payload: CommandeAnnotation):
+@app.put("/api/commandes/{po_number}/{code_article}")
+def annotate_commande(
+    po_number: str,
+    code_article: str,
+    payload: CommandeAnnotation,
+    auteur: str = Depends(require_utilisateur),
+):
     """
     Annotation metier d'une ligne commande (statut force, ETD, commentaire).
     UPSERT dans achat.commande_annotation : achat.commande n'est JAMAIS modifiee
@@ -541,7 +555,7 @@ def annotate_commande(po_number: str, code_article: str, payload: CommandeAnnota
     if not exists:
         raise HTTPException(status_code=404, detail="Commande introuvable.")
 
-    sets, params = [], {"po": po_number, "art": code_article}
+    sets, params = [], {"po": po_number, "art": code_article, "auteur": auteur}
     for field in ("statut_retard", "date_etd", "commentaire"):
         val = getattr(payload, field)
         if val is not None:
@@ -557,11 +571,13 @@ def annotate_commande(po_number: str, code_article: str, payload: CommandeAnnota
     with engine.begin() as conn:
         try:
             conn.execute(text(f"""
-                INSERT INTO {SCHEMA}.commande_annotation (po_number, code_article, {cols})
-                VALUES (:po, :art, {vals})
+                INSERT INTO {SCHEMA}.commande_annotation
+                    (po_number, code_article, {cols}, updated_by)
+                VALUES (:po, :art, {vals}, :auteur)
                 ON CONFLICT (po_number, code_article)
-                DO UPDATE SET {updates}, updated_at = NOW()
+                DO UPDATE SET {updates}, updated_by = EXCLUDED.updated_by, updated_at = NOW()
             """), params)
+            logger.info("[SUCCES] Annotation %s sur %s/%s par %s.", cols, po_number, code_article, auteur)
             return {"ok": True, "annotated": f"{po_number}/{code_article}"}
         except Exception as e:
             raise internal_error(e)
