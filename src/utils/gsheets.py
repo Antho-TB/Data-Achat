@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from src.utils.config_manager import get_base_path
-from src.utils.google_auth import get_credentials
+from src.utils.google_auth import ScopesInsuffisantsError, get_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,9 @@ def read_sheet_values(
         sheet = service.spreadsheets()
         result = sheet.values().get(spreadsheetId=spreadsheet_id, range=range_name).execute()
         return result.get("values", [])
+    except ScopesInsuffisantsError:
+        # Jamais avale : le message dit a l'operateur comment reconsentir.
+        raise
     except Exception as e:
         # Une liste vide est indiscernable d'un onglet reellement vide : le log
         # en ATTENTION est le seul moyen de voir passer une panne d'auth Google.
@@ -129,6 +132,9 @@ def read_all_tabs(
     """
     try:
         onglets = list_tabs(spreadsheet_id, credentials_path, token_path)
+    except ScopesInsuffisantsError:
+        # Jamais avale : le message dit a l'operateur comment reconsentir.
+        raise
     except Exception as e:
         raise RuntimeError(
             f"Classeur {spreadsheet_id} inaccessible : {e}. "
@@ -213,6 +219,9 @@ def metadonnees_drive(
     try:
         return _service_drive(credentials_path, token_path).files().get(
             fileId=file_id, fields="name, mimeType, modifiedTime, size").execute()
+    except ScopesInsuffisantsError:
+        # Jamais avale : le message dit a l'operateur comment reconsentir.
+        raise
     except Exception as e:
         raise RuntimeError(
             f"Objet Drive {file_id} inaccessible : {e}. Verifier le partage du "
@@ -260,6 +269,9 @@ def lire_xlsx_drive(
         while not termine:
             _, termine = telechargement.next_chunk()
         tampon.seek(0)
+    except ScopesInsuffisantsError:
+        # Jamais avale : le message dit a l'operateur comment reconsentir.
+        raise
     except Exception as e:
         raise RuntimeError(
             f"Telechargement du classeur Drive {file_id} impossible : {e}") from e

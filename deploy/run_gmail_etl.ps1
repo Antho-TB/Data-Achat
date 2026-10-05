@@ -30,9 +30,18 @@ function Log($m) { $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"; "$ts  $m" | Tee
 Set-Location $Repo
 Log "=== DEBUT ETL Gmail (query='$Query') ==="
 
-# 0. Pre-vol DWH : si VPN down / DWH injoignable -> skip propre (pas d'echec bruyant)
+# 0. Pre-vol. Deux issues KO bien distinctes :
+#    - exit 3 : token Google a reconsentir (scopes insuffisants ou token absent).
+#      Ne se resout JAMAIS seul (cause de l'ETL mort du 22/07 au 06/08) : on sort
+#      en 1 pour que la tache planifiee apparaisse en echec dans le planificateur.
+#    - autre code : VPN down / DWH injoignable / OCR -> skip propre (exit 0).
 & $Py -m src.scripts.gmail.preflight_gmail *>> $Log 2>&1
-if ($LASTEXITCODE -ne 0) { Log "[SKIP] preflight KO (VPN/DWH/OCR ?) - on arrete proprement."; exit 0 }
+$PreflightExit = $LASTEXITCODE
+if ($PreflightExit -eq 3) {
+  Log "[ERREUR] preflight exit=3 : reconsentement OAuth Google requis (scopes insuffisants ou token absent). Voir le detail [ECHEC] ci-dessus et lancer A LA MAIN, navigateur ouvert, depuis $Repo : Move-Item config\token.json config\token.json.bak -Force ; .\.venv311\Scripts\python.exe -m src.scripts.gmail.fetch_attachments --dry-run"
+  exit 1
+}
+if ($PreflightExit -ne 0) { Log "[SKIP] preflight KO exit=$PreflightExit (VPN/DWH/OCR ?) - on arrete proprement."; exit 0 }
 
 # 1. Fetch PJ (OAuth)
 Log "[1/4] fetch_attachments"
