@@ -535,13 +535,44 @@ et n'avaient jamais été reportées ici. Revue du 05/10 :
 |---|---|
 | Attention aux écarts entre les colonnes | ✅ PR #10 (25/09) : marges des cellules rétablies sur tous les tableaux. BUG-004 du tableau de suivi |
 | Historique de prix : remonter toutes les commandes, pas seulement les 3 dernières années | ✅ PR #5 (23/09) : fusion IMPORT et Sylob sans plafond, 95 260 lignes |
-| Il manque une source pour l'onglet Promo/Opé | ❌ L'onglet filtre toujours la colonne `OP/Client/Appro` de l'IMPORT, dont le mapping n'est pas vérifié (§4.3). Aucune source dédiée. À demander au métier : où sont tenues les OP ? |
+| Il manque une source pour l'onglet Promo/Opé | 🔧 Tranché le 05/10 : la source est l'intitulé de la commande dans Sylob (« OP SYSTEM U 2026 »). Branche `feat/promo-intitule-sylob` : 16 PO en OP sur 184, repli IMPORT tant que le droit MyReport manque (§3.9) |
 | Conteneurs : erreurs sur les n° de BL `SZSE…`, présents dans le gsheet du transitaire | ⚠️ Cause identifiée : l'ETL lit encore la copie serveur, sans colonne BL (52 conteneurs sur 60 sans BL). La bascule sur le gsheet est codée mais pas activée (§3.6). 7 conteneurs ont aussi un BL de l'IMPORT qui contredit le suivi maritime |
 | Conteneurs : le statut | ✅ PR #14 (29/09) : colonne « État livraison » en couleur. BUG-005 |
-| Fiche Achat : lignes de références équivalentes (3 coloris, ménagère ou vrac) pour éviter plusieurs fiches pour des produits similaires | ❌ Non fait. Rien dans le générateur |
+| Fiche Achat : lignes de références équivalentes (3 coloris, ménagère ou vrac) pour éviter plusieurs fiches pour des produits similaires | 🔧 Branche `feat/fiche-achat-refs-equivalentes` : bloc dans le formulaire, l'aperçu, le PDF et le xlsx. À faire valider en démo |
 
 Suivi côté métier : le tableau `FUSEAU_Suivi_bugs_1.xlsx` sur Drive (§9). Les
 points ❌ et ⚠️ ci-dessus y sont à reporter en nouvelles lignes (préparées le 05/10).
+
+---
+
+## 3.9 Audit des données et correctifs du 05/10
+
+Contrôle en base et dans Sylob, depuis le poste d'Antho. Prompt de la session
+du poste de Marlène : `docs/20261005_FUSEAU_Prompt_SessionPosteMarlene_v1.md`.
+
+**Règle de source, rappelée par Antho le 05/10 :** quand la donnée existe dans
+Sylob, c'est l'ERP qui fait foi. `achat.*` (dtpf) ne porte que ce qui est hors
+circuit ERP : saisies, mails, fichiers transitaire. L'ETL du poste lit Sylob en
+direct ; l'API hébergée en Azure, qui n'atteint pas le DWH on-premise, lit les
+copies MyReport de `public`.
+
+| Sujet | Constat du 05/10 | Suite |
+|---|---|---|
+| Événements des mails (corps de mail, tâche Cowork) | ✅ Vivants : `transport_evenement` alimentée le jour même à 08:09 ; décisions qualité, design et commerce jusqu'au 02/10 | Rien |
+| ETA des pièces jointes Gmail | ❌ Le conteneur MSMU3526021 fait un aller-retour d'ETA chaque matin (9 événements identiques depuis le 10/08) : un PDF du 20/05, relu à chaque passage, prenait l'heure du chargement comme date de transmission | Branche `fix/gmail-eta-date-transmission`. Les 8 doublons et la ligne `test_script` restent en base, à purger sur décision |
+| Montants de facture | ❌ `achat.facture_fournisseur` est vide : l'étape n'a jamais tourné (flag `facture_auto.flag`) | À constater sur le poste (prompt, étape 1e) |
+| NCR par mail | ⚠️ Aucune ligne d'enrichissement NCR en base | À vérifier côté tâche Cowork |
+| Réceptions Sylob | ❌ `commande_enrichissement` figée au 28/07, car elle lisait `receptions_detaillees2`, figée au 04/08 | Branche `fix/receptions-sylob-grain-article` : lecture de `vue_reception_detail` des 3 sociétés dans Sylob, repli sur `public.receptions_detaillees4` (même volume que Sylob), grain article. Dry-run : 654 lignes rapprochées sur 964. Puis `sql/20261005_reception_grain_article.sql` |
+| Droit de l'API sur MyReport | ❌ `dtpf_fuseau_api_prod` n'a aucun SELECT sur les tables MyReport de `public` (articles3, commandes6, receptions_detaillees4) | `sql/20261005_default_privileges_myreport_fuseau.sql`, à exécuter sous `dtpf_sylob_myreport_prod` : le compte d'Antho ne peut pas accorder ce droit |
+| Saisies depuis Azure | ⚠️ Dernière annotation le 28/07 : aucune saisie depuis la bascule | À tester avec Marlène |
+| Garde-fou OAuth (§4.5) | 🔧 Branche `fix/garde-fou-scope-oauth`. Second défaut trouvé au passage : le preflight ne vérifiait que 2 scopes sur 3 | Reconsentement sur le poste (prompt, étape 3) |
+| Auto-pull (§4.5) | 🔧 Branche `fix/auto-pull-alerte` : un fichier non suivi ne bloque plus le pull ; un pull bloqué termine la tâche en `0x2` et dépose `deploy\logs\PULL_BLOQUE.txt` | Vérifier au premier run |
+| Mail DEKRA de réservation | Il arrive sur `achat.import@`, pas dans la boîte d'Antho | Exemples à collecter par la session du poste (prompt, étape 6) |
+
+> **Contrainte d'exploitation, à partir d'octobre 2026 :** Samuel (Nubo) est en
+> arrêt prolongé. Aucune action qui pourrait changer l'IP de DTPF : pas de
+> restart, de SKU ni d'apply réseau sur `psql-dtpf-psql-prod`. Sinon, le tunnel
+> Stormshield ne sera pas rétabli.
 
 ---
 
@@ -892,3 +923,4 @@ dans `05_ARCHIVES/Versions_Anterieures/`.
 | 25/09 (suite) | PR #10 à #13 : marges des cellules (BUG-004), BL pris d'abord dans l'IMPORT et retard à ETD + 15 j (BUG-001 et BUG-002 corrigés), revalidation du cache navigateur, plus de clé API demandée en mode Azure |
 | 29/09 | PR #14 : n° de PO et état de livraison en couleur sur l'onglet Conteneurs (BUG-003, BUG-005) |
 | 05/10 | Reprise. Prod saine sur `422fca8`. Crawl qualité confirmé (248 documents). Aucune saisie tentée depuis Azure, et `updated_by` jamais écrit : PR #15. Export PDF limité à l'onglet actif : PR #16. Revue des démos du 28/07 et du 22/09 : la bascule sur le gsheet maritime, toujours pas activée, explique les erreurs de BL |
+| 05/10 (suite) | Audit des données. Réceptions lues dans Sylob, au grain article. ETA Gmail datée par le mail et non plus par le chargement. Promo/Opé alimenté par l'intitulé de commande Sylob. Garde-fou OAuth, alerte d'auto-pull, références équivalentes sur la Fiche Achat. Le droit de l'API sur MyReport est à poser sous le compte propriétaire. Prompt préparé pour le poste de Marlène |
