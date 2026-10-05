@@ -263,11 +263,22 @@ def intitules_commande_sylob(conn: Any, pos: list[Any]) -> dict[str, str]:
         with conn.begin_nested():
             rows = conn.execute(
                 sql, {"pos": cles, "max_ecart": MAX_ECART_JOURS_SOCIETE}).fetchall()
+        return {po: intitule for po, intitule in rows}
     except Exception as exc:
-        logger.warning("[ATTENTION] Intitules Sylob illisibles dans %s, repli sur l'IMPORT (%s)",
-                       table, str(exc).splitlines()[0])
+        logger.warning("[ATTENTION] Intitules Sylob illisibles dans %s (%s), essai du pont "
+                       "achat.fn_myreport_intitules_commande", table, str(exc).splitlines()[0])
+    # Pont SECURITY DEFINER (sql/20261005_pont_lecture_myreport_fuseau.sql), en
+    # attendant le default privilege du proprietaire MyReport.
+    try:
+        with conn.begin_nested():
+            rows = conn.execute(
+                text("SELECT po, intitule FROM achat.fn_myreport_intitules_commande(:pos, :max_ecart)"),
+                {"pos": cles, "max_ecart": MAX_ECART_JOURS_SOCIETE}).fetchall()
+        return {po: intitule for po, intitule in rows}
+    except Exception as exc:
+        logger.warning("[ATTENTION] Pont MyReport indisponible, repli sur l'IMPORT (%s)",
+                       str(exc).splitlines()[0])
         return {}
-    return {po: intitule for po, intitule in rows}
 
 
 # ==============================================================================
@@ -456,7 +467,7 @@ def get_commandes(
                         c.prix_unitaire, c.quantite, c.statut, c.n_conteneur,
                         COALESCE(p.ean13, n.ean13, p.ean14_pcb, '') AS ean_edi,
                         {SQL_ETD_EFF}              AS date_etd,
-                        c.eta, c.date_livraison,
+                        c.eta, c.date_livraison, c.date_reception_sylob,
                         {SQL_STATUT_RETARD}        AS statut_retard,
                         -- Axes metier ORTHOGONAUX (issus de v_previsionnel) : paiement,
                         -- logistique, inspection. Permettent le cross-tab et l'OTD cote UI
@@ -975,19 +986,30 @@ def search_article(q: str = "", limit: int = 10):
                 "FROM public.articles3 WHERE " + where + " "
                 "GROUP BY code_article ORDER BY designation LIMIT :lim"
             )
-            rows = rows_to_dicts(conn.execute(sql, {"q": q, "like": like, "lim": lim}))
+            with conn.begin_nested():
+                rows = rows_to_dicts(conn.execute(sql, {"q": q, "like": like, "lim": lim}))
             for r in rows:
                 if r.get("code_article"):
                     results[r["code_article"]] = r
         except Exception as e:
-            conn.rollback()
-            # Verifie le 28/07 : le role applicatif n'a PAS le droit SELECT sur
-            # public.articles3 ("permission denied for table articles3"). La
-            # recherche annoncee "Sylob-first" retombe donc systematiquement sur
-            # achat.produit. C'etait logue en INFO, donc invisible : passe en
-            # WARNING pour que le manque de GRANT se voie dans les logs.
-            logger.warning("[ATTENTION] public.articles3 inaccessible, repli sur achat.produit (%s)",
-                           str(e).splitlines()[0])
+            # Verifie le 28/07 puis le 05/10 : le role applicatif n'a PAS le droit
+            # SELECT sur public.articles3, perdu a chaque recreation de la table
+            # par l'ETL MyReport. Logue en WARNING pour que le manque se voie.
+            logger.warning("[ATTENTION] public.articles3 inaccessible, essai du pont "
+                           "achat.fn_myreport_recherche_article (%s)", str(e).splitlines()[0])
+            # 1 bis. Pont SECURITY DEFINER (sql/20261005_pont_lecture_myreport_fuseau.sql),
+            # tant que le default privilege du proprietaire MyReport n'est pas pose.
+            try:
+                with conn.begin_nested():
+                    rows = rows_to_dicts(conn.execute(
+                        text("SELECT * FROM achat.fn_myreport_recherche_article(:q, :lim)"),
+                        {"q": q, "lim": lim}))
+                for r in rows:
+                    if r.get("code_article"):
+                        results[r["code_article"]] = r
+            except Exception as e_pont:
+                logger.warning("[ATTENTION] Pont MyReport indisponible, repli sur achat.produit (%s)",
+                               str(e_pont).splitlines()[0])
 
         # 2. Complément achat.produit
         try:

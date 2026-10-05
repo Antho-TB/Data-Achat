@@ -663,7 +663,6 @@ button { cursor: pointer; }
   <button class="tab-btn" onclick="switchTab('artwork')">Artwork</button>
   <button class="tab-btn" onclick="switchTab('previsionnel')">Prévisionnel</button>
   <button class="tab-btn" onclick="switchTab('conteneurs')">Conteneurs</button>
-  <button class="tab-btn" onclick="switchTab('promo')">Promo / Opé</button>
   <button class="tab-btn" onclick="switchTab('qualite')">Qualité</button>
   <button class="tab-btn" onclick="switchTab('article')">Article</button>
   <button class="tab-btn" onclick="switchTab('fiche')">Fiche Achat</button>
@@ -715,6 +714,9 @@ button { cursor: pointer; }
               title="Par défaut, l'année en cours : les commandes en production, en cours de livraison et livrées cette année. Les livraisons des années précédentes restent accessibles en changeant l'année.">
         <!-- Rempli par remplirFiltreAnnees() a partir des donnees reelles -->
       </select>
+      <label title="BUG-008 : l'ancien onglet Promo / Opé est fusionné ici. Une commande est une opération quand son intitulé Sylob commence par « OP » (repli : colonne OP/Client/Appro de l'IMPORT)." style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;">
+        <input id="f-promo" type="checkbox" onchange="filterCommandes()"> Promo / Opé uniquement
+      </label>
       <button class="btn btn-ghost btn-sm" onclick="loadCommandes()">&#8635; Actualiser</button>
       <span id="cmd-count" style="font-size:12px;color:var(--muted);margin-left:auto;"></span>
     </div>
@@ -877,22 +879,6 @@ button { cursor: pointer; }
       <div id="table-conteneurs"><div class="loader"><span class="spinner"></span>Chargement…</div></div>
   </div>
 
-  <!-- PROMO -->
-  <div id="tab-promo" class="tab-panel">
-    <div class="section-header">
-      <span class="section-title">Suivi des Promos & Opérations (OP/Client/Appro)</span>
-    </div>
-    <div class="toolbar">
-      <input id="f-promo-search" type="text" placeholder="Chercher une OP (nom client, fidélité...)" oninput="filterPromo()" style="width: 300px;">
-      <select id="f-promo-statut" onchange="filterPromo()">
-        <option value="">Tous les statuts</option>
-        <option>En cours</option>
-        <option>Livrées</option>
-      </select>
-    </div>
-    <div id="table-promo"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
-  </div>
-
   <!-- QUALITE -->
   <div id="tab-qualite" class="tab-panel">
     <div class="section-header">
@@ -984,56 +970,6 @@ function estPromo(r) {
   if (r.intitule_commande) return /^\s*OP/i.test(r.intitule_commande);
   // Repli IMPORT : filtre resserre du 23/07 ("OP" ou "NOUVEAU").
   return !!r.op_client_appro && /^\s*(OP|NOUVEAU)/i.test(r.op_client_appro);
-}
-function filterPromo() {
-  const q = document.getElementById('f-promo-search').value.toLowerCase();
-  const stat = document.getElementById('f-promo-statut').value;
-  
-  // Source (decision Antho 05/10) : l'intitule de la commande dans Sylob, qui
-  // porte les operations ("OP SYSTEM U 2026"). Repli sur la colonne
-  // op_client_appro de l'IMPORT quand l'intitule Sylob n'est pas remonte
-  // (droit de lecture MyReport manquant, commande pas encore dans Sylob).
-  const promos = _commandes.filter(r => estPromo(r));
-  
-  const filtered = promos.filter(r => {
-    const matchQ = !q || libellePromo(r).toLowerCase().includes(q) || (r.fournisseur || '').toLowerCase().includes(q) || (r.ean_edi || '').toLowerCase().includes(q) || (r.code_article || '').toLowerCase().includes(q);
-    const isLivre = r.statut === 'Livrée';
-    let matchStat = true;
-    if (stat === 'Livrées') matchStat = isLivre;
-    if (stat === 'En cours') matchStat = !isLivre;
-    return matchQ && matchStat;
-  });
-  
-  let html = `<div class="table-wrap"><table>
-    <thead><tr>
-      <th title="Intitulé de la commande Sylob">Opération</th>
-      <th title="Champ en attente de source de donnée (definition 'prioritaire' a trancher avec Andrea/Marlene)">Prioritaire</th>
-      <th>Fournisseur</th>
-      <th>PO#</th>
-      <th>Article</th>
-      <th title="EAN 13 / Code GTIN / Code EDI d'identification de l'article">EAN / EDI</th>
-      <th>Désignation</th>
-      <th>Statut cde</th>
-      <th>Prix</th>
-      <th>Date Cde</th>
-    </tr></thead><tbody>`;
-
-  for(const r of filtered) {
-    html += `<tr>
-      <td style="font-weight:bold;color:var(--blue)" title="${r.intitule_commande ? 'Intitulé de la commande dans Sylob' : 'Repli : colonne OP/Client/Appro du fichier IMPORT'}">${esc(libellePromo(r))}${r.intitule_commande ? '' : ' <span class="badge badge-gray">IMPORT</span>'}</td>
-      <td><span class="badge badge-gray" title="Pas encore de source de donnée pour ce champ">-</span></td>
-      <td>${esc(r.fournisseur)}</td>
-      <td class="mono">${esc(r.po_number)}</td>
-      <td class="mono">${esc(r.code_article)}</td>
-      <td class="mono">${esc(r.ean_edi) || '—'}</td>
-      <td>${esc(r.designation)}</td>
-      <td>${badge(r.statut)}</td>
-      <td>${r.prix_unitaire != null ? r.prix_unitaire + ' $' : '-'}</td>
-      <td style="font-size:11px;color:var(--muted)">${fmt(r.date_commande, 'date')}</td>
-    </tr>`;
-  }
-  html += '</tbody></table></div>';
-  document.getElementById('table-promo').innerHTML = html;
 }
 
 // Mode d'authentification du serveur, lu une seule fois sur /api/health.
@@ -1181,7 +1117,6 @@ const loaders = {
   artwork:      loadArtwork,
   previsionnel: loadPrevisionnel,
   conteneurs:   loadConteneurs,
-  promo:        async () => { if (!_commandes.length) { document.getElementById('table-promo').innerHTML = '<div class="loader"><span class="spinner"></span>Chargement des commandes...</div>'; await loadCommandes(); } filterPromo(); },
   qualite:      loadQualite,
   article:      loadArticle,
   fiche:        loadFiche,
@@ -1195,7 +1130,6 @@ const SOURCE_INFO = {
   artwork:       "Source : gsheet \"Suivi des artworks-import\" (Clarisse), lecture Drive",
   previsionnel:  "Source : dérivé de commande (Excel) + ot_transport (gsheet SUIVI MARITIME, transitaire QUALITAIR)",
   conteneurs:    "Source : gsheet SUIVI MARITIME TARRERIAS 2026 (transitaire) + PJ Gmail (BL, tâche planifiée poste Marlène)",
-  promo:         "Source : intitulé de la commande dans Sylob (copie MyReport), repli sur la colonne OP/Client/Appro de l'IMPORT",
   qualite:       "Source : IMPORT (MAT/SP) + Drive ANALYSES ET INSPECTIONS (rapports DEKRA/SPECTRO)",
   article:       "Source : Matrice TB Import.xlsx + pull direct Sylob V25 (dimensions/prix) + gsheet artwork + Drive qualité",
   fiche:         "Source : pré-remplissage depuis achat.* (Excel + Sylob + Gmail selon le champ) -- formulaire Phase A",
@@ -2108,9 +2042,12 @@ function remplirFiltreAnnees() {
     const paiement = elPaiement ? elPaiement.value : '';
     const elAnnee = document.getElementById('f-annee');
     const annee = elAnnee ? elAnnee.value : '';
+    const elPromo = document.getElementById('f-promo');
+    const promoSeul = !!(elPromo && elPromo.checked);
 
     const filtered = _commandes.filter(r => {
       const matchAnnee = !annee || anneeCommande(r) === annee;
+      const matchPromo = !promoSeul || estPromo(r);
       const matchPo = !po || (r.po_number || '').toLowerCase().includes(po);
       const matchFrs = !frs || (r.fournisseur || '').toLowerCase().includes(frs);
       const matchArt = !art || (r.code_article || '').toLowerCase().includes(art);
@@ -2127,7 +2064,7 @@ function remplirFiltreAnnees() {
         matchPaiement = _payBucket(r) === paiement;
       }
 
-      return matchAnnee && matchPo && matchFrs && matchArt && matchDes && matchStat && matchStatCde && matchAcompte && matchPaiement;
+      return matchPromo && matchAnnee && matchPo && matchFrs && matchArt && matchDes && matchStat && matchStatCde && matchAcompte && matchPaiement;
     });
     renderCommandes(trierParPriorite(filtered));
   }
@@ -2347,6 +2284,7 @@ function renderCommandes(rows) {
         <th>Article</th>
         <th>Désignation</th>
         <th>Fournisseur</th>
+        <th title="Intitulé de la commande dans Sylob. Repli : colonne OP/Client/Appro de l'IMPORT (badge IMPORT). Les opérations (intitulé « OP … ») sont en gras.">Intitulé cde</th>
         <th title="Quantité commandée.">Qté · nb</th>
         <th title="Prix unitaire, en USD.">Prix unit. · USD</th>
         <th title="Acompte versé au fournisseur, en USD.">Acompte · USD</th>
@@ -2365,6 +2303,7 @@ function renderCommandes(rows) {
           <td class="mono">${esc(r.code_article) || '—'}</td>
           <td>${esc(r.designation) || '-'}</td>
           <td>${esc(r.fournisseur) || '—'}</td>
+          <td style="font-size:12px;${estPromo(r) ? 'font-weight:bold;color:var(--blue);' : ''}">${libellePromo(r) ? esc(libellePromo(r)) + (r.intitule_commande ? '' : ' <span class="badge badge-gray" title="Intitulé Sylob indisponible : valeur saisie dans le fichier IMPORT">IMPORT</span>') : '<span style="color:var(--muted)">—</span>'}</td>
           <td style="text-align:right">${fmt(r.quantite, 'num')}</td>
           <td style="text-align:right">${r.prix_unitaire != null ? Number(r.prix_unitaire).toFixed(3) + ' $' : '—'}</td>
           <td style="text-align:right">${r.acompte != null ? Number(r.acompte).toLocaleString('fr-FR') + ' $' : '-'}</td>
