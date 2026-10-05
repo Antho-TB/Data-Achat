@@ -72,6 +72,15 @@ sql/*.out
 sql/*.out.err
 sql/*.log.err
 
+# Debris recurrents du poste metier. Ils ne bloquent plus le pull automatique
+# (seuls les fichiers suivis comptent), mais ils encombrent 'git status' et ont
+# chacun annule une synchro avant le correctif : un .log.err le 28/07, une
+# sauvegarde de config/.env le 06/08. Le modele config/.env.example reste suivi.
+*.log.err
+config/*.bak
+config/.env.*
+!config/.env.example
+
 # --- Terraform (deploy/terraform) ---
 # Le state est distant (storage stplatformtfstatestbprod) : rien d'utile ni de
 # secret ne doit atterrir dans le depot.
