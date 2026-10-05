@@ -213,6 +213,74 @@ def rows_to_dicts(result) -> list[dict[str, Any]]:
     return rows
 
 
+def normaliser_po(po: Any) -> str:
+    """PO sans espaces ni zeros de tete : Sylob ecrit 0181325, l'IMPORT 181325."""
+    return str(po or "").strip().lstrip("0")
+
+
+# Ecart maximal entre la creation Sylob et la date de commande IMPORT pour
+# rattacher un PO a la bonne societe (les numeros se repetent entre GDD, SE, Cie).
+MAX_ECART_JOURS_SOCIETE = 180
+
+
+def intitules_commande_sylob(conn: Any, pos: list[Any]) -> dict[str, str]:
+    """
+    Intitule de la commande dans Sylob (commande_reference), par PO normalise.
+
+    Besoin metier (Antho, 05/10/2026) : les promotions et operations sont portees
+    par l'intitule de la commande Sylob ("OP SYSTEM U 2026", "OP TOP CHEF 2026"),
+    pas par une source a part. Sylob est la source de verite ; la colonne
+    op_client_appro de l'IMPORT n'est qu'une recopie manuelle, gardee en repli.
+
+    Junior Tip : la lecture se fait dans un SAVEPOINT. Sans droit SELECT sur la
+    copie MyReport (droit perdu a chaque recreation de table par l'ETL MyReport),
+    la requete echoue ; le savepoint annule cette seule requete et laisse la
+    transaction utilisable pour le reste de l'endpoint.
+
+    Returns:
+        {po_normalise: intitule}, vide si la copie MyReport est illisible.
+    """
+    cles = sorted({normaliser_po(p) for p in pos if normaliser_po(p)})
+    if not cles:
+        return {}
+    table = f'"{Config.MYREPORT_SCHEMA}"."{Config.MYREPORT_TABLE_COMMANDES}"'
+    sql = text(f"""
+        SELECT DISTINCT ON (po) po, intitule
+        FROM (
+            SELECT LTRIM(TRIM(c.po_number::text), '0') AS po,
+                   NULLIF(TRIM(m.commande_reference), '') AS intitule,
+                   ABS(m.commande_creee_le::date - c.date_commande) AS ecart
+            FROM {SCHEMA}.commande c
+            JOIN {table} m
+              ON LTRIM(TRIM(m.commande_numero_de_la_commande), '0')
+               = LTRIM(TRIM(c.po_number::text), '0')
+            WHERE LTRIM(TRIM(c.po_number::text), '0') = ANY(:pos)
+        ) x
+        WHERE intitule IS NOT NULL AND (ecart IS NULL OR ecart <= :max_ecart)
+        ORDER BY po, ecart NULLS LAST
+    """)
+    try:
+        with conn.begin_nested():
+            rows = conn.execute(
+                sql, {"pos": cles, "max_ecart": MAX_ECART_JOURS_SOCIETE}).fetchall()
+        return {po: intitule for po, intitule in rows}
+    except Exception as exc:
+        logger.warning("[ATTENTION] Intitules Sylob illisibles dans %s (%s), essai du pont "
+                       "achat.fn_myreport_intitules_commande", table, str(exc).splitlines()[0])
+    # Pont SECURITY DEFINER (sql/20261005_pont_lecture_myreport_fuseau.sql), en
+    # attendant le default privilege du proprietaire MyReport.
+    try:
+        with conn.begin_nested():
+            rows = conn.execute(
+                text("SELECT po, intitule FROM achat.fn_myreport_intitules_commande(:pos, :max_ecart)"),
+                {"pos": cles, "max_ecart": MAX_ECART_JOURS_SOCIETE}).fetchall()
+        return {po: intitule for po, intitule in rows}
+    except Exception as exc:
+        logger.warning("[ATTENTION] Pont MyReport indisponible, repli sur l'IMPORT (%s)",
+                       str(exc).splitlines()[0])
+        return {}
+
+
 # ==============================================================================
 # KPIs -- Dashboard
 # ==============================================================================
@@ -399,7 +467,7 @@ def get_commandes(
                         c.prix_unitaire, c.quantite, c.statut, c.n_conteneur,
                         COALESCE(p.ean13, n.ean13, p.ean14_pcb, '') AS ean_edi,
                         {SQL_ETD_EFF}              AS date_etd,
-                        c.eta, c.date_livraison,
+                        c.eta, c.date_livraison, c.date_reception_sylob,
                         {SQL_STATUT_RETARD}        AS statut_retard,
                         -- Axes metier ORTHOGONAUX (issus de v_previsionnel) : paiement,
                         -- logistique, inspection. Permettent le cross-tab et l'OTD cote UI
@@ -442,7 +510,11 @@ def get_commandes(
                 ORDER BY po_number ASC, code_article ASC
                 LIMIT :limit OFFSET :offset
             """), params)
-            return {"data": rows_to_dicts(r), "total": int(total or 0),
+            data = rows_to_dicts(r)
+            intitules = intitules_commande_sylob(conn, [d["po_number"] for d in data])
+            for d in data:
+                d["intitule_commande"] = intitules.get(normaliser_po(d.get("po_number")))
+            return {"data": data, "total": int(total or 0),
                     "limit": limit, "offset": offset}
         except Exception as e:
             raise internal_error(e)
@@ -914,19 +986,30 @@ def search_article(q: str = "", limit: int = 10):
                 "FROM public.articles3 WHERE " + where + " "
                 "GROUP BY code_article ORDER BY designation LIMIT :lim"
             )
-            rows = rows_to_dicts(conn.execute(sql, {"q": q, "like": like, "lim": lim}))
+            with conn.begin_nested():
+                rows = rows_to_dicts(conn.execute(sql, {"q": q, "like": like, "lim": lim}))
             for r in rows:
                 if r.get("code_article"):
                     results[r["code_article"]] = r
         except Exception as e:
-            conn.rollback()
-            # Verifie le 28/07 : le role applicatif n'a PAS le droit SELECT sur
-            # public.articles3 ("permission denied for table articles3"). La
-            # recherche annoncee "Sylob-first" retombe donc systematiquement sur
-            # achat.produit. C'etait logue en INFO, donc invisible : passe en
-            # WARNING pour que le manque de GRANT se voie dans les logs.
-            logger.warning("[ATTENTION] public.articles3 inaccessible, repli sur achat.produit (%s)",
-                           str(e).splitlines()[0])
+            # Verifie le 28/07 puis le 05/10 : le role applicatif n'a PAS le droit
+            # SELECT sur public.articles3, perdu a chaque recreation de la table
+            # par l'ETL MyReport. Logue en WARNING pour que le manque se voie.
+            logger.warning("[ATTENTION] public.articles3 inaccessible, essai du pont "
+                           "achat.fn_myreport_recherche_article (%s)", str(e).splitlines()[0])
+            # 1 bis. Pont SECURITY DEFINER (sql/20261005_pont_lecture_myreport_fuseau.sql),
+            # tant que le default privilege du proprietaire MyReport n'est pas pose.
+            try:
+                with conn.begin_nested():
+                    rows = rows_to_dicts(conn.execute(
+                        text("SELECT * FROM achat.fn_myreport_recherche_article(:q, :lim)"),
+                        {"q": q, "lim": lim}))
+                for r in rows:
+                    if r.get("code_article"):
+                        results[r["code_article"]] = r
+            except Exception as e_pont:
+                logger.warning("[ATTENTION] Pont MyReport indisponible, repli sur achat.produit (%s)",
+                               str(e_pont).splitlines()[0])
 
         # 2. Complément achat.produit
         try:
