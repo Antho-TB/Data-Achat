@@ -851,13 +851,13 @@ def get_produit(code_article: str):
                           "limit": RAPPORTS_LIMIT_DEFAUT}
             qualite_docs = rows_to_dicts(conn.execute(text(f"""
                 SELECT DISTINCT d.* FROM {SCHEMA}.qualite_doc d
-                LEFT JOIN {SCHEMA}.commande c ON c.po_number = d.po_number
+                LEFT JOIN {SCHEMA}.commande c ON LTRIM(c.po_number, '0') = LTRIM(d.po_number, '0')
                 WHERE c.code_article = :c OR d.fichier LIKE :c_prefix
                 ORDER BY d.charge_le DESC LIMIT :limit
             """), params_doc))
             qualite_analyses = rows_to_dicts(conn.execute(text(f"""
                 SELECT DISTINCT a.* FROM {SCHEMA}.qualite_analyse a
-                LEFT JOIN {SCHEMA}.commande c ON c.po_number = a.po_number
+                LEFT JOIN {SCHEMA}.commande c ON LTRIM(c.po_number, '0') = LTRIM(a.po_number, '0')
                 WHERE c.code_article = :c OR a.sample_name LIKE :c_prefix
                 ORDER BY a.charge_le DESC LIMIT :limit
             """), params_doc))
@@ -911,8 +911,10 @@ def get_qualite_rapports(
                 params["code_article"] = code_article
                 params["code_prefix"] = f"{code_article}%"
             if po_number:
-                filters_doc.append("d.po_number = :po_number")
-                filters_ana.append("a.po_number = :po_number")
+                # PO compares sans zeros de tete : 6 chiffres dans l'IMPORT,
+                # 8 sur le Drive. La comparaison stricte ne trouvait rien.
+                filters_doc.append("LTRIM(d.po_number, '0') = LTRIM(:po_number, '0')")
+                filters_ana.append("LTRIM(a.po_number, '0') = LTRIM(:po_number, '0')")
                 params["po_number"] = po_number
 
             where_doc = "WHERE " + " AND ".join(filters_doc)
@@ -920,12 +922,12 @@ def get_qualite_rapports(
 
             docs = rows_to_dicts(conn.execute(text(f"""
                 SELECT DISTINCT d.* FROM {SCHEMA}.qualite_doc d
-                LEFT JOIN {SCHEMA}.commande c ON c.po_number = d.po_number
+                LEFT JOIN {SCHEMA}.commande c ON LTRIM(c.po_number, '0') = LTRIM(d.po_number, '0')
                 {where_doc} ORDER BY d.charge_le DESC LIMIT :limit
             """), params))
             analyses = rows_to_dicts(conn.execute(text(f"""
                 SELECT DISTINCT a.* FROM {SCHEMA}.qualite_analyse a
-                LEFT JOIN {SCHEMA}.commande c ON c.po_number = a.po_number
+                LEFT JOIN {SCHEMA}.commande c ON LTRIM(c.po_number, '0') = LTRIM(a.po_number, '0')
                 {where_ana} ORDER BY a.charge_le DESC LIMIT :limit
             """), params))
             return {"docs": docs, "analyses": analyses}
@@ -1472,37 +1474,94 @@ def _derniere_maj_commande() -> Optional[str]:
         return None
 
 
+# Statuts par stade affiches dans l'onglet Qualite (BUG-007, lot 1). L'IMPORT
+# ne connait que Conforme / Non recu / Non conforme ; le metier parle de
+# "en cours", "conforme", "FAIL". La decision recue par mail (achat.qualite_decision)
+# ne remplace la valeur de l'IMPORT que lorsque celui-ci est vide.
+STATUT_EN_COURS, STATUT_CONFORME, STATUT_FAIL, STATUT_RECU = "en_cours", "conforme", "fail", "recu"
+STADES_QUALITE = {"MAT": "matiere", "SP": "semi_production", "BAT": "production_bat", "RECEP": "reception"}
+STADE_DECISION = {"MAT": "MAT", "SP": "SP", "BAT": "BAT", "RECEP": "reception"}
+
+
+def statut_stade(valeur: Optional[str], decision: Optional[str] = None) -> Optional[str]:
+    """
+    Normalise une valeur de checkpoint qualite de l'IMPORT en statut metier.
+
+    Junior Tip : None veut dire "non applicable" (Aucune, "/", vide), ce qui
+    n'est pas la meme chose qu'un stade en cours. L'ecran doit afficher un
+    tiret, pas un faux statut, quand le stade ne concerne pas l'article.
+
+    Args:
+        valeur: texte brut de la colonne IMPORT (Conforme, Non recu, Analyse...).
+        decision: derniere decision mail du stade (conforme / non_conforme).
+
+    Returns:
+        en_cours, conforme, fail, recu, ou None si non applicable.
+    """
+    v = (valeur or "").strip().lower()
+    if not v or v in ("aucune", "/", "-"):
+        if decision == "non_conforme":
+            return STATUT_FAIL
+        if decision == "conforme":
+            return STATUT_CONFORME
+        return None
+    if "non conforme" in v or v == "fail":
+        return STATUT_FAIL
+    if v.startswith(("conforme", "valid", "ok", "oui")):
+        return STATUT_CONFORME
+    if "non re" in v or v == "analyse":
+        return STATUT_EN_COURS
+    if "receptionne" in v:
+        return STATUT_RECU
+    return None
+
+
 @app.get("/api/qualite")
 def get_qualite(
     fournisseur: Optional[str] = None,
     resultat: Optional[str] = None,
     code_article: Optional[str] = None,
 ):
-    """Liste le suivi qualite par produit (checkpoints, inspection DEKRA, NCR)."""
+    """
+    Suivi qualite par produit : checkpoints MAT/SP/BAT/RECEP, inspection, NCR.
+
+    Lot 1 de BUG-007 (cadrage docs/20261005_FUSEAU_Cadrage_OngletQualite_BUG007_v1.md) :
+    - statuts normalises par stade (statut_mat, statut_sp, statut_bat, statut_recep) ;
+    - derniere decision mail par stade, pour l'infobulle ;
+    - lien Drive du rapport DEKRA retrouve par le nom de fichier, qui commence
+      par la reference DEKRA ("4961649.00-6_Item#_..."), a defaut par PO et article.
+      L'ancienne jointure sur qualite_doc.ref_rapport ne trouvait rien : ce champ
+      porte une CA, pas une reference DEKRA ;
+    - PO compares sans zeros de tete (6 chiffres dans l'IMPORT, 8 sur le Drive).
+    """
     engine = get_engine()
     filters: list[str] = []
     params: dict[str, Any] = {}
     if fournisseur:
-        filters.append("LOWER(fournisseur) LIKE :f")
+        filters.append("LOWER(q.fournisseur) LIKE :f")
         params["f"] = f"%{fournisseur.lower()}%"
     if resultat:
-        filters.append("resultat_inspection = :r")
+        filters.append("q.resultat_inspection = :r")
         params["r"] = resultat
     if code_article:
-        filters.append("LOWER(code_article) LIKE :c")
+        filters.append("LOWER(q.code_article) LIKE :c")
         params["c"] = f"%{code_article.lower()}%"
     where = ("WHERE " + " AND ".join(filters)) if filters else ""
     with engine.connect() as conn:
         try:
-            # LEFT JOIN qualite_doc (lien Drive du rapport, via ref_rapport) et
-            # qualite_analyse (conformite labo -- chrome/durete) -- retour metier
-            # 23/06 : cliquer sur un FAIL doit ouvrir le rapport Drive correspondant.
             r = conn.execute(text(f"""
-                SELECT q.*, doc.drive_url, an.conformite
+                SELECT q.*, doc.drive_url, an.conformite, dec.decisions, ana.analyses
                 FROM {SCHEMA}.qualite q
                 LEFT JOIN LATERAL (
                     SELECT d.drive_url FROM {SCHEMA}.qualite_doc d
-                    WHERE d.ref_rapport = q.ref_rapport AND d.drive_url IS NOT NULL
+                    WHERE d.drive_url IS NOT NULL AND d.type = 'inspection'
+                      AND (
+                            (q.ref_rapport IS NOT NULL AND d.fichier LIKE q.ref_rapport || '\\_%')
+                         OR (LTRIM(d.po_number, '0') = LTRIM(q.po_number, '0')
+                             AND d.fichier LIKE '%Item#\\_' || q.code_article || '\\_%')
+                      )
+                    ORDER BY (q.ref_rapport IS NOT NULL AND d.fichier LIKE q.ref_rapport || '\\_%') DESC,
+                             d.charge_le DESC
                     LIMIT 1
                 ) doc ON true
                 LEFT JOIN LATERAL (
@@ -1510,11 +1569,42 @@ def get_qualite(
                     FROM {SCHEMA}.qualite_analyse a
                     WHERE a.ref_rapport = q.ref_rapport
                 ) an ON true
+                LEFT JOIN LATERAL (
+                    SELECT jsonb_object_agg(x.stade, jsonb_build_object(
+                               'decision', x.decision, 'date', x.date_info,
+                               'motif', x.motif, 'acteur', x.acteur, 'nb', x.nb)) AS decisions
+                    FROM (
+                        SELECT DISTINCT ON (d.stade) d.stade, d.decision, d.date_info,
+                               d.motif, d.acteur,
+                               COUNT(*) OVER (PARTITION BY d.stade) AS nb
+                        FROM {SCHEMA}.qualite_decision d
+                        WHERE LTRIM(d.po_number, '0') = LTRIM(q.po_number, '0')
+                          AND (d.code_article IS NULL OR d.code_article = q.code_article)
+                          AND d.stade IN ('MAT', 'SP', 'BAT', 'reception')
+                        ORDER BY d.stade, d.date_info DESC NULLS LAST, d.created_at DESC
+                    ) x
+                ) dec ON true
+                LEFT JOIN LATERAL (
+                    SELECT jsonb_object_agg(y.stade, y.drive_url) AS analyses
+                    FROM (
+                        SELECT DISTINCT ON (d.stade) d.stade, d.drive_url
+                        FROM {SCHEMA}.qualite_doc d
+                        WHERE d.type = 'analyse' AND d.drive_url IS NOT NULL AND d.stade IS NOT NULL
+                          AND LTRIM(d.po_number, '0') = LTRIM(q.po_number, '0')
+                        ORDER BY d.stade, d.charge_le DESC
+                    ) y
+                ) ana ON true
                 {where}
-                ORDER BY date_inspection DESC NULLS LAST
+                ORDER BY q.date_inspection DESC NULLS LAST
                 LIMIT 1000
             """), params)
-            return {"data": rows_to_dicts(r)}
+            rows = rows_to_dicts(r)
+            for row in rows:
+                decisions = row.get("decisions") or {}
+                for stade, col in STADES_QUALITE.items():
+                    dec = (decisions.get(STADE_DECISION[stade]) or {}).get("decision")
+                    row[f"statut_{stade.lower()}"] = statut_stade(row.get(col), dec)
+            return {"data": rows}
         except Exception as e:
             if "does not exist" in str(e):
                 return {"data": [], "warning": "Table achat.qualite non encore creee -- lancer l'ETL"}
