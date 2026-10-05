@@ -723,7 +723,7 @@ button { cursor: pointer; }
               title="Par défaut, l'année en cours : les commandes en production, en cours de livraison et livrées cette année. Les livraisons des années précédentes restent accessibles en changeant l'année.">
         <!-- Rempli par remplirFiltreAnnees() a partir des donnees reelles -->
       </select>
-      <label title="BUG-008 : l'ancien onglet Promo / Opé est fusionné ici. Une commande est une opération quand son intitulé Sylob commence par « OP » (repli : colonne OP/Client/Appro de l'IMPORT)." style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;">
+      <label title="BUG-008 : l'ancien onglet Promo / Opé est fusionné ici. Opération, promo, nouveau produit ou nouveau client : repéré dans l'intitulé Sylob ou dans la colonne OP/Client/Appro de l'IMPORT." style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;">
         <input id="f-promo" type="checkbox" onchange="filterCommandes()"> Promo / Opé uniquement
       </label>
       <button class="btn btn-ghost btn-sm" onclick="loadCommandes()">&#8635; Actualiser</button>
@@ -975,10 +975,14 @@ function esc(v) {
 function libellePromo(r) {
   return r.intitule_commande || r.op_client_appro || '';
 }
+// Regle metier (Antho, 05/10) : une operation, une promo, un nouveau produit ou
+// un nouveau client se traitent de la meme facon. "OP" et "PROMO" en mots
+// entiers, pour ne pas ferrer OPALE, OPEN ou PROMOCASH (un client).
+const RE_PROMO = /(OP|PROMO)|NOUVEAU\s+(PRODUIT|CLIENT)|NEW\s+(PRODUCT|CLIENT|CUSTOMER)/i;
 function estPromo(r) {
-  if (r.intitule_commande) return /^\s*OP/i.test(r.intitule_commande);
-  // Repli IMPORT : filtre resserre du 23/07 ("OP" ou "NOUVEAU").
-  return !!r.op_client_appro && /^\s*(OP|NOUVEAU)/i.test(r.op_client_appro);
+  // Intitule Sylob OU colonne de l'IMPORT : "NOUVEAU PRODUIT" n'est porte que
+  // par l'IMPORT, l'intitule Sylob donnant alors le nom du produit.
+  return RE_PROMO.test(r.intitule_commande || '') || RE_PROMO.test(r.op_client_appro || '');
 }
 
 // Mode d'authentification du serveur, lu une seule fois sur /api/health.
@@ -2504,7 +2508,7 @@ function renderCommandes(rows) {
           <td class="mono">${esc(r.code_article) || '—'}</td>
           <td>${esc(r.designation) || '-'}</td>
           <td>${esc(r.fournisseur) || '—'}</td>
-          <td style="font-size:12px;${estPromo(r) ? 'font-weight:bold;color:var(--blue);' : ''}">${libellePromo(r) ? esc(libellePromo(r)) + (r.intitule_commande ? '' : ' <span class="badge badge-gray" title="Intitulé Sylob indisponible : valeur saisie dans le fichier IMPORT">IMPORT</span>') : '<span style="color:var(--muted)">—</span>'}</td>
+          <td style="font-size:12px;${estPromo(r) ? 'font-weight:bold;color:var(--blue);' : ''}">${libellePromo(r) ? esc(libellePromo(r)) + (r.intitule_commande ? (r.op_client_appro && RE_PROMO.test(r.op_client_appro) && !RE_PROMO.test(r.intitule_commande) ? ' <span class="badge badge-gray" title="Marquage du fichier IMPORT">' + esc(r.op_client_appro) + '</span>' : '') : ' <span class="badge badge-gray" title="Intitulé Sylob indisponible : valeur saisie dans le fichier IMPORT">IMPORT</span>') : '<span style="color:var(--muted)">—</span>'}</td>
           <td style="text-align:right">${fmt(r.quantite, 'num')}</td>
           <td style="text-align:right">${r.prix_unitaire != null ? Number(r.prix_unitaire).toFixed(3) + ' $' : '—'}</td>
           <td style="text-align:right">${r.acompte != null ? Number(r.acompte).toLocaleString('fr-FR') + ' $' : '-'}</td>
