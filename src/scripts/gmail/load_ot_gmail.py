@@ -45,6 +45,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -126,6 +127,49 @@ def check() -> int:
     return 0
 
 
+# fetch_attachments prefixe chaque piece jointe par la date du mail (AAAAMMJJ_).
+_PREFIXE_DATE = re.compile(r"^(\d{4})(\d{2})(\d{2})_")
+
+
+def date_depuis_nom_fichier(fichier: str | None) -> str | None:
+    """
+    Date de transmission d'une piece jointe, lue dans le prefixe de son nom.
+
+    Junior Tip : parse_bl relit tout le dossier data/PJ a chaque passage. Sans
+    date propre a la piece, on retombait sur l'heure du chargement : un PDF du
+    20/05 devenait chaque matin "la transmission la plus recente" et ecrasait
+    l'ETA du suivi maritime. Constate le 05/10/2026 sur MSMU3526021 : 9
+    allers-retours d'ETA entre le 10/08 et le 05/10.
+
+    Returns:
+        Date ISO (minuit UTC) ou None si le nom ne porte pas de date valide.
+    """
+    m = _PREFIXE_DATE.match(fichier or "")
+    if not m:
+        return None
+    try:
+        return datetime(int(m[1]), int(m[2]), int(m[3]), tzinfo=timezone.utc).isoformat()
+    except ValueError:
+        return None
+
+
+def _horodatage(valeur: object) -> datetime:
+    """
+    Normalise une date de transmission en datetime UTC naif, pour comparer.
+
+    Junior Tip : l'ancienne comparaison se faisait entre chaines ("2026-05-20T00:00:00+00:00"
+    contre "2026-10-05 08:19:45"). Elle tombait juste par chance sur l'ordre des
+    caracteres, et faux des que les formats divergeaient.
+    """
+    if isinstance(valeur, datetime):
+        dt = valeur
+    else:
+        dt = datetime.fromisoformat(str(valeur).replace("Z", "+00:00"))
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
 def _row_params(rec: dict) -> dict | None:
     conteneur = str(rec.get("n_conteneur") or "").strip()
     if not conteneur:
@@ -139,7 +183,8 @@ def _row_params(rec: dict) -> dict | None:
     fichier = rec.get("source_fichier")
     params["source_fichier"] = f"gmail:{fichier}" if fichier else "gmail"
     dt = rec.get("date_transmission")
-    params["date_transmission"] = (str(dt).strip() or None) if isinstance(dt, str) else dt
+    dt = (str(dt).strip() or None) if isinstance(dt, str) else dt
+    params["date_transmission"] = dt or date_depuis_nom_fichier(fichier)
     params["date_livraison"] = rec.get("date_livraison")
     return params
 
@@ -161,7 +206,9 @@ def _resolve_tracked(conn, params: dict) -> list[dict]:
     Returns:
         Liste d'événements à insérer (dicts prêts pour EVENT_SQL), vide si rien n'a changé.
     """
-    date_transmission = params.get("date_transmission") or datetime.now(timezone.utc).isoformat()
+    # Une piece sans date connue ne peut pas pretendre etre la plus recente :
+    # elle complete un champ vide mais n'ecrase jamais une valeur deja datee.
+    date_transmission = params.get("date_transmission")
     current = conn.execute(text(
         "SELECT eta, date_livraison, eta_maj_le, date_livraison_maj_le "
         "FROM achat.ot_transport WHERE n_conteneur = :c"
@@ -190,7 +237,8 @@ def _resolve_tracked(conn, params: dict) -> list[dict]:
         maj_idx = 2 if champ == "eta" else 3
         valeur_actuelle, maj_le_actuel = current[idx], current[maj_idx]
 
-        if maj_le_actuel is not None and str(date_transmission) < str(maj_le_actuel):
+        if maj_le_actuel is not None and (
+                date_transmission is None or _horodatage(date_transmission) < _horodatage(maj_le_actuel)):
             # Transmission plus ancienne que ce qu'on a deja applique -> ignoree (spec §4).
             logger.info("conteneur %s : transmission %s plus ancienne que %s deja appliquee pour %s -- ignoree.",
                         params["n_conteneur"], date_transmission, maj_le_actuel, champ)
