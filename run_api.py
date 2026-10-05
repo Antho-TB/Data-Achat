@@ -12,12 +12,12 @@ Auto-sync GitHub : tente un 'git pull origin main' au lancement pour s'assurer q
 le poste local (ex. Marlène) dispose toujours du code le plus récent.
 """
 import logging
-import subprocess
 from pathlib import Path
 
 import uvicorn
 
 from src.utils.config_manager import Config
+from src.utils.git_sync import synchroniser
 from src.utils.logging_setup import setup_logging
 
 setup_logging()
@@ -33,7 +33,7 @@ def auto_pull_git() -> None:
     """
     Met le poste à jour depuis GitHub avant le démarrage de l'API.
 
-    Trois garde-fous par rapport à la version initiale :
+    Garde-fous par rapport à la version initiale :
 
     1. Le pull s'exécute dans le répertoire du dépôt (RACINE_PROJET) et non
        dans le répertoire courant. Lancée en service Windows, la commande
@@ -43,37 +43,21 @@ def auto_pull_git() -> None:
        pointant une branche ou un tag de release plutôt que main, un commit
        cassé poussé en cours de journée ne casse plus l'application de Marlène
        à son prochain lancement.
-    3. Un dépôt local modifié ou un pull en échec est signalé en ERREUR
-       explicite, pas en warning noyé : l'utilisateur doit savoir qu'il tourne
-       sur une version qui n'est pas celle attendue.
+    3. Seuls les fichiers SUIVIS modifiés bloquent le pull. Les fichiers non
+       suivis (un .log.err, une sauvegarde .env, un .docx déposé) l'avaient
+       annulé trois fois alors qu'ils ne gênent pas une avance rapide.
+    4. Un pull bloqué ou en échec est signalé en ERREUR avec la liste des
+       fichiers, et laisse un marqueur deploy/logs/PULL_BLOQUE.txt. La logique
+       vit dans src.utils.git_sync, couverte par src/tests/test_git_sync.py.
     """
     if not Config.API_AUTO_PULL:
         logger.info("[GIT] Auto-sync désactivé (API_AUTO_PULL=0).")
         return
 
-    branche = Config.BRANCHE_DEPLOIEMENT
-    try:
-        modifs = subprocess.run(
-            ["git", "-C", str(RACINE_PROJET), "status", "--porcelain"],
-            capture_output=True, text=True, timeout=10,
-        )
-        if modifs.stdout.strip():
-            logger.error("[GIT] [ECHEC] Modifications locales non commitées, pull annulé. "
-                         "L'application démarre sur le code local, pas sur %s.", branche)
-            return
-
-        logger.info("[GIT] Synchronisation sur %s...", branche)
-        res = subprocess.run(
-            ["git", "-C", str(RACINE_PROJET), "pull", "origin", branche, "--ff-only", "--quiet"],
-            capture_output=True, text=True, timeout=30,
-        )
-        if res.returncode == 0:
-            logger.info("[GIT] [SUCCES] Code à jour sur %s.", branche)
-        else:
-            logger.error("[GIT] [ECHEC] Pull impossible, démarrage sur le code local : %s",
-                         res.stderr.strip() or res.stdout.strip())
-    except (OSError, subprocess.SubprocessError) as e:
-        logger.error("[GIT] [ECHEC] Synchronisation impossible, démarrage sur le code local : %s", e)
+    resultat = synchroniser(RACINE_PROJET, Config.BRANCHE_DEPLOIEMENT)
+    if not resultat.ok:
+        logger.error("[GIT] [ECHEC] L'application démarre sur le code local (%s), pas sur %s.",
+                     resultat.head_avant, resultat.branche)
 
 
 if __name__ == "__main__":

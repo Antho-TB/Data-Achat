@@ -631,8 +631,13 @@ table `achat.facture_fournisseur` créée (19 colonnes, additive).
 - [ ] **Rejouer l'ETL Gmail** : deux semaines de pièces jointes à rattraper,
       passage supervisé préférable.
 - [ ] **Auto-pull fragile** : `run_api.py` annule le pull si
-      `git status --porcelain` est non vide, et ne le dit pas assez fort. Deux
-      occurrences (un `.log.err` le 28/07, une sauvegarde `.env` le 06/08).
+      `git status --porcelain` est non vide, et ne le dit pas assez fort. Trois
+      occurrences (un `.log.err` le 28/07, une sauvegarde `.env` le 06/08, un
+      `.docx` non suivi du 22 au 24/09). Corrigé sur la branche
+      `fix/auto-pull-alerte`, à déployer sur le poste : seuls les fichiers
+      suivis modifiés bloquent, un pull bloqué laisse
+      `deploy\logs\PULL_BLOQUE.txt` et fait finir `FUSEAU_Files_ETL` en `0x2`
+      après avoir quand même lancé l'ETL. À cocher après le premier run vérifié.
 - [ ] **Étape 7 avec Marlène**, et ses deux questions en attente : le message
       d'erreur exact du 29/07 sur la saisie de paiement, et si FUSEAU lui a déjà
       demandé une clé API sur ce poste.
