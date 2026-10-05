@@ -79,6 +79,14 @@ class Config:
     # Schéma société principale
     SYLOB_SCHEMA: str = "TARRERIAS_GENERALE_DE_DECOUPAGE"
 
+    # Copie MyReport des donnees Sylob dans dtpf_sylob_prod, lue par l'API hebergee
+    # en Azure (le DWH Sylob on-premise ne lui est pas joignable). Schema et noms
+    # de tables en configuration : MyReport renumerote ses tables (commandes2,
+    # commandes6...) et va basculer de "public" vers "myreport". Ce doit etre une
+    # ligne d'app settings, pas un redeploiement.
+    MYREPORT_SCHEMA: str = os.getenv("MYREPORT_SCHEMA", "public")
+    MYREPORT_TABLE_COMMANDES: str = os.getenv("MYREPORT_TABLE_COMMANDES", "commandes6")
+
     # Répertoire des fichiers sources Excel
     DATA_DIR: str = os.getenv("DATA_DIR", "Service_Achat")
 

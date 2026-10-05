@@ -213,6 +213,63 @@ def rows_to_dicts(result) -> list[dict[str, Any]]:
     return rows
 
 
+def normaliser_po(po: Any) -> str:
+    """PO sans espaces ni zeros de tete : Sylob ecrit 0181325, l'IMPORT 181325."""
+    return str(po or "").strip().lstrip("0")
+
+
+# Ecart maximal entre la creation Sylob et la date de commande IMPORT pour
+# rattacher un PO a la bonne societe (les numeros se repetent entre GDD, SE, Cie).
+MAX_ECART_JOURS_SOCIETE = 180
+
+
+def intitules_commande_sylob(conn: Any, pos: list[Any]) -> dict[str, str]:
+    """
+    Intitule de la commande dans Sylob (commande_reference), par PO normalise.
+
+    Besoin metier (Antho, 05/10/2026) : les promotions et operations sont portees
+    par l'intitule de la commande Sylob ("OP SYSTEM U 2026", "OP TOP CHEF 2026"),
+    pas par une source a part. Sylob est la source de verite ; la colonne
+    op_client_appro de l'IMPORT n'est qu'une recopie manuelle, gardee en repli.
+
+    Junior Tip : la lecture se fait dans un SAVEPOINT. Sans droit SELECT sur la
+    copie MyReport (droit perdu a chaque recreation de table par l'ETL MyReport),
+    la requete echoue ; le savepoint annule cette seule requete et laisse la
+    transaction utilisable pour le reste de l'endpoint.
+
+    Returns:
+        {po_normalise: intitule}, vide si la copie MyReport est illisible.
+    """
+    cles = sorted({normaliser_po(p) for p in pos if normaliser_po(p)})
+    if not cles:
+        return {}
+    table = f'"{Config.MYREPORT_SCHEMA}"."{Config.MYREPORT_TABLE_COMMANDES}"'
+    sql = text(f"""
+        SELECT DISTINCT ON (po) po, intitule
+        FROM (
+            SELECT LTRIM(TRIM(c.po_number::text), '0') AS po,
+                   NULLIF(TRIM(m.commande_reference), '') AS intitule,
+                   ABS(m.commande_creee_le::date - c.date_commande) AS ecart
+            FROM {SCHEMA}.commande c
+            JOIN {table} m
+              ON LTRIM(TRIM(m.commande_numero_de_la_commande), '0')
+               = LTRIM(TRIM(c.po_number::text), '0')
+            WHERE LTRIM(TRIM(c.po_number::text), '0') = ANY(:pos)
+        ) x
+        WHERE intitule IS NOT NULL AND (ecart IS NULL OR ecart <= :max_ecart)
+        ORDER BY po, ecart NULLS LAST
+    """)
+    try:
+        with conn.begin_nested():
+            rows = conn.execute(
+                sql, {"pos": cles, "max_ecart": MAX_ECART_JOURS_SOCIETE}).fetchall()
+    except Exception as exc:
+        logger.warning("[ATTENTION] Intitules Sylob illisibles dans %s, repli sur l'IMPORT (%s)",
+                       table, str(exc).splitlines()[0])
+        return {}
+    return {po: intitule for po, intitule in rows}
+
+
 # ==============================================================================
 # KPIs -- Dashboard
 # ==============================================================================
@@ -442,7 +499,11 @@ def get_commandes(
                 ORDER BY po_number ASC, code_article ASC
                 LIMIT :limit OFFSET :offset
             """), params)
-            return {"data": rows_to_dicts(r), "total": int(total or 0),
+            data = rows_to_dicts(r)
+            intitules = intitules_commande_sylob(conn, [d["po_number"] for d in data])
+            for d in data:
+                d["intitule_commande"] = intitules.get(normaliser_po(d.get("po_number")))
+            return {"data": data, "total": int(total or 0),
                     "limit": limit, "offset": offset}
         except Exception as e:
             raise internal_error(e)
