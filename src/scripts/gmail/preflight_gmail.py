@@ -9,19 +9,25 @@ session. Chaque verification est isolee : une brique KO n'empeche pas de voir
 l'etat des autres.
 
 Junior Tip : un "preflight" c'est la check-list du pilote avant decollage. On ne
-repare rien ici, on constate. Le code de sortie vaut 0 si tout est vert, 1 s'il
-manque une brique critique (pour pouvoir enchainer ou s'arreter en connaissance
-de cause).
+repare rien ici, on constate. Le code de sortie vaut 0 si tout est vert, 3 si le
+token Google exige un reconsentement manuel (scopes insuffisants ou token
+absent), 1 s'il manque une autre brique critique (pour pouvoir enchainer ou
+s'arreter en connaissance de cause).
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from src.utils.google_auth import (
+    COMMANDE_RECONSENTEMENT,
+    ScopesInsuffisantsError,
+    verifier_scopes_token,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,11 +39,19 @@ ROOT = Path(__file__).resolve().parents[3]
 TOKEN_PATH = ROOT / "config" / "token.json"
 CREDENTIALS_PATH = ROOT / "config" / "credentials.json"
 
-# Scopes minimaux attendus dans le token (Gmail lecture + Drive lecture).
-EXPECTED_SCOPES = (
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/drive.readonly",
-)
+# Les scopes attendus ne sont plus dupliques ici : la liste locale n'en portait
+# que 2 quand google_auth.SCOPES en demandait 3, et le preflight passait au vert
+# sur un token incapable de se rafraichir. Source unique : google_auth.SCOPES.
+
+# Statuts du controle token (cf. check_gmail_token).
+STATUT_OK = "ok"
+STATUT_KO = "ko"
+STATUT_CONSENTEMENT = "consentement"
+
+# Codes de sortie lus par deploy/run_gmail_etl.ps1.
+EXIT_OK = 0
+EXIT_CRITIQUE = 1  # VPN/DWH/OCR : skip propre cote tache planifiee
+EXIT_CONSENTEMENT = 3  # reconsentement OAuth manuel requis : echec visible
 
 
 def check_python_version() -> bool:
@@ -65,31 +79,42 @@ def check_binary(name: str, cmd: list[str]) -> bool:
         return False
 
 
-def check_gmail_token() -> bool:
+def check_gmail_token(
+    token_path: Path = TOKEN_PATH, credentials_path: Path = CREDENTIALS_PATH
+) -> str:
     """Controle la presence du token Gmail et la couverture des scopes attendus.
 
     On ne fait PAS d'appel reseau ici (pour ne pas declencher un consentement
-    interactif) : on lit juste le token en cache. Si les scopes manquent, il
-    faudra re-consentir une fois au premier fetch.
+    interactif) : on lit juste le token en cache et on le compare a SCOPES via
+    le garde-fou partage de google_auth.
+
+    Junior Tip : on renvoie un statut a 3 valeurs et pas un booleen, car le
+    remede n'est pas le meme. Un VPN tombe se resout tout seul au prochain run
+    (skip propre) ; un scope manquant ne se resout JAMAIS sans un humain devant
+    le navigateur, donc la tache planifiee doit apparaitre en echec.
+
+    Returns:
+        STATUT_OK, STATUT_KO (brique absente/illisible) ou STATUT_CONSENTEMENT
+        (token absent ou scopes insuffisants : reconsentement manuel requis).
     """
-    if not CREDENTIALS_PATH.exists():
-        logger.error("[ECHEC] credentials.json manquant (%s).", CREDENTIALS_PATH)
-        return False
-    if not TOKEN_PATH.exists():
-        logger.warning("[ATTENTION] token.json absent : un consentement Gmail sera demande au 1er run.")
-        return False
+    if not credentials_path.exists():
+        logger.error("[ECHEC] credentials.json manquant (%s).", credentials_path)
+        return STATUT_KO
+    if not token_path.exists():
+        logger.error(
+            "[ECHEC] token.json absent (%s) : consentement manuel requis, a lancer "
+            "depuis la racine du depot : %s", token_path, COMMANDE_RECONSENTEMENT)
+        return STATUT_CONSENTEMENT
     try:
-        data = json.loads(TOKEN_PATH.read_text(encoding="utf-8"))
+        verifier_scopes_token(token_path)
+    except ScopesInsuffisantsError:
+        # Le detail (scopes manquants + commande) est deja logue en [ECHEC].
+        return STATUT_CONSENTEMENT
     except (OSError, ValueError) as exc:
         logger.error("[ECHEC] token.json illisible : %s", exc)
-        return False
-    scopes = set(data.get("scopes", []))
-    manquants = [s for s in EXPECTED_SCOPES if s not in scopes]
-    if manquants:
-        logger.warning("[ATTENTION] scopes manquants dans le token : %s (re-consentement requis).", manquants)
-        return False
-    logger.info("[SUCCES] token Gmail present, scopes Gmail + Drive couverts.")
-    return True
+        return STATUT_KO
+    logger.info("[SUCCES] token Google present, scopes Gmail + Drive + Sheets couverts.")
+    return STATUT_OK
 
 
 def check_git_sync() -> bool:
@@ -132,14 +157,19 @@ def main() -> int:
     Junior Tip : les binaires OCR, le token et le DWH sont critiques pour le run.
     La version Python et la synchro git sont des avertissements (le run peut
     demarrer mais on prend un risque). Le code de sortie ne bloque que sur le
-    critique.
+    critique, et distingue le cas "reconsentement OAuth" (EXIT_CONSENTEMENT) qui
+    ne se resoudra jamais tout seul.
+
+    Returns:
+        EXIT_OK, EXIT_CONSENTEMENT (prioritaire) ou EXIT_CRITIQUE.
     """
     logger.info("=== Pre-vol pipeline Gmail (poste Marlene) ===")
 
+    statut_token = check_gmail_token()
     critiques = {
         "OCR Tesseract": check_binary("Tesseract", ["tesseract", "--version"]),
         "OCR Poppler": check_binary("Poppler (pdftoppm)", ["pdftoppm", "-v"]),
-        "Token Gmail": check_gmail_token(),
+        "Token Gmail": statut_token == STATUT_OK,
         "DWH Azure": check_dwh(),
     }
     avertissements = {
@@ -153,9 +183,15 @@ def main() -> int:
 
     if all(critiques.values()):
         logger.info("[SUCCES] Poste pret : le pipeline Gmail peut demarrer.")
-        return 0
+        return EXIT_OK
+    if statut_token == STATUT_CONSENTEMENT:
+        logger.error(
+            "[ECHEC] Reconsentement OAuth Google requis (exit %d). A lancer A LA MAIN "
+            "depuis la racine du depot, navigateur ouvert : %s",
+            EXIT_CONSENTEMENT, COMMANDE_RECONSENTEMENT)
+        return EXIT_CONSENTEMENT
     logger.error("[ECHEC] Au moins une brique critique manque, corriger avant de lancer le pipeline.")
-    return 1
+    return EXIT_CRITIQUE
 
 
 if __name__ == "__main__":
