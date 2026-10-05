@@ -8,7 +8,12 @@ import openpyxl
 import pytest
 from fastapi.testclient import TestClient
 
-from src.utils.export_fiche_excel import generate_fiche_excel_bytes
+from src.utils.export_fiche_excel import (
+    EQUIV_COLONNES,
+    EQUIV_TITRE_SECTION,
+    generate_fiche_excel_bytes,
+    lignes_equivalentes_non_vides,
+)
 
 
 @pytest.fixture(scope="module")
@@ -77,6 +82,7 @@ def test_api_export_fiche_excel(client: TestClient):
                 "french_desc": "Bloc 5 couteaux",
             }
         ],
+        "equivalents": [{"variante": "Noir", "difference": "Coloris"}],
     }
 
     response = client.post("/api/fiche-achat/export-excel", json=payload)
@@ -84,3 +90,61 @@ def test_api_export_fiche_excel(client: TestClient):
     assert response.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     assert "attachment; filename=" in response.headers["content-disposition"]
     assert len(response.content) > 1000
+    ws = openpyxl.load_workbook(BytesIO(response.content)).active
+    assert EQUIV_TITRE_SECTION in [str(c.value) for row in ws.iter_rows() for c in row]
+
+
+def _cellules(ws) -> list[str]:
+    """Toutes les valeurs non vides de la feuille, en texte."""
+    return [str(c.value) for row in ws.iter_rows() for c in row if c.value is not None]
+
+
+def _ligne_de(ws, valeur: str) -> int:
+    """Numero de la premiere ligne contenant exactement cette valeur."""
+    for row in ws.iter_rows():
+        for c in row:
+            if c.value == valeur:
+                return c.row
+    raise AssertionError(f"{valeur!r} absent de la feuille")
+
+
+def test_references_equivalentes_exportees():
+    equivalents = [
+        {"code_article": "100201", "variante": "Rouge", "ean13": "3148520000026",
+         "designation": "Couteau steak 11cm rouge", "difference": "Coloris",
+         "quantite": "1 200", "prix": "1,35"},
+        {"variante": "Vrac", "designation": "Couteau steak 11cm vrac",
+         "difference": "Conditionnement", "quantite": "", "prix": "a confirmer"},
+    ]
+    wb = openpyxl.load_workbook(BytesIO(generate_fiche_excel_bytes(
+        {"supplier": "GUANGWEI"}, [{"reference": "100200"}], equivalents)))
+    ws = wb.active
+
+    titre = _ligne_de(ws, EQUIV_TITRE_SECTION)
+    entetes = [ws.cell(row=titre + 1, column=i).value for i in range(1, 8)]
+    assert entetes == [t for _, t in EQUIV_COLONNES]
+
+    rouge = [ws.cell(row=titre + 2, column=i).value for i in range(1, 8)]
+    # EAN reste du texte (sinon Excel le passe en notation scientifique),
+    # quantite et prix deviennent des nombres, virgule francaise comprise.
+    assert rouge == ["100201", "Rouge", "3148520000026", "Couteau steak 11cm rouge", "Coloris", 1200, 1.35]
+
+    vrac = [ws.cell(row=titre + 3, column=i).value for i in range(1, 8)]
+    assert vrac[1] == "Vrac"
+    assert vrac[6] == "a confirmer"  # saisie non numerique conservee
+
+    # Placee entre la description produit et le transport.
+    assert _ligne_de(ws, "SUPPLIER:") < titre < _ligne_de(ws, "TRANSPORT")
+
+
+def test_references_equivalentes_vides_non_imprimees():
+    lignes_vides = [{"code_article": "", "variante": "  ", "prix": None}]
+    for equivalents in (None, [], lignes_vides):
+        ws = openpyxl.load_workbook(BytesIO(generate_fiche_excel_bytes(
+            {"supplier": "GUANGWEI"}, [{"reference": "100200"}], equivalents))).active
+        assert EQUIV_TITRE_SECTION not in _cellules(ws)
+
+
+def test_lignes_equivalentes_non_vides_filtre():
+    lignes = [{"variante": ""}, {"variante": "Noir"}, {"prix": " "}, {"quantite": "0"}]
+    assert lignes_equivalentes_non_vides(lignes) == [{"variante": "Noir"}, {"quantite": "0"}]
