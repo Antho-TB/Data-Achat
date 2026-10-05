@@ -9,6 +9,7 @@ Reconstruit la trame officielle TB Groupe avec openpyxl :
 """
 from datetime import date
 import io
+import logging
 from typing import Any
 
 import openpyxl
@@ -16,18 +17,69 @@ from openpyxl.cell.cell import MergedCell
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+logger = logging.getLogger(__name__)
+
 # Bornes de largeur de colonne, en caracteres.
 LARGEUR_COLONNE_MIN = 14
 LARGEUR_COLONNE_MAX = 45
 
+# Colonnes du bloc "References equivalentes" (plan_action.md §3.8), dans l'ordre
+# d'affichage. Les cles sont celles envoyees par le front (FICHE_EQUIV_FIELDS).
+EQUIV_COLONNES: list[tuple[str, str]] = [
+    ("code_article", "REFERENCE"),
+    ("variante", "VARIANT"),
+    ("ean13", "EAN 13"),
+    ("designation", "DESIGNATION"),
+    ("difference", "DIFFERENCE VS MAIN REF."),
+    ("quantite", "QTY"),
+    ("prix", "PRICE"),
+]
+EQUIV_COLONNES_NUMERIQUES = {"quantite", "prix"}
+EQUIV_TITRE_SECTION = "EQUIVALENT REFERENCES / RÉFÉRENCES ÉQUIVALENTES"
 
-def generate_fiche_excel_bytes(data: dict[str, Any], items: list[dict[str, Any]]) -> bytes:
+
+def lignes_equivalentes_non_vides(equivalents: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Ne garde que les lignes ayant au moins un champ renseigne.
+
+    Une ligne ajoutee puis laissee vide dans le formulaire ne doit rien
+    produire dans l'export, et un bloc sans ligne utile n'est pas ecrit du tout.
+    """
+    return [
+        ligne for ligne in (equivalents or [])
+        if any(str(ligne.get(cle) or "").strip() for cle, _ in EQUIV_COLONNES)
+    ]
+
+
+def _valeur_cellule(cle: str, valeur: Any) -> Any:
+    """Convertit quantite et prix en nombre quand la saisie le permet.
+
+    La saisie est libre (virgule francaise acceptee). Un nombre reste
+    additionnable dans Excel ; une saisie non numerique ("a confirmer") est
+    conservee telle quelle plutot que perdue.
+    """
+    texte = str(valeur or "").strip()
+    if cle not in EQUIV_COLONNES_NUMERIQUES or not texte:
+        return texte
+    try:
+        nombre = float(texte.replace(" ", "").replace(" ", "").replace(",", "."))
+    except ValueError:
+        return texte
+    return int(nombre) if nombre.is_integer() else nombre
+
+
+def generate_fiche_excel_bytes(
+    data: dict[str, Any],
+    items: list[dict[str, Any]],
+    equivalents: list[dict[str, Any]] | None = None,
+) -> bytes:
     """
     Génère le binaire d'une Fiche Achat Excel (.xlsx) à partir des données formulaires.
 
     Args:
         data: dictionnaire des champs globaux (supplier, po_number, transport, sample, etc.)
         items: liste des dictionnaires de références (reference, name, dimensions, EAN, etc.)
+        equivalents: lignes de références équivalentes (coloris, ménagère/vrac...).
+            Section omise si aucune ligne n'est renseignée.
 
     Returns:
         Octets (bytes) du fichier .xlsx généré.
@@ -119,6 +171,23 @@ def generate_fiche_excel_bytes(data: dict[str, Any], items: list[dict[str, Any]]
             ws.cell(row=current_row, column=col_i).border = border_all
         current_row += 1
     current_row += 1
+
+    # 2 bis. REFERENCES EQUIVALENTES : declinaisons (coloris, menagere/vrac)
+    # decrites sur la meme fiche. Placees juste apres la description pour que
+    # le fournisseur lise d'abord la reference principale puis ses variantes.
+    lignes_equiv = lignes_equivalentes_non_vides(equivalents)
+    if lignes_equiv:
+        write_section_header(EQUIV_TITRE_SECTION)
+        write_sub_header([titre for _, titre in EQUIV_COLONNES])
+        for ligne in lignes_equiv:
+            for col_idx, (cle, _) in enumerate(EQUIV_COLONNES, start=1):
+                cell = ws.cell(row=current_row, column=col_idx, value=_valeur_cellule(cle, ligne.get(cle)))
+                cell.font = font_normal
+                cell.alignment = align_left if cle in ("designation", "difference") else align_center
+                cell.border = border_all
+            current_row += 1
+        current_row += 1
+    logger.debug("Fiche Achat xlsx : %d reference(s) equivalente(s) exportee(s)", len(lignes_equiv))
 
     # 3. TRANSPORT
     write_section_header("TRANSPORT")

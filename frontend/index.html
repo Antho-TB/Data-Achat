@@ -592,6 +592,15 @@ button { cursor: pointer; }
 .fiche-item { border: 1px dashed var(--border); border-radius: 4px; padding: 10px; margin-bottom: 10px; background: #FAFAF8; }
 .fiche-item .fiche-item-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
 .fiche-item .fiche-item-head b { font-size: 12px; }
+/* References equivalentes : une carte compacte par ligne (grille 2 colonnes),
+   la colonne formulaire (420px) est trop etroite pour un tableau a 7 colonnes. */
+.fiche-equiv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+.fiche-equiv-grid .fe-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fiche-equiv-grid .fe-field.wide { grid-column: span 2; }
+.fiche-equiv-grid .fe-field > span { font-size: 11px; color: var(--muted); }
+.fiche-equiv-grid input[type=text] { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 3px; padding: 5px 8px; font-size: 12px; font-family: var(--font-body); }
+.fiche-equiv-grid .fiche-search-wrap { display: block; }
+.fiche-equiv-empty { font-size: 11px; color: var(--muted); font-style: italic; margin-bottom: 4px; }
 
 /* -- Document PS (rendu fidele FOR-ACH-03-12) -- */
 .ps-doc { background: #fff; border: 1px solid #000; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; }
@@ -1335,6 +1344,20 @@ const TB_LOGO_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 387.18
 let _ficheData = {};
 let _fichePics = {};
 let _ficheItems = [];
+// References equivalentes (plan_action.md §3.8, demo 22/09) : declinaisons
+// d'un meme produit (3 coloris, menagere ou vrac) portees par UNE seule fiche
+// au lieu de N fiches identiques a 90 %. Etat client uniquement, comme le reste
+// de la fiche : aucune table en base, la fiche n'est pas persistee.
+let _ficheEquivs = [];
+const FICHE_EQUIV_FIELDS = [
+  { key: 'code_article', label: 'Code article', placeholder: 'optionnel, recherche Sylob' },
+  { key: 'variante', label: 'Variante', placeholder: 'ex. Noir, Rouge, Ménagère, Vrac' },
+  { key: 'ean13', label: 'EAN 13', placeholder: 'optionnel', wide: 1 },
+  { key: 'designation', label: 'Désignation', placeholder: 'Désignation de la déclinaison', wide: 1 },
+  { key: 'difference', label: 'Différence vs référence principale', placeholder: 'Coloris, conditionnement, autre…', wide: 1, list: 'fiche-equiv-diff-options' },
+  { key: 'quantite', label: 'Quantité', placeholder: 'optionnel' },
+  { key: 'prix', label: 'Prix', placeholder: 'optionnel' },
+];
 const FICHE_AUTO_KEYS = new Set(['supplier', 'po_number', 'forwarder', 'port', 'etd']);
 const FICHE_ITEM_AUTO_KEYS = new Set(['reference', 'name', 'french_desc', 'pcs_inner', 'pcs_master', 'thickness', 'length', 'chrome_pct', 'finishing', 'handle_material', 'pantone', 'stamping_dim', 'carton_l', 'carton_w', 'carton_h', 'ean13', 'ean14_inner', 'ean14_master']);
 
@@ -1543,7 +1566,8 @@ function collectFicheItems() {
 function updateFichePreview() {
   _ficheData = collectFicheData();
   _ficheItems = collectFicheItems();
-  renderFichePreview(_ficheData, _fichePics, _ficheItems);
+  _ficheEquivs = collectFicheEquivs();
+  renderFichePreview(_ficheData, _fichePics, _ficheItems, _ficheEquivs);
 }
 
 function addFicheItem() {
@@ -1570,6 +1594,166 @@ function renderFicheItemsForm() {
       </div>
       ${FICHE_ITEM_FIELDS.map(f => renderFicheInput(f, item[f.key], FICHE_ITEM_AUTO_KEYS.has(f.key), 'data-ik')).join('')}
     </div>`).join('');
+}
+
+// ── References equivalentes ────────────────────────────────────────────────
+function blankFicheEquiv() {
+  const ln = {};
+  FICHE_EQUIV_FIELDS.forEach(f => { ln[f.key] = ''; });
+  return ln;
+}
+
+function collectFicheEquivs() {
+  return Array.from(document.querySelectorAll('#fiche-equivs .fiche-equiv')).map(card => {
+    const ln = {};
+    card.querySelectorAll('[data-ek]').forEach(el => { ln[el.dataset.ek] = el.value; });
+    return ln;
+  });
+}
+
+// Une ligne ajoutee mais laissee vide ne doit rien imprimer : on ne garde que
+// les lignes ayant au moins un champ renseigne (apercu, PDF et xlsx).
+function ficheEquivsNonVides(lines) {
+  return (lines || []).filter(ln => FICHE_EQUIV_FIELDS.some(f => String(ln[f.key] || '').trim() !== ''));
+}
+
+function addFicheEquiv() {
+  _ficheEquivs = collectFicheEquivs();
+  _ficheEquivs.push(blankFicheEquiv());
+  renderFicheEquivsForm();
+  updateFichePreview();
+}
+
+function removeFicheEquiv(idx) {
+  _ficheEquivs = collectFicheEquivs();
+  _ficheEquivs.splice(idx, 1);
+  renderFicheEquivsForm();
+  updateFichePreview();
+}
+
+// Construit en DOM (createElement + .value / .textContent) et non en chaine
+// HTML : les valeurs saisies ne passent jamais par innerHTML.
+function renderFicheEquivsForm() {
+  const host = document.getElementById('fiche-equivs');
+  if (!host) return;
+  host.replaceChildren();
+  if (!_ficheEquivs.length) {
+    const p = document.createElement('div');
+    p.className = 'fiche-equiv-empty';
+    p.textContent = "Aucune référence équivalente. Bloc non imprimé tant qu'il est vide.";
+    host.appendChild(p);
+    return;
+  }
+  _ficheEquivs.forEach((ln, idx) => {
+    const card = document.createElement('div');
+    card.className = 'fiche-item fiche-equiv';
+
+    const head = document.createElement('div');
+    head.className = 'fiche-item-head';
+    const title = document.createElement('b');
+    title.textContent = 'Équivalent ' + (idx + 1);
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'btn btn-ghost btn-sm';
+    del.textContent = '🗑 Supprimer';
+    del.addEventListener('click', () => removeFicheEquiv(idx));
+    head.append(title, del);
+
+    const grid = document.createElement('div');
+    grid.className = 'fiche-equiv-grid';
+    FICHE_EQUIV_FIELDS.forEach(f => {
+      const field = document.createElement('div');
+      field.className = 'fe-field' + (f.wide ? ' wide' : '');
+      const lbl = document.createElement('span');
+      lbl.textContent = f.label;
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.dataset.ek = f.key;
+      input.value = ln[f.key] || '';
+      input.placeholder = f.placeholder || '';
+      if (f.list) input.setAttribute('list', f.list);
+      field.appendChild(lbl);
+      if (f.key === 'code_article') {
+        const wrap = document.createElement('span');
+        wrap.className = 'fiche-search-wrap';
+        const sug = document.createElement('div');
+        sug.className = 'fiche-suggest';
+        sug.style.display = 'none';
+        input.autocomplete = 'off';
+        input.addEventListener('input', () => ficheEquivSearch(input, sug, card));
+        input.addEventListener('blur', () => setTimeout(() => ficheEquivSuggestHide(sug), 200));
+        wrap.append(input, sug);
+        field.appendChild(wrap);
+      } else {
+        field.appendChild(input);
+      }
+      grid.appendChild(field);
+    });
+
+    card.append(head, grid);
+    host.appendChild(card);
+  });
+}
+
+function ficheEquivSuggestHide(sug) { sug.style.display = 'none'; sug.replaceChildren(); }
+
+// Meme recherche article que le champ principal (/api/search/article), avec un
+// rendu DOM local : le choix remplit la ligne sans recharger toute la fiche.
+let _ficheEquivSearchTimer = null;
+function ficheEquivSearch(input, sug, card) {
+  const q = (input.value || '').trim();
+  clearTimeout(_ficheEquivSearchTimer);
+  if (q.length < 2) { ficheEquivSuggestHide(sug); return; }
+  _ficheEquivSearchTimer = setTimeout(async () => {
+    let rows = [];
+    try {
+      const r = await apiFetch('/api/search/article?q=' + encodeURIComponent(q) + '&limit=8');
+      rows = r.data || [];
+    } catch (e) { ficheEquivSuggestHide(sug); return; }
+    sug.replaceChildren();
+    if (!rows.length) {
+      const empty = document.createElement('div');
+      empty.className = 'fs-empty';
+      empty.textContent = 'Aucun article trouvé pour « ' + q + ' »';
+      sug.appendChild(empty);
+    }
+    rows.forEach(it => {
+      const row = document.createElement('div');
+      row.className = 'fs-item';
+      const line = document.createElement('div');
+      const code = document.createElement('span');
+      code.className = 'fs-code';
+      code.textContent = it.code_article || '';
+      line.appendChild(code);
+      if (it.designation) {
+        const des = document.createElement('span');
+        des.className = 'fs-desig';
+        des.textContent = ' ' + it.designation;
+        line.appendChild(des);
+      }
+      row.appendChild(line);
+      if (it.ean13) {
+        const meta = document.createElement('div');
+        meta.className = 'fs-meta';
+        meta.textContent = 'EAN ' + it.ean13;
+        row.appendChild(meta);
+      }
+      // mousedown et non click : le blur du champ masquerait la liste avant.
+      row.addEventListener('mousedown', () => {
+        input.value = it.code_article || '';
+        const setIfEmpty = (key, val) => {
+          const el = card.querySelector(`[data-ek="${key}"]`);
+          if (el && !el.value && val) el.value = val;
+        };
+        setIfEmpty('designation', it.designation);
+        setIfEmpty('ean13', it.ean13);
+        ficheEquivSuggestHide(sug);
+        updateFichePreview();
+      });
+      sug.appendChild(row);
+    });
+    sug.style.display = 'block';
+  }, 200);
 }
 
 function wireFicheLive() {
@@ -1609,6 +1793,7 @@ function renderFicheForm(pre) {
     shipping_paid_by: 'TB', // regle Andrea : toujours TB, jamais le fournisseur (cf. questionnaire §5)
   };
   _ficheItems = [blankFicheItem(ficheItemSeed(pre))];
+  _ficheEquivs = [];
   document.getElementById('fiche-form').innerHTML = `
     <div id="fiche-form-global">
       ${FICHE_GLOBAL_FIELDS.map(([titre, champs]) => `
@@ -1622,14 +1807,22 @@ function renderFicheForm(pre) {
       <div id="fiche-items"></div>
       <button type="button" class="btn btn-ghost btn-sm" onclick="addFicheItem()" style="margin-top:6px;">+ Ajouter une référence</button>
     </div>
+    <div class="fiche-field-group">
+      <div class="grp-title" title="Déclinaisons d'un même produit (coloris, ménagère ou vrac) décrites sur cette fiche au lieu d'en créer une par variante.">Références équivalentes <span style="cursor:help;opacity:.6;">ⓘ</span></div>
+      <div id="fiche-equivs"></div>
+      <datalist id="fiche-equiv-diff-options"><option value="Coloris"><option value="Conditionnement"><option value="Autre"></datalist>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="addFicheEquiv()" style="margin-top:6px;">+ Ajouter une référence équivalente</button>
+    </div>
     <div style="font-size:11px;color:var(--muted);padding:4px 2px;">🟢 auto = pré-rempli depuis FUSEAU/Sylob. Images conservées en session navigateur uniquement (pas de stockage serveur pour l'instant). Génération PDF/xlsx réelle = Phase B, non faite. Structure reprise à l'identique du gabarit Andréa (Service_Achat/*FOR-ACH-03-12*), bloc ARTWORK réglementaire non modifiable.</div>`;
   renderFicheItemsForm();
+  renderFicheEquivsForm();
   wireFicheLive();
   updateFichePreview();
 }
 
-function renderFichePreview(data, pics, items) {
+function renderFichePreview(data, pics, items, equivs) {
   data = data || {}; pics = pics || {}; items = (items && items.length) ? items : [blankFicheItem()];
+  const equivLines = ficheEquivsNonVides(equivs);
   const g = k => esc(data[k] || '');
   const chk = (on) => `<span class="ps-chk"><span class="box ${on ? 'on' : ''}"></span></span>`;
   const imgSlot = (key, label) => pics[key]
@@ -1658,6 +1851,13 @@ function renderFichePreview(data, pics, items) {
       <div class="ps-line"><b>SUPPLIER :</b> ${g('supplier')}</div>
       ${rowsTable(['REFERENCE', 'NAME'], it => `<tr><td>${iv(it, 'reference')}</td><td>${iv(it, 'name')}</td></tr>`)}
     </div></div>
+
+    ${equivLines.length ? `<div class="ps-section"><div class="ps-bar">EQUIVALENT REFERENCES / RÉFÉRENCES ÉQUIVALENTES</div>
+    <div class="ps-body">
+      <div class="ps-line" style="font-size:10px;color:var(--muted);">Same specifications as the main reference, except for the difference stated below.</div>
+      <table class="ps-table"><thead><tr><th>REFERENCE</th><th>VARIANT</th><th>EAN 13</th><th>DESIGNATION</th><th>DIFFERENCE VS MAIN REF.</th><th>QTY</th><th>PRICE</th></tr></thead>
+        <tbody>${equivLines.map(ln => `<tr><td>${iv(ln, 'code_article')}</td><td>${iv(ln, 'variante')}</td><td>${iv(ln, 'ean13')}</td><td>${iv(ln, 'designation')}</td><td>${iv(ln, 'difference')}</td><td>${iv(ln, 'quantite')}</td><td>${iv(ln, 'prix')}</td></tr>`).join('')}</tbody></table>
+    </div></div>` : ''}
 
     <div class="ps-section"><div class="ps-bar">TRANSPORT</div>
     <div class="ps-body">
@@ -1741,6 +1941,7 @@ function renderFichePreview(data, pics, items) {
 async function exportFicheExcel() {
   const data = collectFicheData();
   const items = collectFicheItems();
+  const equivalents = ficheEquivsNonVides(collectFicheEquivs());
   const supplier = data.supplier || 'TB';
   const po = data.po_number || data.code_article || 'EXPORT';
   const filename = `Fiche_Achat_${supplier}_${po}.xlsx`.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
@@ -1749,7 +1950,7 @@ async function exportFicheExcel() {
     const resp = await fetch('/api/fiche-achat/export-excel', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data, items })
+      body: JSON.stringify({ data, items, equivalents })
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));

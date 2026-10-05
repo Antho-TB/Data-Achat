@@ -864,6 +864,9 @@ def get_qualite_rapports(
 class FicheExportRequest(BaseModel):
     data: dict[str, Any] = Field(default_factory=dict)
     items: list[dict[str, Any]] = Field(default_factory=list)
+    # References equivalentes (coloris, menagere/vrac), plan_action.md §3.8.
+    # Optionnel : un client qui ne l'envoie pas garde l'export d'avant.
+    equivalents: list[dict[str, Any]] = Field(default_factory=list)
 
 
 @app.post("/api/fiche-achat/export-excel")
@@ -871,7 +874,7 @@ def export_fiche_excel(req: FicheExportRequest):
     """Exporte la Fiche Achat actuelle au format Excel (.xlsx) conforme au modèle FOR-ACH-03-12."""
     try:
         from src.utils.export_fiche_excel import generate_fiche_excel_bytes
-        excel_bytes = generate_fiche_excel_bytes(req.data, req.items)
+        excel_bytes = generate_fiche_excel_bytes(req.data, req.items, req.equivalents)
         supplier = req.data.get("supplier") or "TB"
         po = req.data.get("po_number") or req.data.get("code_article") or "EXPORT"
         filename = f"Fiche_Achat_{supplier}_{po}.xlsx".replace(" ", "_")
