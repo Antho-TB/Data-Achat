@@ -125,9 +125,14 @@ base et Azure CLI, pas par relecture du code.
   écriture active, commit `3a42f02`. La racine répond 401 sans session, donc
   Easy Auth est actif.
 - [x] Bascule des utilisateurs : Marlène utilise la version Azure depuis le 22/09.
-- [ ] **Recette de l'écriture depuis Azure** : aucune ligne de
-  `achat.commande_annotation` n'a été modifiée depuis le 20/09 (constat du 24/09).
-  Faire une saisie de test avec Marlène et vérifier `updated_by` et `updated_at`.
+- [ ] **Recette de l'écriture depuis Azure.** Constat du 05/10 : dernière
+  modification de `achat.commande_annotation` le **28/07** (et non le 20/09 comme
+  noté le 24/09), et **aucune requête `PUT` dans les logs App Service depuis le
+  22/09**. Personne n'a tenté de saisie : le chemin n'est pas cassé, il n'a jamais
+  servi. Défaut trouvé au passage : l'identité Entra était lue puis jetée, donc
+  `updated_by` restait vide sur toute saisie. Corrigé par la PR #15. Après son
+  merge, faire une saisie de test avec Marlène et vérifier `updated_by` et
+  `updated_at`.
 - [x] API du poste de Marlène arrêtée le 24/09 : 3 processus stoppés, tâche
   `FUSEAU-API` désactivée, port 5050 libéré. L'ETL et la tâche Gmail sont
   intacts.
@@ -143,7 +148,9 @@ base et Azure CLI, pas par relecture du code.
   `FUSEAU_Daily_ETL` en `0x0`, mais le crawl qualité a trouvé 0 dossier PO.
 - [x] Pull automatique rétabli : le run du 25/09 (08:19, rattrapage du créneau de
   02h00) a tourné sur le nouveau code, `historique_prix_sylob` = 95 260 lignes.
-- [ ] **Crawl qualité à 0 dossier PO : deux pannes corrigées par la PR #9.** La
+- [x] **Crawl qualité à 0 dossier PO : deux pannes corrigées par la PR #9.**
+  Constaté le 05/10 : `achat.qualite_doc` compte **248 lignes**, contre 8 pour le
+  pilote manuel. La
   racine « TARRERIAS BONJEAN - TB » est un Drive partagé, lu sans
   `supportsAllDrives`. De plus, les sous-dossiers réels (`Inspections`,
   `Inpesctions`, `Results of Analysis`) ne correspondaient pas aux noms
@@ -300,6 +307,15 @@ passage sur le serveur de Samuel, où le repli Python reprendra du sens.
 
 Notes brutes de la séance, à trier avec Marlène. Andréa doit envoyer les siennes.
 
+> **Revue du 05/10, point par point contre le code et la base :**
+> factures en JPEG ✅ (`triage_piece.py`, `parse_facture.py`) · packing list Excel
+> ❌ (`.xlsx` absent des extensions acceptées) · BL `SZSE2608065` ✅ remonté
+> (conteneur `ONEU4049406`) · conteneur `TEMU7385996` ⚠️ présent dans `commande`
+> mais toujours absent de `ot_transport` · gsheet ou copie serveur ❌ toujours la
+> copie serveur (voir §3.6) · avoirs ❌ non cadrés · champ « Prioritaire » ❌
+> colonne vide · validation Qualité des documents ❓ non tracée · export PDF ✅
+> corrigé par la PR #16.
+
 **Données et captation**
 
 - **Factures parfois en JPEG**, packing lists parfois en Excel. Le parseur de pièces jointes doit couvrir ces formats, pas seulement le PDF. À croiser avec la captation packing list (§5.2).
@@ -336,7 +352,10 @@ BL en M, date confirmée en P, heure en Q.
 - [x] **Lecture directe du gsheet** dans `extract_suivi_maritime`, avec repli automatique sur le fichier serveur si Google est injoignable
 - [x] **Date et heure de livraison confirmées** assemblées en horodatage (`date_livraison` est déjà un timestamp). Gère `08:00`, `14h30`, `8h`
 - [x] **Plusieurs BL par conteneur** : table `achat.ot_transport_bl` (grain conteneur + BL), 29 BL repris de l'existant. `ot_transport.n_bl` conserve le BL principal pour ne pas casser les vues. L'API agrège et le front affiche un compteur quand il y en a plusieurs
-- [ ] **Activer sur le poste de Marlène** : mettre `SUIVI_MARITIME_PATH=gsheet` dans `config/.env` et renseigner `SUIVI_MARITIME_PATH_FICHIER` avec le chemin serveur comme repli. Le défaut du code est déjà `gsheet`, mais le `.env` existant surcharge avec le chemin fichier
+- [ ] ⚠️ **Toujours pas fait au 05/10, et c'est la cause des erreurs de BL signalées
+  en démo le 22/09 (§3.8).** Le chargement du matin vient encore de
+  `2026 SUIVI MARITIME.xlsx` : **52 conteneurs sur 60 de cette source sont sans BL**,
+  car la copie serveur n'a plus la colonne. **Activer sur le poste de Marlène** : mettre `SUIVI_MARITIME_PATH=gsheet` dans `config/.env` et renseigner `SUIVI_MARITIME_PATH_FICHIER` avec le chemin serveur comme repli. Le défaut du code est déjà `gsheet`, mais le `.env` existant surcharge avec le chemin fichier
 - [ ] **Prérequis OAuth commun avec l'artwork** : le scope `spreadsheets.readonly` exige un reconsentement manuel une fois (cf. §3.4)
 - [ ] Vérifier que le classeur est partagé avec le compte Google de FUSEAU
 - [ ] Après la première exécution : contrôler que les BL manquants signalés en démo (`SZSE2608065`, `TEMU7385996`) remontent bien
@@ -506,6 +525,23 @@ chiffré attendu en retour).
 
 - [ ] **Deposits / paiements d'avance / DEKRA** : à cadrer à la prochaine
       session de travail avec elle.
+
+## 3.8 Retours de la démo du 22/09 (notes d'Antho)
+
+Démo de la bascule sur Azure. Les notes ont été envoyées dans une session Claude
+et n'avaient jamais été reportées ici. Revue du 05/10 :
+
+| Retour | État au 05/10 |
+|---|---|
+| Attention aux écarts entre les colonnes | ✅ PR #10 (25/09) : marges des cellules rétablies sur tous les tableaux. BUG-004 du tableau de suivi |
+| Historique de prix : remonter toutes les commandes, pas seulement les 3 dernières années | ✅ PR #5 (23/09) : fusion IMPORT et Sylob sans plafond, 95 260 lignes |
+| Il manque une source pour l'onglet Promo/Opé | ❌ L'onglet filtre toujours la colonne `OP/Client/Appro` de l'IMPORT, dont le mapping n'est pas vérifié (§4.3). Aucune source dédiée. À demander au métier : où sont tenues les OP ? |
+| Conteneurs : erreurs sur les n° de BL `SZSE…`, présents dans le gsheet du transitaire | ⚠️ Cause identifiée : l'ETL lit encore la copie serveur, sans colonne BL (52 conteneurs sur 60 sans BL). La bascule sur le gsheet est codée mais pas activée (§3.6). 7 conteneurs ont aussi un BL de l'IMPORT qui contredit le suivi maritime |
+| Conteneurs : le statut | ✅ PR #14 (29/09) : colonne « État livraison » en couleur. BUG-005 |
+| Fiche Achat : lignes de références équivalentes (3 coloris, ménagère ou vrac) pour éviter plusieurs fiches pour des produits similaires | ❌ Non fait. Rien dans le générateur |
+
+Suivi côté métier : le tableau `FUSEAU_Suivi_bugs_1.xlsx` sur Drive (§9). Les
+points ❌ et ⚠️ ci-dessus y sont à reporter en nouvelles lignes (préparées le 05/10).
 
 ---
 
@@ -801,6 +837,7 @@ vit ailleurs.
 | `docs/analytics_design.md` | Cadrage analytique : quels indicateurs, pour quelle décision |
 | `docs/audit_excels_service_achat.md` | Audit des Excel du service et colonnes non exploitées |
 | `docs/sources_gsheet_drive.md` | Profilage des sources gsheet et Drive, gotchas de données |
+| `FUSEAU_Suivi_bugs_1.xlsx` (Drive, id `1p6n1uWf5-EKOJyACTsvxql5R4SE2Hnbw`) | **Tableau de suivi tenu avec le métier** depuis le 03/09 : bugs BUG-xxx et remarques REM-xxx, avec le correctif appliqué. Fait foi pour le statut vu par le métier |
 
 **Technique et exploitation.**
 
@@ -850,4 +887,8 @@ dans `05_ARCHIVES/Versions_Anterieures/`.
 | 22-23/09 | Secrets GitHub créés, premier déploiement vert, PR #3 à #5 livrées en continu. Marlène bascule sur la version Azure : l'API locale de son poste devient caduque, l'ETL et Gmail y restent |
 | 24/09 | `achat.historique_prix_sylob` rechargé sans plafond (18 184 → 95 216 lignes, 9 530 articles). §3.0 réaligné sur l'état réel. Écriture depuis Azure pas encore constatée en base |
 | 24/09 (poste Marlène) | Session autonome du Claude du poste. Pull manuel `6662da1` → `3a42f02`, API locale arrêtée et désactivée. Constats : pull auto bloqué par un `.docx` non suivi depuis le 22/09 (corrigé PR #7), ETL Gmail à l'arrêt depuis le 22/09 16:07, `DRIVE_QUALITE_ROOT_ID` manquant. Le run de 08:14 sur l'ancien code a réécrit l'historique à 18 184 lignes, puis le rechargement d'Antho de 08:29 l'a rétabli à 95 216 |
+| 22/09 | Démo de la bascule Azure. Notes d'Antho reportées seulement le 05/10, au §3.8 |
 | 25/09 | Les trois actions sur le poste de Marlène sont faites, les trois tâches `FUSEAU_*` en `0x0`, historique de prix à 95 260 lignes sur le nouveau code. Crawl qualité à 0 dossier : racine en Drive partagé, lue sans `supportsAllDrives`, et noms de sous-dossiers comparés à l'identique. Corrigé par la PR #9 |
+| 25/09 (suite) | PR #10 à #13 : marges des cellules (BUG-004), BL pris d'abord dans l'IMPORT et retard à ETD + 15 j (BUG-001 et BUG-002 corrigés), revalidation du cache navigateur, plus de clé API demandée en mode Azure |
+| 29/09 | PR #14 : n° de PO et état de livraison en couleur sur l'onglet Conteneurs (BUG-003, BUG-005) |
+| 05/10 | Reprise. Prod saine sur `422fca8`. Crawl qualité confirmé (248 documents). Aucune saisie tentée depuis Azure, et `updated_by` jamais écrit : PR #15. Export PDF limité à l'onglet actif : PR #16. Revue des démos du 28/07 et du 22/09 : la bascule sur le gsheet maritime, toujours pas activée, explique les erreurs de BL |
