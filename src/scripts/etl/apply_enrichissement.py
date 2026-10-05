@@ -52,7 +52,7 @@ SQL_STATUTS_FIGES = "(" + ", ".join(f"'{s}'" for s in STATUTS_FIGES) + ")"
 # Sylob ecrit 0181325 la ou le fichier Excel ecrit 181325.
 SQL_JOIN_PO = "LTRIM(TRIM(c.po_number::text), '0') = LTRIM(TRIM(e.po_number::text), '0')"
 
-SQL_COMMANDE = f"""
+SQL_COMMANDE_GABARIT = f"""
     UPDATE {SCHEMA}.commande c
     SET date_reception_sylob = COALESCE(e.date_reception_sylob, c.date_reception_sylob),
         date_livraison       = COALESCE(c.date_livraison, e.date_reception_sylob),
@@ -65,7 +65,7 @@ SQL_COMMANDE = f"""
         updated_at           = NOW()
     FROM {SCHEMA}.commande_enrichissement e
     WHERE {SQL_JOIN_PO}
-      AND (e.code_article = '' OR e.code_article = c.code_article)
+      AND {{filtre_article}}
       AND (
             c.date_reception_sylob IS DISTINCT FROM COALESCE(e.date_reception_sylob, c.date_reception_sylob)
          OR c.non_conformite       IS DISTINCT FROM COALESCE(e.non_conformite, c.non_conformite)
@@ -75,7 +75,7 @@ SQL_COMMANDE = f"""
       )
 """
 
-SQL_QUALITE = f"""
+SQL_QUALITE_GABARIT = f"""
     UPDATE {SCHEMA}.qualite c
     SET date_reception_sylob = COALESCE(e.date_reception_sylob, c.date_reception_sylob),
         reception            = CASE
@@ -88,7 +88,7 @@ SQL_QUALITE = f"""
         resultat_inspection  = COALESCE(e.resultat_inspection, c.resultat_inspection)
     FROM {SCHEMA}.commande_enrichissement e
     WHERE {SQL_JOIN_PO}
-      AND (e.code_article = '' OR e.code_article = c.code_article)
+      AND {{filtre_article}}
       AND (
             c.date_reception_sylob IS DISTINCT FROM COALESCE(e.date_reception_sylob, c.date_reception_sylob)
          OR c.ncr                  IS DISTINCT FROM COALESCE(e.ncr_ref, c.ncr)
@@ -96,6 +96,16 @@ SQL_QUALITE = f"""
       )
 """
 
+
+# Deux passes, du plus large au plus precis. Un meme enregistrement de commande
+# peut correspondre a une ligne PO-level ('' en code_article) ET a une ligne de
+# son article : dans un seul UPDATE ... FROM, PostgreSQL appliquerait l'une OU
+# l'autre au hasard. En passant d'abord le PO puis l'article, la valeur la plus
+# precise gagne toujours, et les COALESCE conservent ce que l'article ne porte
+# pas (une NCR declaree au niveau PO, par exemple).
+FILTRES_ARTICLE = ("e.code_article = ''", "e.code_article = c.code_article")
+SQL_COMMANDE = [SQL_COMMANDE_GABARIT.replace("{filtre_article}", f) for f in FILTRES_ARTICLE]
+SQL_QUALITE = [SQL_QUALITE_GABARIT.replace("{filtre_article}", f) for f in FILTRES_ARTICLE]
 
 def apply_enrichissement(dry_run: bool = False) -> dict[str, int]:
     """
@@ -119,8 +129,8 @@ def apply_enrichissement(dry_run: bool = False) -> dict[str, int]:
                         en_attente)
             return {"commandes_maj": 0, "qualite_maj": 0}
 
-        nb_cmd = conn.execute(text(SQL_COMMANDE)).rowcount
-        nb_qua = conn.execute(text(SQL_QUALITE)).rowcount
+        nb_cmd = sum(conn.execute(text(sql)).rowcount for sql in SQL_COMMANDE)
+        nb_qua = sum(conn.execute(text(sql)).rowcount for sql in SQL_QUALITE)
 
     logger.info("[SUCCES] Enrichissements reprojetes : %d ligne(s) de commande, "
                 "%d fiche(s) qualite (sur %d enrichissement(s) stockes).",
