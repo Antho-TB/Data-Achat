@@ -261,7 +261,13 @@ def run(dry_run: bool = False) -> dict[str, int]:
         from src.scripts.etl.enrich_reception_sylob import enrich_receptions_sylob
         from src.scripts.etl.enrich_historique_prix_sylob import enrich_historique_prix_sylob
 
-        stats["receptions_sylob"] = enrich_receptions_sylob()["enrichissements_ecrits"]
+        # Isole lui aussi : Sylob et la copie MyReport injoignables ne doivent pas
+        # empecher la reprojection des enrichissements deja stockes.
+        try:
+            stats["receptions_sylob"] = enrich_receptions_sylob()["enrichissements_ecrits"]
+        except Exception as exc_recep:
+            logger.error("[ECHEC] Receptions Sylob non rafraichies : %s", exc_recep)
+            stats["erreurs"] += 1
         # Repli prix hors perimetre Import (demande Marlene 03/09/2026) : table
         # purement derivee, rechargee en full-refresh depuis les commandes
         # fournisseur Sylob. Isolee dans son propre try : une indisponibilite du
