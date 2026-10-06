@@ -281,6 +281,108 @@ def intitules_commande_sylob(conn: Any, pos: list[Any]) -> dict[str, str]:
         return {}
 
 
+# Types de fiche Sylob qui concernent un achat : non-conformite a la reception
+# et non-conformite transporteur. Les fiches de production (NCP), d'audit ou
+# d'environnement ne se rattachent pas a une commande fournisseur.
+TYPES_FICHE_NCR_ACHAT = ("NCR", "NCT")
+
+
+def non_conformites_mail(conn: Any, pos: list[Any]) -> list[dict[str, Any]]:
+    """
+    Non-conformites encore ouvertes, captees dans le corps des mails par la tache
+    Cowork (achat.qualite_decision).
+
+    Une non-conformite est ouverte quand la DERNIERE decision d'un stade, pour un
+    PO et un article, est "non_conforme" : un "conforme" posterieur au meme stade
+    la referme (reprise, remplacement des defectueux).
+
+    Returns:
+        Une ligne par (po normalise, code_article, stade) ouvert. code_article vaut
+        None quand la decision porte sur tout le PO.
+    """
+    cles = sorted({normaliser_po(p) for p in pos if normaliser_po(p)})
+    if not cles:
+        return []
+    return rows_to_dicts(conn.execute(text(f"""
+        SELECT po, code_article, stade, date_info, motif, acteur
+        FROM (
+            SELECT DISTINCT ON (LTRIM(TRIM(d.po_number), '0'), d.code_article, d.stade)
+                   LTRIM(TRIM(d.po_number), '0') AS po, NULLIF(TRIM(d.code_article), '') AS code_article,
+                   d.stade, d.decision, d.date_info, d.motif, d.acteur
+            FROM {SCHEMA}.qualite_decision d
+            WHERE LTRIM(TRIM(d.po_number), '0') = ANY(:pos) AND d.decision IS NOT NULL
+            ORDER BY LTRIM(TRIM(d.po_number), '0'), d.code_article, d.stade,
+                     d.date_info DESC NULLS LAST, d.created_at DESC
+        ) x
+        WHERE decision = 'non_conforme'
+    """), {"pos": cles}))
+
+
+def fiches_ncr_sylob(conn: Any, codes_article: list[Any]) -> list[dict[str, Any]]:
+    """
+    Fiches de non-conformite Sylob (reception, transporteur) des articles donnes,
+    lues dans la copie MyReport.
+
+    Peu de fiches concernent l'import (4 depuis 2025 au 06/10/2026) : les
+    non-conformites import se traitent par mail. La fiche Sylob reste la
+    reference officielle quand elle existe.
+
+    Junior Tip : meme SAVEPOINT que intitules_commande_sylob. Sans droit sur la
+    copie MyReport, on renvoie une liste vide au lieu de casser l'endpoint.
+    """
+    codes = sorted({str(c).strip() for c in codes_article if c and str(c).strip()})
+    if not codes:
+        return []
+    table = f'"{Config.MYREPORT_SCHEMA}"."{Config.MYREPORT_TABLE_NCR}"'
+    sql = text(f"""
+        SELECT f.fnc_code_fiche_non_conformite AS code_fiche,
+               f.article_code_article AS code_article,
+               f.database_name AS societe,
+               f.type_fnc_code_type_non_conformite AS type_fiche,
+               f.fnc_date_de_declaration::date AS date_declaration,
+               f.fnc_etat_d_avancement AS etat,
+               f.libelle_defaut_non_conformite AS defaut,
+               f.fnc_description_constat AS constat,
+               f.frn_raison_sociale AS fournisseur
+        FROM {table} f
+        WHERE f.article_code_article = ANY(:codes)
+          AND f.type_fnc_code_type_non_conformite = ANY(:types)
+        ORDER BY f.fnc_date_de_declaration DESC NULLS LAST
+    """)
+    try:
+        with conn.begin_nested():
+            return rows_to_dicts(conn.execute(
+                sql, {"codes": codes, "types": list(TYPES_FICHE_NCR_ACHAT)}))
+    except Exception as exc:
+        logger.warning("[ATTENTION] Fiches NCR Sylob illisibles dans %s (%s)",
+                       table, str(exc).splitlines()[0])
+        return []
+
+
+def rattacher_non_conformites(lignes: list[dict[str, Any]],
+                              decisions: list[dict[str, Any]],
+                              fiches: list[dict[str, Any]]) -> None:
+    """
+    Ajoute a chaque ligne de commande ses non-conformites ouvertes :
+    - non_conformites : decisions mail du PO, pour cet article ou pour tout le PO ;
+    - fiches_ncr : fiches Sylob de l'article declarees a partir de la date de
+      commande (une fiche anterieure concerne une autre commande).
+    """
+    for ligne in lignes:
+        po = normaliser_po(ligne.get("po_number"))
+        art = str(ligne.get("code_article") or "").strip()
+        ligne["non_conformites"] = [
+            d for d in decisions
+            if d["po"] == po and (d["code_article"] is None or d["code_article"] == art)
+        ]
+        debut = ligne.get("date_commande")
+        ligne["fiches_ncr"] = [
+            f for f in fiches
+            if f["code_article"] == art
+            and (debut is None or f["date_declaration"] is None or f["date_declaration"] >= debut)
+        ]
+
+
 # ==============================================================================
 # KPIs -- Dashboard
 # ==============================================================================
@@ -467,7 +569,7 @@ def get_commandes(
                         c.prix_unitaire, c.quantite, c.statut, c.n_conteneur,
                         COALESCE(p.ean13, n.ean13, p.ean14_pcb, '') AS ean_edi,
                         {SQL_ETD_EFF}              AS date_etd,
-                        c.eta, c.date_livraison, c.date_reception_sylob,
+                        c.eta, c.date_livraison, c.date_reception_sylob, c.date_commande,
                         {SQL_STATUT_RETARD}        AS statut_retard,
                         -- Axes metier ORTHOGONAUX (issus de v_previsionnel) : paiement,
                         -- logistique, inspection. Permettent le cross-tab et l'OTD cote UI
@@ -514,6 +616,10 @@ def get_commandes(
             intitules = intitules_commande_sylob(conn, [d["po_number"] for d in data])
             for d in data:
                 d["intitule_commande"] = intitules.get(normaliser_po(d.get("po_number")))
+            rattacher_non_conformites(
+                data,
+                non_conformites_mail(conn, [d["po_number"] for d in data]),
+                fiches_ncr_sylob(conn, [d["code_article"] for d in data]))
             return {"data": data, "total": int(total or 0),
                     "limit": limit, "offset": offset}
         except Exception as e:
@@ -862,7 +968,9 @@ def get_produit(code_article: str):
                 ORDER BY a.charge_le DESC LIMIT :limit
             """), params_doc))
 
-            if not (produit or nomenclature or artwork or cycle_vie or qualite or qualite_docs or qualite_analyses):
+            fiches_ncr = fiches_ncr_sylob(conn, [code_article])
+
+            if not (produit or nomenclature or artwork or cycle_vie or qualite or qualite_docs or qualite_analyses or fiches_ncr):
                 return {"data": None, "warning": "Article introuvable (aucune donnee produit/nomenclature/artwork/qualite)."}
 
             return {"data": {
@@ -874,6 +982,7 @@ def get_produit(code_article: str):
                 "qualite": qualite,
                 "qualite_docs": qualite_docs,
                 "qualite_analyses": qualite_analyses,
+                "fiches_ncr": fiches_ncr,
             }}
         except Exception as e:
             raise internal_error(e)

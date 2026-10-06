@@ -86,6 +86,7 @@ class Config:
     # ligne d'app settings, pas un redeploiement.
     MYREPORT_SCHEMA: str = os.getenv("MYREPORT_SCHEMA", "public")
     MYREPORT_TABLE_COMMANDES: str = os.getenv("MYREPORT_TABLE_COMMANDES", "commandes6")
+    MYREPORT_TABLE_NCR: str = os.getenv("MYREPORT_TABLE_NCR", "fiche_non_conformite2")
 
     # Répertoire des fichiers sources Excel
     DATA_DIR: str = os.getenv("DATA_DIR", "Service_Achat")
