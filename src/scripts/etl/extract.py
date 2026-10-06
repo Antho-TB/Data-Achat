@@ -19,6 +19,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.utils.config_manager import Config
+
 logger = logging.getLogger(__name__)
 
 
