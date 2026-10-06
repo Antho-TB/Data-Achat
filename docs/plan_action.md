@@ -590,10 +590,10 @@ copies MyReport de `public`.
 
 ### 4.2 Documents désalignés du code
 
-- [ ] **`docs/20260722_FUSEAU_Spec_SuiviDatesETA_v1.md`** prévoit une table `achat.ot_transport_date_evenement`. L'implémentation réutilise `achat.transport_evenement`. La spec n'a jamais été mise à jour et affiche encore « à valider avant tout code » alors que le code est en production.
-- [ ] **`docs/20260722_FUSEAU_Cartographie_FluxGmail_v1.md`** marque « Non capté » les changements d'ETA, implémentés depuis (`parse_email_eta.py`, `load_email_eta.py`).
-- [ ] **`docs/20260723_FUSEAU_Passation_MiseEnProd_PosteMarlene_v1.md`** §5 décrit un blocage `transport_evenement` résolu le 27/07, et §2 s'interroge sur git vs robocopy — tranché de fait, le poste utilise git.
-- [ ] **`docs/20260722_FUSEAU_Runbook_TablesEvenements_ClaudePosteAntho.md`** décrit une procédure DDL déjà exécutée, depuis le poste de Marlène et non celui d'Antho.
+- [x] **`docs/20260722_FUSEAU_Spec_SuiviDatesETA_v1.md`** prévoit une table `achat.ot_transport_date_evenement`. L'implémentation réutilise `achat.transport_evenement`. La spec n'a jamais été mise à jour et affiche encore « à valider avant tout code » alors que le code est en production. — réaligné le 06/10.
+- [x] **`docs/20260722_FUSEAU_Cartographie_FluxGmail_v1.md`** marque « Non capté » les changements d'ETA, implémentés depuis (`parse_email_eta.py`, `load_email_eta.py`). — réaligné le 06/10 (captation réelle : PJ via `load_ot_gmail` et corps des mails via le Cowork ; les modules `*_email_eta` ne sont pas ordonnancés).
+- [x] **`docs/20260723_FUSEAU_Passation_MiseEnProd_PosteMarlene_v1.md`** §5 décrit un blocage `transport_evenement` résolu le 27/07, et §2 s'interroge sur git vs robocopy — tranché de fait, le poste utilise git. — réaligné le 06/10.
+- [x] **`docs/20260722_FUSEAU_Runbook_TablesEvenements_ClaudePosteAntho.md`** décrit une procédure DDL déjà exécutée, depuis le poste de Marlène et non celui d'Antho. — réaligné le 06/10.
 
 ### 4.3 Chiffres à fiabiliser
 

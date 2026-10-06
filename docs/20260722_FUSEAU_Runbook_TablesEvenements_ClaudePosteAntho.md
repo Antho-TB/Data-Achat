@@ -1,6 +1,17 @@
 # Runbook — Créer les tables d'événements métier (à exécuter par Claude sur le poste Antho)
 
-> ⚠️ **DEJA EXECUTE (note du 28/07/2026).** Cette procedure DDL a ete jouee le 22/07, depuis le poste de Marlene et non celui d'Antho. Les 4 tables evenements existent en production. Document conserve a titre de reference sur la demarche, il n'y a rien a executer.
+> Mis à jour le 06/10/2026 : encadré d'exécution ajouté en tête ; le corps du runbook est inchangé.
+
+> **Exécuté le 22/07/2026 depuis le poste de Marlène, conservé pour mémoire.** Rien à exécuter.
+> - Date et poste : note du 28/07 ; le commit `cbbc03e` qui versionne
+>   `sql/20260722_tables_evenements_metier.sql` est signé Marlène Montbrizon le 22/07 à 10:08.
+>   L'identité de base utilisée pour le DDL n'est pas tracée dans le dépôt.
+> - Les 4 tables existent et sont alimentées par la tâche Cowork via `load_evenements.py`
+>   (`docs/plan_action.md` §3 et §4) ; `transport_evenement` reçoit aussi les changements d'ETA des
+>   PJ via `load_ot_gmail.py`.
+> - Le titre et la rubrique « Pour qui » (poste d'Antho, identité owner) décrivent l'intention
+>   d'origine, pas ce qui s'est passé. `TASKS_POSTE_MARLENE.md` (étape 4) est archivé dans
+>   `05_ARCHIVES/Versions_Anterieures/`.
 
 > **Pour qui** : Claude sur le poste d'Anthony (`C:\Users\abezille\dev\Data-Achat`), avec l'identité
 > **owner/admin** (login perso `dtpf_sylob_anthony_bezille_prod` via `config/.env`).
