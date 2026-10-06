@@ -2540,7 +2540,7 @@ function renderCommandes(rows) {
               <button class="cancel-btn" onclick="cancelEdit(this)">✕</button>
             </span>
           </td>
-          <td>${badge(r.statut)}${r.date_reception_sylob ? ` <span class="badge badge-green" title="Date de réception magasin répertoriée dans Sylob : ${fmt(r.date_reception_sylob, 'date')}">📦 ${fmt(r.date_reception_sylob, 'date')}</span>` : ''}</td>
+          <td>${badge(r.statut)}${r.date_reception_sylob ? ` <span class="badge badge-green" title="Date de réception magasin répertoriée dans Sylob : ${fmt(r.date_reception_sylob, 'date')}">📦 ${fmt(r.date_reception_sylob, 'date')}</span>` : ''}${ncBadge(r)}</td>
           <td>${payBadge(r)}</td>
           <td class="mono">${r.n_conteneur ? '<a href="#" title="Voir dans Suivi des conteneurs" onclick="focusConteneur(\'' + esc(r.n_conteneur) + '\');return false;">' + esc(r.n_conteneur) + '</a>' : '<span style="color:var(--muted)">—</span>'}</td>
           <td style="font-size:12px;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer"
@@ -2976,10 +2976,27 @@ function renderProduitFiche(data) {
         <td class="mono">${esc(q.ncr)||'-'}</td>
       </tr>`).join('')}</tbody></table></div></div>` : '';
 
-  if (!p.code_article && !n.code_article && !aw && !cv && !qhist.length && !qdocs.length && !qana.length) {
+  const fncs = data.fiches_ncr || [];
+  const ncrBlock = fncs.length ? `
+    <div class="a360-card">
+      ${a360Head(`Fiches de non-conformité Sylob (${fncs.length})`, 'Sylob V25', 'badge-blue',
+                 "Source : fiches de non-conformité Sylob de réception (NCR) et transporteur (NCT), toutes sociétés, lues dans la copie MyReport. Les non-conformités import se traitent surtout par mail : voir l'onglet Qualité.")}
+    <div class="table-wrap"><table>
+      <thead><tr><th>Fiche</th><th>Société</th><th>Déclarée le</th><th>Fournisseur</th><th>Défaut</th><th>Constat</th><th>État</th></tr></thead>
+      <tbody>${fncs.slice(0,10).map(f => `<tr>
+        <td class="mono">${esc(f.type_fiche)} ${esc(f.code_fiche)}</td>
+        <td>${esc(f.societe)||'-'}</td>
+        <td>${fmt(f.date_declaration, 'date')}</td>
+        <td>${esc(f.fournisseur)||'-'}</td>
+        <td>${esc(f.defaut)||'-'}</td>
+        <td style="max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(f.constat)}">${esc(f.constat)||'-'}</td>
+        <td>${esc(f.etat)||'-'}</td>
+      </tr>`).join('')}</tbody></table></div></div>` : '';
+
+  if (!p.code_article && !n.code_article && !aw && !cv && !qhist.length && !qdocs.length && !qana.length && !fncs.length) {
     return '<div class="empty">Aucune fiche 360° trouvée (ni Sylob/Matrice, ni artwork, ni qualité) pour cet article.</div>';
   }
-  return identite + logistique + matiere + composantsBlock + artworkBlock + cycleBlock + docsBlock + qualiteBlock;
+  return identite + logistique + matiere + composantsBlock + artworkBlock + cycleBlock + docsBlock + qualiteBlock + ncrBlock;
 }
 
 async function selectAndLoadArticle(code) {
@@ -3548,6 +3565,26 @@ function blCell(r) {
     return esc(r.n_bl) + multi;
   }
   return '<span style="color:var(--muted)" title="Aucun BL connu pour ce conteneur : soit le fournisseur ne l\'a pas encore émis, soit la source maritime chargée ne porte pas de colonne BL (cas de la copie serveur du fichier transitaire). À recouper avec la liasse documentaire.">—</span>';
+}
+
+// ── Non-conformites d'une ligne de commande (06/10/2026) ─────────────────────
+// Deux sources : la derniere decision qualite recue par mail, par stade, quand
+// elle est "non conforme" (tache Cowork, achat.qualite_decision) ; et les fiches
+// de non-conformite Sylob de reception ou transporteur, declarees depuis la
+// date de commande. Rien ne s'affiche quand la ligne n'en a aucune.
+function ncBadge(r) {
+  const mails = r.non_conformites || [];
+  const fiches = r.fiches_ncr || [];
+  if (!mails.length && !fiches.length) return '';
+  const lignes = [
+    ...mails.map(d => `Mail, ${d.stade} non conforme${d.date_info ? ' le ' + fmt(d.date_info, 'date') : ''}`
+      + (d.motif ? ' : ' + d.motif : '') + (d.code_article ? '' : ' (tout le PO)')),
+    ...fiches.map(f => `Fiche Sylob ${f.type_fiche} ${f.code_fiche} (${f.societe})`
+      + (f.date_declaration ? ' du ' + fmt(f.date_declaration, 'date') : '')
+      + (f.etat ? ', ' + f.etat : '') + (f.defaut ? ' : ' + f.defaut : '')),
+  ];
+  const n = mails.length + fiches.length;
+  return ` <span class="badge badge-red" title="${esc(lignes.join('\n'))}">⚠ NC${n > 1 ? ' ×' + n : ''}</span>`;
 }
 
 // ── Provenance ligne a ligne (retour Marlene 29/07) ─────────────────────────
