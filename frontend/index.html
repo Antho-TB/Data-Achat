@@ -3584,8 +3584,7 @@ function ncBadge(r) {
       + (f.etat ? ', ' + f.etat : '') + (f.defaut ? ' : ' + f.defaut : '')),
   ];
   const n = mails.length + fiches.length;
-  return ` <span class="badge badge-red" title="${esc(lignes.join('
-'))}">⚠ NC${n > 1 ? ' ×' + n : ''}</span>`;
+  return ` <span class="badge badge-red" title="${esc(lignes.join('\n'))}">⚠ NC${n > 1 ? ' ×' + n : ''}</span>`;
 }
 
 // ── Provenance ligne a ligne (retour Marlene 29/07) ─────────────────────────
