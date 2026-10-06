@@ -59,7 +59,7 @@ alimentation incomplète/manuelle/pilote · **Non capté** = circule uniquement 
 | **Décision conforme / NON conforme** | **Eric T (Commerce)** | validation | Andréa | `qualite_decision` | **Capté** (06/10) via Cowork : 45 décisions du 22 au 28/07 (en-tête `parse_email_ncr.py`). `parse_email_ncr`/`load_email_ncr` : « ne pas ordonnancer » | questionnaire Q1-2 |
 | Commande d'analyse (déclenchement labo) | Andréa | qualité | Labo | `qualite_suivi` | Partiel (transform manquant) | sources #5 |
 | Suivi/facturation analyses (CA, BL labo) | Labo / Andréa | qualité | Andréa | `qualite_facturation` | Partiel | modele_semantique |
-| Décision post-FAIL / NCR | Qualité + Commerce | qualité | Andréa | `qualite.ncr` | Non capté (dépend boîte mail). 06/10 : aucune ligne NCR dans `commande_enrichissement` au 05/10, à vérifier côté Cowork (plan_action §4) | plan_action 25/06 |
+| Décision post-FAIL / NCR | Qualité + Commerce | qualité | Andréa | `qualite.ncr` | Capté (06/10), par la tâche Cowork dans `achat.qualite_decision` (91 non conformes au 06/10). `commande_enrichissement` ne porte aucune NCR, par conception : le module regex `load_email_ncr` n'est pas ordonnancé | plan_action 25/06 |
 
 ### 1.4 Design / Artwork (Clarisse)
 | Type d'info | Émetteur | Étape | Destinataire | Table cible | Statut | Réf |

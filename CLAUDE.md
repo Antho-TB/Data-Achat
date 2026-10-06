@@ -33,7 +33,8 @@ Toute nouvelle fonctionnalité prod doit rester validée avec le métier avant g
 ## Règle d'écriture en base (à ne jamais enfreindre)
 `achat.commande` et `achat.qualite` sont rechargées en **full-refresh** (TRUNCATE + INSERT) par l'ETL. Aucun module ne doit y écrire directement : ce serait effacé au prochain run nocturne.
 - Saisies utilisateur → `achat.commande_annotation`
-- Enrichissements automatiques (réception Sylob, NCR mail) → `achat.commande_enrichissement`
+- Enrichissements automatiques (réception Sylob) → `achat.commande_enrichissement`
+- Décisions qualité, NCR comprises, captées dans le corps des mails par la tâche Cowork → `achat.qualite_decision` (le module regex `load_email_ncr` n'est pas ordonnancé, décision du 28/07)
 - Reprojection par `src/scripts/etl/apply_enrichissement.py`, étape ENRICH en fin de `pipeline.py`
 
 ## ⚠️ Alertes actives
