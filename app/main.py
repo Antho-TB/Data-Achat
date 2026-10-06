@@ -891,9 +891,13 @@ def get_historique_prix(fournisseur: str, code_article: Optional[str] = None):
                     UNION ALL
                     SELECT s.* FROM sylob s
                     WHERE NOT EXISTS (
+                        -- PO compares sans zeros de tete : l'IMPORT ecrit 17531,
+                        -- Sylob 00017531. Compares tels quels, la meme commande
+                        -- sortait deux fois (signale par Maxence le 06/10).
                         SELECT 1 FROM import i
                         WHERE i.code_article = s.code_article
-                          AND i.po_number IS NOT DISTINCT FROM s.po_number
+                          AND LTRIM(TRIM(i.po_number::text), '0')
+                            = LTRIM(TRIM(s.po_number::text), '0')
                     )
                 )
                 SELECT f.po_number, f.code_article,
