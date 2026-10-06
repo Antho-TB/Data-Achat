@@ -686,7 +686,7 @@ button { cursor: pointer; }
       <div class="loader"><span class="spinner"></span>Chargement…</div>
     </div>
     <div id="dash-actions" style="margin:4px 0 16px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:14px;">
-      <div style="font-weight:600;font-size:14px;margin-bottom:10px;">⚡ Actions prioritaires</div>
+      <div style="font-weight:600;font-size:14px;margin-bottom:10px;">⚡ Actions prioritaires <span class="badge badge-blue" style="margin-left:6px;" title="Source : lignes de commande IMPORT 2026.xlsx, BL et ETD du suivi maritime et des PJ Gmail (paiement), réceptions Sylob, gsheet Artwork (Clarisse)">IMPORT + Maritime + Artwork</span></div>
       <div id="dash-actions-list"><div class="loader"><span class="spinner"></span>Analyse…</div></div>
     </div>
     <div class="charts-row">
@@ -705,7 +705,7 @@ button { cursor: pointer; }
   <div id="tab-commandes" class="tab-panel">
     <div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;">
       <span style="font-weight:600;font-size:15px;color:var(--text);">Commandes d'importation</span>
-      <span class="badge badge-blue" title="Source : Fichier Excel 'IMPORT 2026.xlsx' d'Andréa (Mise à jour automatique ETL)">IMPORT 2026.xlsx (Excel Andréa)</span>
+      <span class="badge badge-blue" title="Source : fichier Excel 'IMPORT 2026.xlsx' d'Andréa (lignes, statuts, montants ; rechargé chaque nuit par l'ETL). Sylob : intitulé de commande et date de réception par article (📦). Saisies FUSEAU : commentaire, ETD forcée, date de paiement.">IMPORT 2026.xlsx + Sylob</span>
     </div>
     <div class="toolbar">
       <input id="f-po" type="text" placeholder="N° commande (PO)…" oninput="filterCommandes()">
@@ -823,7 +823,7 @@ button { cursor: pointer; }
     </div>
       <div class="section-header"><span class="section-title">Mesures prévisionnelles</span><span class="badge badge-blue" style="margin-left:8px;" title="Source : Agrégation des lignes de commandes d'importation">Commandes Import</span></div>
     <div id="prev-mesures" class="artwork-stats"></div>
-    <div class="section-header"><span class="section-title">B/L en attente ou bloqués — par conteneur puis fournisseur</span><span class="badge badge-green" style="margin-left:8px;" title="BL, n° de facture, ETD réel et ETA : Suivi Maritime Transitaire (Qualitairsea) + PJ Gmail.">BL / dates : Maritime + Gmail</span><span class="badge badge-orange" style="margin-left:6px;" title="Les colonnes Valeur et Reste à payer viennent de achat.commande, alimentée par IMPORT 2026.xlsx et Sylob. AUCUN montant n'est lu dans les factures reçues par mail à ce jour : ce n'est pas le montant de la liasse documentaire.">Montants : IMPORT 2026.xlsx</span></div>
+    <div class="section-header"><span class="section-title">B/L en attente ou bloqués — par conteneur puis fournisseur</span><span class="badge badge-green" style="margin-left:8px;" title="BL, n° de facture, ETD réel et ETA : fichier transitaire « 2026 SUIVI MARITIME.xlsx » (copie serveur, sans colonne BL tant que la bascule sur le gsheet n'est pas activée), et PJ Gmail du transitaire.">BL / dates : Maritime + Gmail</span><span class="badge badge-orange" style="margin-left:6px;" title="Les colonnes Valeur et Reste à payer viennent de achat.commande, alimentée par IMPORT 2026.xlsx et Sylob. AUCUN montant n'est lu dans les factures reçues par mail à ce jour : ce n'est pas le montant de la liasse documentaire.">Montants : IMPORT 2026.xlsx</span></div>
     <p style="font-size:12px;color:var(--muted);margin:4px 0 8px;">« Bloqué » = en retard de livraison ET pas encore parti. Paiement : même logique que l'onglet Conteneurs (Payé / À payer / À payer en retard), ventilée ici par fournisseur au sein de chaque conteneur.</p>
     <!-- Etat de la source des montants, calcule a chaque chargement
          (renderBlSource). Remplace le 25/09 un avertissement fixe que plus
@@ -865,13 +865,13 @@ button { cursor: pointer; }
     <div id="conteneurs-kpis" class="kpi-grid" style="margin-bottom:14px;"></div>
     <div class="section-header">
       <span class="section-title">Prévisionnel des arrivées (mois courant → M+3)</span>
-      <span class="badge badge-green" style="margin-left:8px;" title="Source : GSheet Suivi Maritime Transitaire 2026 (Qualitairsea)">GSheet Transitaire</span>
+      <span class="badge badge-green" style="margin-left:8px;" title="Source : fichier transitaire « 2026 SUIVI MARITIME.xlsx » (copie serveur, sans colonne BL tant que la bascule sur le gsheet n'est pas activée), complété par les PJ Gmail du transitaire (ETA)">Fichier transitaire + Gmail</span>
       <button class="btn btn-ghost btn-sm" onclick="loadConteneurs()" style="margin-left:auto;">&#8635; Actualiser</button>
     </div>
     <div style="height:220px;margin-bottom:16px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:12px;">
       <canvas id="chart-conteneurs-m3"></canvas>
     </div>
-    <div class="section-header"><span class="section-title">Conteneurs (arrivée la plus récente en tête)</span></div>
+    <div class="section-header"><span class="section-title">Conteneurs (arrivée la plus récente en tête)</span><span class="badge badge-green" style="margin-left:8px;" title="Navire, dates et transitaire : fichier transitaire « 2026 SUIVI MARITIME.xlsx » (copie serveur, sans colonne BL tant que la bascule sur le gsheet n'est pas activée). BL et dates : PJ Gmail du transitaire. PO : IMPORT 2026.xlsx. Date de paiement : saisie dans FUSEAU.">Fichier transitaire + Gmail</span></div>
     <div class="toolbar" style="margin-bottom:12px;">
         <input id="f-cont-nav" type="text" placeholder="Navire..." oninput="filterConteneurs()">
         <input id="f-cont-bl" type="text" placeholder="N° BL..." oninput="filterConteneurs()">
@@ -894,6 +894,7 @@ button { cursor: pointer; }
          retire a la demande du metier (29/09), juge inutile. -->
     <div class="section-header">
       <span class="section-title">Suivi qualité par produit</span>
+      <span class="badge badge-blue" style="margin-left:8px;" title="Statuts MAT / SP / BAT / réception, inspection et NCR : IMPORT 2026.xlsx. Infobulles : décisions qualité reçues par mail. Liens : Drive ANALYSES ET INSPECTIONS (rapports DEKRA / SPECTRO). Réception : Sylob.">IMPORT + Mail + Drive</span>
       <button class="btn btn-ghost btn-sm" onclick="loadQualite()">&#8635; Actualiser</button>
     </div>
     <div class="toolbar">
@@ -1143,14 +1144,14 @@ const loaders = {
 
 // Provenance des données par onglet (cf. docs/modele_semantique.md).
 const SOURCE_INFO = {
-  dashboard:     "Agrégé : IMPORT 2026.xlsx (Excel Andréa) + Sylob V25 + Gmail (BL, threads événements)",
-  commandes:     "Source : IMPORT 2026.xlsx (Excel Andréa), full-refresh ETL -- jamais édité en direct",
-  fournisseurs:  "Source : dérivé de commande (Excel) + Sylob V25 (CA 3 ans, vue_commande_achat)",
+  dashboard:     "Agrégé : IMPORT 2026.xlsx (Excel Andréa) + réceptions Sylob + suivi maritime et PJ Gmail (BL) + gsheet Artwork (Clarisse)",
+  commandes:     "Source : IMPORT 2026.xlsx (Excel Andréa, full-refresh ETL, jamais édité en direct) + Sylob (intitulé de commande, date de réception par article) + saisies FUSEAU (commentaire, ETD forcée, paiement)",
+  fournisseurs:  "Source : IMPORT 2026.xlsx (retards) + Sylob V25 (CA 3 ans, historique des prix depuis 2013)",
   artwork:       "Source : gsheet \"Suivi des artworks-import\" (Clarisse), lecture Drive",
-  previsionnel:  "Source : dérivé de commande (Excel) + ot_transport (gsheet SUIVI MARITIME, transitaire QUALITAIR)",
-  conteneurs:    "Source : gsheet SUIVI MARITIME TARRERIAS 2026 (transitaire) + PJ Gmail (BL, tâche planifiée poste Marlène)",
-  qualite:       "Source : IMPORT (statuts MAT/SP/BAT/RECEP), décisions qualité reçues par mail, Drive ANALYSES ET INSPECTIONS (rapports DEKRA/SPECTRO), réception Sylob",
-  article:       "Source : Matrice TB Import.xlsx + pull direct Sylob V25 (dimensions/prix) + gsheet artwork + Drive qualité",
+  previsionnel:  "Source : IMPORT 2026.xlsx (montants) + fichier transitaire « 2026 SUIVI MARITIME.xlsx » (copie serveur, sans colonne BL tant que la bascule sur le gsheet n'est pas activée) et PJ Gmail du transitaire (BL, ETD, ETA) + date de paiement saisie dans FUSEAU",
+  conteneurs:    "Source : fichier transitaire « 2026 SUIVI MARITIME.xlsx » (copie serveur, sans colonne BL tant que la bascule sur le gsheet n'est pas activée) + PJ Gmail du transitaire (BL, dates ; tâche planifiée du poste de Marlène) + IMPORT 2026.xlsx (PO)",
+  qualite:       "Source : IMPORT 2026.xlsx (statuts MAT/SP/BAT/RECEP, inspection, NCR) + décisions qualité reçues par mail (infobulles) + Drive ANALYSES ET INSPECTIONS (rapports DEKRA/SPECTRO) + réception Sylob",
+  article:       "Source : Sylob V25 (référentiel article, dimensions, prix) + Matrice TB Import.xlsx + gsheet Artwork + Drive qualité + IMPORT 2026.xlsx",
   fiche:         "Source : pré-remplissage depuis achat.* (Excel + Sylob + Gmail selon le champ) -- formulaire Phase A",
 };
 
@@ -2091,25 +2092,25 @@ async function loadActions(k) {
 function renderKpis(k) {
   const grid = document.getElementById('kpi-grid');
   grid.innerHTML = `
-    <div class="kpi-card" title="Nombre de commandes distinctes (numéros de PO).">
+    <div class="kpi-card" title="Nombre de commandes distinctes (numéros de PO). Source : IMPORT 2026.xlsx.">
       <div class="kpi-value">${k.total_po}</div><div class="kpi-label">Commandes · nb PO</div></div>
-    <div class="kpi-card" title="Nombre de lignes article. Une commande (PO) contient plusieurs lignes article.">
+    <div class="kpi-card" title="Nombre de lignes article. Une commande (PO) contient plusieurs lignes article. Source : IMPORT 2026.xlsx.">
       <div class="kpi-value">${k.total_lignes}</div><div class="kpi-label">Lignes articles · nb</div></div>
-    <div class="kpi-card danger" title="Lignes dont l'ETD confirmé est dépassé et qui ne sont pas encore livrées.">
+    <div class="kpi-card danger" title="Lignes dont l'ETD confirmé est dépassé et qui ne sont pas encore livrées. Source : IMPORT 2026.xlsx (ETD), réceptions Sylob.">
       <div class="kpi-value">${k.lignes_en_retard}</div><div class="kpi-label">Articles en retard · nb</div></div>
-    <div class="kpi-card ok" title="Lignes en cours dont l'ETD confirmé n'est pas dépassé (hors livrées).">
+    <div class="kpi-card ok" title="Lignes en cours dont l'ETD confirmé n'est pas dépassé (hors livrées). Source : IMPORT 2026.xlsx (ETD), réceptions Sylob.">
       <div class="kpi-value">${k.lignes_dans_delais}</div><div class="kpi-label"><span title="Lignes en cours d'expédition ou déjà parties dont la date prévue (ETD) n'est pas encore dépassée. N'inclut PAS les commandes livrées.">Dans les délais · nb</span></div></div>
-    <div class="kpi-card warn" title="Lignes ni livrées/annulées ni datées (ETD réel et confirmé tous deux absents) — donnée à compléter, invisible des deux compteurs précédents.">
+    <div class="kpi-card warn" title="Lignes ni livrées/annulées ni datées (ETD réel et confirmé tous deux absents) — donnée à compléter, invisible des deux compteurs précédents. Source : IMPORT 2026.xlsx.">
       <div class="kpi-value">${k.lignes_inconnu}</div><div class="kpi-label">Statut inconnu · nb</div></div>
-    <div class="kpi-card" title="Lignes dont le statut ERP est Livrée.">
+    <div class="kpi-card" title="Lignes dont le statut ERP est Livrée. Source : IMPORT 2026.xlsx, complété par les réceptions Sylob.">
       <div class="kpi-value">${k.lignes_livrees}</div><div class="kpi-label">Déjà livré · nb</div></div>
-    <div class="kpi-card" title="Nombre de fournisseurs distincts sur les commandes en cours.">
+    <div class="kpi-card" title="Nombre de fournisseurs distincts sur les commandes en cours. Source : IMPORT 2026.xlsx.">
       <div class="kpi-value">${k.nb_fournisseurs}</div><div class="kpi-label">Fournisseurs actifs · nb</div></div>
-    <div class="kpi-card orange" title="Somme (prix unitaire x quantité) hors commandes annulées. Devise : USD. Valeur exacte : ${fmt(k.valeur_totale, 'money')}">
+    <div class="kpi-card orange" title="Somme (prix unitaire x quantité) hors commandes annulées. Devise : USD. Valeur exacte : ${fmt(k.valeur_totale, 'money')} Source : IMPORT 2026.xlsx.">
       <div class="kpi-value">${fmt(k.valeur_totale, 'money-court')}</div><div class="kpi-label">Valeur commandes · USD</div></div>
-    <div class="kpi-card warn" title="Nombre d'artworks en attente de validation design.">
+    <div class="kpi-card warn" title="Nombre d'artworks en attente de validation design. Source : gsheet « Suivi des artworks-import » (Clarisse).">
       <div class="kpi-value">${k.artwork_en_attente}</div><div class="kpi-label">Artworks en attente · nb</div></div>
-    <div class="kpi-card ok" title="Nombre d'artworks validés par le design.">
+    <div class="kpi-card ok" title="Nombre d'artworks validés par le design. Source : gsheet « Suivi des artworks-import » (Clarisse).">
       <div class="kpi-value">${k.artwork_valides}</div><div class="kpi-label">Artworks validés · nb</div></div>
   `;
 }
@@ -2962,8 +2963,8 @@ function renderProduitFiche(data) {
 
   const qualiteBlock = qhist.length ? `
     <div class="a360-card">
-      ${a360Head(`Historique qualité (${qhist.length})`, 'Inspections & NCR', 'badge-blue',
-                 "Source : Inspections à l'arrivée et enregistrements NCR")}
+      ${a360Head(`Historique qualité (${qhist.length})`, 'IMPORT 2026.xlsx', 'badge-blue',
+                 "Source : colonnes inspection, n° de rapport, réception et NCR du fichier IMPORT 2026.xlsx (Excel Andréa)")}
     <div class="table-wrap"><table>
       <thead><tr><th>PO#</th><th>Fournisseur</th><th>Inspection</th><th>N° rapport</th><th>Réception</th><th>NCR</th></tr></thead>
       <tbody>${qhist.slice(0,10).map(q => `<tr>
