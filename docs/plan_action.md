@@ -71,7 +71,7 @@ Les deux cases qui restaient vrac/inconnues dans la carte mentale d'Andréa ont 
 
 - [x] **Séance de captation métier (28/07)** : Validation des 7 questions Q-A à Q-F + gouvernance plan de prod et images emballage.
 - [x] Identifier les responsables BE/GDD et Design pour les plans et images d'emballage.
-- [ ] Vérifier que **Maxence** (repreneur de la boîte mail) est bien câblé sur les fils fournisseurs, et que Marlène reste en copie systématique.
+- [x] Vérifier que **Maxence** (repreneur de la boîte mail) est bien câblé sur les fils fournisseurs, et que Marlène reste en copie systématique. Confirmé le 06/10 : Maxence est le destinataire principal de la boîte Achats (`achat.import@`), Marlène en copie. Les sujets Qualité et Artwork se partagent entre eux deux.
 
 ---
 
@@ -560,8 +560,8 @@ copies MyReport de `public`.
 |---|---|---|
 | Événements des mails (corps de mail, tâche Cowork) | ✅ Vivants : `transport_evenement` alimentée le jour même à 08:09 ; décisions qualité, design et commerce jusqu'au 02/10 | Rien |
 | ETA des pièces jointes Gmail | ✅ Le conteneur MSMU3526021 faisait un aller-retour d'ETA chaque matin (9 événements identiques depuis le 10/08) : un PDF du 20/05, relu à chaque passage, prenait l'heure du chargement comme date de transmission | PR #20. Purges appliquées (constaté le 06/10) : 8 doublons et la ligne `test_script` supprimés, archivés dans `achat._archive_transport_evenement_20261005` et `_test_20261005` |
-| Montants de facture | ❌ `achat.facture_fournisseur` est vide : l'étape n'a jamais tourné (flag `facture_auto.flag`) | À constater sur le poste (prompt, étape 1e) |
-| NCR par mail | ⚠️ Aucune ligne d'enrichissement NCR en base | À vérifier côté tâche Cowork |
+| Montants de facture | ❌ `achat.facture_fournisseur` est vide : l'étape n'a jamais tourné (flag `facture_auto.flag`) | **Activation décidée par Antho le 06/10.** Prompt `docs/20261006_FUSEAU_Prompt_SessionPosteMarlene_v3.md`, étape 3 : contrôles (clé Gemini, dépendance, table), dry-run d'octobre, rattrapage réel juillet à octobre, puis création du flag. Le flag ne traite que le mois courant, d'où le rattrapage |
+| NCR par mail | ✅ Par conception (enquête du 06/10). Le module regex `load_email_ncr` est écarté depuis le 28/07 (`dc66a7a`, « NE PAS ORDONNANCER »), pour ne pas capter deux fois. Les non-conformités arrivent par la tâche Cowork dans `achat.qualite_decision` : 367 décisions du 22/07 au 06/10, dont 91 non conformes sur 25 PO | 🔧 06/10, branche `feat/non-conformites-commande` : badge « NC » sur la ligne de Suivi commandes (dernière décision mail du stade non conforme, refermée par un conforme postérieur) et fiches Sylob de réception et transporteur (`public.fiche_non_conformite2`) sur la ligne et la fiche Article. 50 lignes (16 PO) avec une NC mail ouverte, 7 avec une fiche Sylob : les NC import se traitent surtout par mail |
 | Réceptions Sylob | ❌ `commande_enrichissement` figée au 28/07, car elle lisait `receptions_detaillees2`, figée au 04/08 | Branche `fix/receptions-sylob-grain-article` : lecture de `vue_reception_detail` des 3 sociétés dans Sylob, repli sur `public.receptions_detaillees4` (même volume que Sylob), grain article. Dry-run : 654 lignes rapprochées sur 964. ✅ `sql/20261005_reception_grain_article.sql` appliqué (constaté le 06/10) : les 98 lignes au grain PO n'ont plus de date, archivées ; 654 lignes au grain article rafraîchies par l'ETL du poste le 06/10 à 06:13 |
 | Droit de l'API sur MyReport | 🔧 05/10 : `dtpf_fuseau_api_prod` n'avait aucun SELECT sur les tables MyReport de `public`. Palliatif le jour même : pont `achat.fn_myreport_*` (SECURITY DEFINER, compte nominal d'Antho). 06/10 : droit posé par Antho dans pgAdmin sous `platform_team`, en `SET ROLE dtpf_sylob_myreport_prod` (membership SET accordée puis retirée dans la même transaction) : `GRANT SELECT` sur les tables existantes et default privilege sur `public`. Les 3 tables répondent `true` | Vérification programmée le 07/10 à 08h, après la recréation nocturne. Si le droit tient : PR qui retire le pont de `app/main.py`, puis `DROP` des deux fonctions sur accord écrit. Partie schéma `myreport` non posée (schéma vide, USAGE chez `platform_team`) : à traiter à la bascule MyReport |
 | Saisies depuis Azure | ⚠️ Dernière annotation le 28/07 : aucune saisie depuis la bascule | À tester avec Marlène |
@@ -578,6 +578,34 @@ copies MyReport de `public`.
 
 ---
 
+## 3.10 Retours de la démo du 06/10 et suites à planifier
+
+### Onglet Artwork (notes d'Antho)
+
+- [ ] Distinguer trois dates : création, validation et mise à jour (aujourd'hui seulement la MAJ).
+- [ ] Un identifiant propre à chaque artwork, plus seulement rattaché à l'article (par exemple n° article + date). Un article peut avoir plusieurs artworks, un artwork n'a qu'un article. Impact : `achat.artwork_statut` est aujourd'hui clé par article.
+- [ ] Afficher l'artwork (lien vers le PDF du Drive).
+- [ ] Pouvoir ajouter et modifier des lignes depuis FUSEAU.
+- [ ] Garder les deux tableaux du gsheet de Clarisse : artworks en attente, et archive pour rechercher l'existant.
+- [ ] Process : Clarisse passe une ligne en « validé », Maxence l'archive à la main une fois traitée. Voir pour automatiser cette suite.
+- [ ] Supprimer les deux graphiques de l'onglet.
+- [ ] Ajouter Clarisse comme utilisatrice de FUSEAU (accès Entra à l'App Service).
+- [ ] À prévoir, chantier plus gros : contrôle de l'artwork fournisseur contre celui de Clarisse (textes, codes-barres EAN, SPCB, PCB, n° de référence, désignation). Choix à faire entre OCR et vision par ordinateur.
+
+### À planifier (décision d'Antho du 06/10)
+
+- [ ] Tester une saisie depuis Azure avec Marlène (aucune depuis la bascule du 22/09).
+- [ ] Faire valider en démo les références équivalentes de la Fiche Achat (PR #24).
+- [ ] Sortir l'ETL et le pipeline Gmail de la session Windows de Marlène (§3.1). Pas d'urgence ; rien côté réseau tant que Samuel est absent.
+- [ ] Écart de code relevé le 06/10 (lecture du code, non vérifié en base) : le chargement du fichier maritime (`load_ot_transport`, `src/scripts/etl/load.py`) écrase l'ETA sans tracer l'événement dans `transport_evenement` ni appliquer « la date transmise la plus récente gagne ». Les pastilles de changement d'ETA ne voient donc que les PJ Gmail. À traiter avec la bascule sur le gsheet.
+
+### BUG-007, lots 2 et 3
+
+Les 9 questions du §7 du cadrage partent à Marlène et Maxence par mail (brouillon
+préparé le 06/10 sur `achat.import@`). Rien à coder avant leurs réponses.
+
+---
+
 ## 4. Priorité 3 — dette et incohérences à arbitrer
 
 ### 4.1 Bloqué par une action externe
@@ -590,10 +618,10 @@ copies MyReport de `public`.
 
 ### 4.2 Documents désalignés du code
 
-- [ ] **`docs/20260722_FUSEAU_Spec_SuiviDatesETA_v1.md`** prévoit une table `achat.ot_transport_date_evenement`. L'implémentation réutilise `achat.transport_evenement`. La spec n'a jamais été mise à jour et affiche encore « à valider avant tout code » alors que le code est en production.
-- [ ] **`docs/20260722_FUSEAU_Cartographie_FluxGmail_v1.md`** marque « Non capté » les changements d'ETA, implémentés depuis (`parse_email_eta.py`, `load_email_eta.py`).
-- [ ] **`docs/20260723_FUSEAU_Passation_MiseEnProd_PosteMarlene_v1.md`** §5 décrit un blocage `transport_evenement` résolu le 27/07, et §2 s'interroge sur git vs robocopy — tranché de fait, le poste utilise git.
-- [ ] **`docs/20260722_FUSEAU_Runbook_TablesEvenements_ClaudePosteAntho.md`** décrit une procédure DDL déjà exécutée, depuis le poste de Marlène et non celui d'Antho.
+- [x] **`docs/20260722_FUSEAU_Spec_SuiviDatesETA_v1.md`** prévoit une table `achat.ot_transport_date_evenement`. L'implémentation réutilise `achat.transport_evenement`. La spec n'a jamais été mise à jour et affiche encore « à valider avant tout code » alors que le code est en production. — réaligné le 06/10.
+- [x] **`docs/20260722_FUSEAU_Cartographie_FluxGmail_v1.md`** marque « Non capté » les changements d'ETA, implémentés depuis (`parse_email_eta.py`, `load_email_eta.py`). — réaligné le 06/10 (captation réelle : PJ via `load_ot_gmail` et corps des mails via le Cowork ; les modules `*_email_eta` ne sont pas ordonnancés).
+- [x] **`docs/20260723_FUSEAU_Passation_MiseEnProd_PosteMarlene_v1.md`** §5 décrit un blocage `transport_evenement` résolu le 27/07, et §2 s'interroge sur git vs robocopy — tranché de fait, le poste utilise git. — réaligné le 06/10.
+- [x] **`docs/20260722_FUSEAU_Runbook_TablesEvenements_ClaudePosteAntho.md`** décrit une procédure DDL déjà exécutée, depuis le poste de Marlène et non celui d'Antho. — réaligné le 06/10.
 
 ### 4.3 Chiffres à fiabiliser
 
@@ -614,10 +642,9 @@ et ils ne relèvent pas du périmètre FUSEAU :
 Vérifié : aucun secret, aucun `DROP` / `TRUNCATE` / `DELETE`, purement additif.
 Ces fichiers relèvent vraisemblablement du repo `dev/MyReport`, pas de celui-ci.
 
-- [ ] **Trancher où ces deux fichiers sont versionnés** (repo `MyReport`, ou ici
-      si on assume que Data-Achat porte aussi les migrations `public.*`). Tant que
-      ce n'est pas tranché, ils restent non trackés : ne pas les committer par
-      réflexe lors d'un `git add -A`.
+- [x] **Trancher où ces deux fichiers sont versionnés** : repo `MyReport` (Antho,
+      06/10). Déplacés dans `MyReport/sql/`, branche `chore/sql-restauration-0408`
+      (commit `74266c7`, non poussé), et retirés de Data-Achat.
 - [ ] Les sorties psql associées (`sql/_*.out`, `sql/_*.out.err`) sont désormais
       ignorées par git, elles n'ont pas à être versionnées.
 
@@ -932,3 +959,4 @@ dans `05_ARCHIVES/Versions_Anterieures/`.
 | 05/10 | Reprise. Prod saine sur `422fca8`. Crawl qualité confirmé (248 documents). Aucune saisie tentée depuis Azure, et `updated_by` jamais écrit : PR #15. Export PDF limité à l'onglet actif : PR #16. Revue des démos du 28/07 et du 22/09 : la bascule sur le gsheet maritime, toujours pas activée, explique les erreurs de BL |
 | 05/10 (suite) | Audit des données. Réceptions lues dans Sylob, au grain article. ETA Gmail datée par le mail et non plus par le chargement. Promo/Opé alimenté par l'intitulé de commande Sylob. Garde-fou OAuth, alerte d'auto-pull, références équivalentes sur la Fiche Achat. Le droit de l'API sur MyReport est à poser sous le compte propriétaire. Prompt préparé pour le poste de Marlène |
 | 06/10 | Migrations du 05/10 constatées appliquées en base : purges `transport_evenement`, réceptions au grain article, pont de lecture MyReport. Droit durable de l'API sur MyReport posé sous `platform_team` (le compte propriétaire n'était pas nécessaire) ; preuve après recréation nocturne attendue le 07/10. Prompt de la deuxième session du poste de Marlène : `docs/20261005_FUSEAU_Prompt_SessionPosteMarlene_v2.md` |
+| 06/10 (suite) | PR #29 : bulles de source alignées sur les données réellement lues (Conteneurs et Prévisionnel annonçaient le gsheet maritime, alors que l'ETL lit encore la copie serveur sans BL). PR #30 : le repli du suivi maritime sur le fichier serveur plantait (`NameError`), corrigé avant d'activer le gsheet. Activation des factures décidée ; prompt v3 du poste pour le 07/10 (gsheet maritime et factures). NCR par mail : faux problème, captées par Cowork dans `qualite_decision`. Quatre documents réalignés sur le code (§4.2). Fichiers SQL du 04/08 rangés dans MyReport. Démo du 06/10 : retours Artwork au §3.10 |

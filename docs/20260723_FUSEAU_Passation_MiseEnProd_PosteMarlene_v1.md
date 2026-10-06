@@ -1,6 +1,14 @@
 # FUSEAU — Passation mise en prod (poste Marlène) — 23/07
 
-> ⚠️ **DEUX POINTS OBSOLETES (note du 28/07/2026).** Le blocage `transport_evenement` decrit au §5 ("NE PAS essayer de reparer") a ete leve le 27/07. La question git contre robocopy du §2 est tranchee : le poste utilise git, confirme par le resync du 22/07. Le reste de la procedure reste valide.
+> Mis à jour le 06/10/2026 : §2 tranché (git, auto-pull par la tâche `FUSEAU_Files_ETL`), §5 marqué résolu, API locale du poste déclarée caduque depuis la bascule sur Azure App Service le 22/09 (§1, §3, §3bis, §8).
+
+> ⚠️ **Document historique pour la partie API.** Depuis le 22/09/2026, l'application est servie par
+> Azure App Service (`https://app-shsv-fuseau-prod.azurewebsites.net`, authentification Entra),
+> déployée à chaque merge sur `main`. La tâche `FUSEAU-API` du poste a été arrêtée et désactivée le
+> 24/09 (`docs/plan_action.md` §1). **Ne plus mettre à jour, redémarrer ni dépanner l'API locale** :
+> les §3 (étapes 1 et 4), §3bis et le smoke test `/api/health` local sont caducs. Restent sur le
+> poste de Marlène : l'ETL fichiers (`FUSEAU_Files_ETL`), l'ETL quotidien (`FUSEAU_Daily_ETL`), le
+> pipeline Gmail (`FUSEAU_Gmail_ETL`) et la tâche Cowork.
 
 > **Pour un Claude/Cowork ouvert sur le poste de Marlène.** Tu n'as aucun contexte de la
 > session qui a produit ce document — lis-le en entier avant d'agir. Objectif : faire
@@ -27,7 +35,15 @@
   n'a de toute façon pas les droits `CREATE`/`ALTER` (ça échouerait proprement, mais autant
   ne pas essayer).
 
-## 2. ⚠️ Point non résolu — comment le code arrive-t-il sur ce poste ?
+## 2. Comment le code arrive sur ce poste — tranché : git
+
+> **Tranché (06/10/2026).** Le poste est un clone git (`git pull` de `dd5d57f` à `cb8404b` le 28/07,
+> `docs/20260728_FUSEAU_Consignes_Claude_Antho.md`). La mise à jour est automatique : la tâche
+> planifiée `FUSEAU_Files_ETL` (02h00) lance
+> `src/scripts/infrastructure/run_etl_scheduled.ps1`, qui fait le `git pull` avant l'ETL et sort en
+> `0x2` avec `deploy\logs\PULL_BLOQUE.txt` si le pull est refusé. L'auto-pull de `run_api.py` ne
+> joue plus depuis l'arrêt de l'API locale. Le chemin robocopy (`deploy/setup_poste_marlene.ps1`)
+> n'est pas utilisé ; le texte ci-dessous est conservé pour mémoire.
 
 Deux mécanismes coexistent dans le repo et je (session précédente, sandbox sans accès réseau
 bureau) n'ai **pas pu vérifier lequel est réellement utilisé aujourd'hui** :
@@ -61,6 +77,11 @@ locale (`.env`) avec du code obsolète (le script n'écrase pas `.env`, mais éc
 
 ## 3. Procédure de mise à jour (une fois la source de code confirmée à jour)
 
+> **Caduc depuis le 22/09/2026** pour l'API (étapes 1 et 4) : la tâche `FUSEAU-API` est désactivée.
+> Le code du poste est mis à jour par `run_etl_scheduled.ps1` (§2). Un pull manuel reste possible
+> (`git pull --ff-only origin main`) ; ne jamais committer localement sans pousser, cela bloque
+> l'auto-pull.
+
 ```powershell
 # 1. Arrêter proprement la tâche planifiée avant de toucher aux fichiers
 Stop-ScheduledTask -TaskName "FUSEAU-API" -ErrorAction SilentlyContinue
@@ -85,6 +106,8 @@ Invoke-RestMethod http://127.0.0.1:5050/api/health
 ```
 
 ## 3bis. Accès Andréa (LAN bureau, décision 23/07)
+
+> **Caduc depuis le 22/09/2026** : l'accès passe par l'URL Azure et l'authentification Entra.
 
 Pas de second déploiement pour Andréa — elle accède à **cette même instance** via le réseau
 local, en navigateur uniquement. À faire une fois (sur ce poste) :
@@ -119,7 +142,8 @@ premier essai (stockée dans son propre navigateur, `localStorage`).
   4. "Par fournisseur" (inchangé, déplacé en dernier).
 - **Onglet Conteneurs** : colonnes ETA/Livraison doivent pouvoir afficher un petit point
   coloré (orange/rouge/violet) s'il y a eu des changements — **normalement aucun point
-  visible aujourd'hui** (cf. §5, le pipeline qui écrit ces événements est bloqué).
+  visible aujourd'hui** (cf. §5, le pipeline qui écrit ces événements est bloqué ; levé depuis,
+  des points peuvent apparaître).
 - **Dashboard > Actions prioritaires** : ne doit pas planter même si aucun changement ETA
   n'existe encore (le bloc est conçu pour être silencieux dans ce cas).
 - **Onglet Fournisseurs** : les doublons GUANGWEI/DIAMOND TRACK, SMART IRON/JIT GLOBAL et
@@ -130,6 +154,13 @@ premier essai (stockée dans son propre navigateur, `localStorage`).
   "OP" ou "NOUVEAU", avec une colonne Prioritaire vide.
 
 ## 5. Blocage connu — NE PAS essayer de réparer depuis ce poste
+
+> **Résolu.** Le 27/07, le commit `3a3ba42` a contourné la séquence en calculant l'`id` par
+> `MAX(id) + 1`. Le 28/07, `d11045c` est revenu à la séquence (le `MAX + 1` provoquait des collisions
+> de clé entre exécutions concurrentes). `transport_evenement` est alimentée depuis : événements
+> d'ETA issus des PJ présents depuis au moins le 10/08, alimentation par le Cowork constatée le
+> 05/10 (`docs/plan_action.md` §4). Le dépôt ne dit pas comment le droit sur la séquence a été obtenu
+> pour le retour du 28/07 ; non tranché ici. Texte d'origine conservé pour mémoire.
 
 `achat.transport_evenement` (table qui doit recevoir les changements d'ETA/livraison)
 appartient à `platform_team`, et même le login admin d'Antho n'est pas membre de ce rôle —
@@ -162,6 +193,10 @@ Antho, ne pas bloquer la mise en prod pour ça.
   config `.env`, le GRANT `platform_team` sur `achat.commande`, et le branchement Gmail.
 
 ## 8. Checklist finale
+
+> État au 06/10/2026 : mécanisme de sync tranché (git, §2) ; les points `FUSEAU-API` et
+> `/api/health` local sont sans objet depuis la bascule sur Azure ; le GRANT `transport_evenement`
+> n'est plus un sujet (§5). Cases laissées telles quelles, document historique.
 
 - [ ] Confirmé quel mécanisme de sync (git vs robocopy A:\) est réellement utilisé sur ce poste.
 - [ ] Code à jour vérifié : `git log -1` (ou date de `app/main.py`) correspond à `f8fd29d`.
