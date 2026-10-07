@@ -120,3 +120,34 @@ class TestOngletEnAttenteReel:
         assert r["statut_artwork"] == "Validé"
         assert r["valideur"] == "Clarisse"
         assert r["commentaire"] == "Version 2026"
+
+
+class TestEnAttentePrimeSurLaListe:
+    """Comp0806 (07/10/2026) : ancienne version validee dans la Liste, nouvelle
+    demande en attente. L'onglet en attente fait foi, quel que soit l'ordre."""
+    H_ATT = TestOngletEnAttenteReel.H_ATTENTE
+    L_ATT = ["Comp0806", "BOITE DETAIL VIDE", "NOUVEAU", "NOUVEAU", "/", "5.0",
+             "Clarisse", "Création", "en attente de DIE CUT", ""]
+    H_LST = TestOngletEnAttenteReel.H_LISTE
+    L_LST = ["Comp0806", "BOITE DETAIL VIDE", "3-mars-26", "3-mars-26", "Clarisse", "Version 2026"]
+
+    def _recs(self, ordre):
+        rows = []
+        for onglet in ordre:
+            if onglet == "attente":
+                rows += [("Artworks en attente", r) for r in [self.H_ATT, self.L_ATT]]
+            else:
+                rows += [("Liste artworks", r) for r in [self.H_LST, self.L_LST, ["401740.0", "PIERRE", "6-juin-24", "6-juin-24", "Clarisse", "x"]]]
+        return {r["code_article"]: r for r in transform_rows(rows, "test")}
+
+    def test_attente_puis_liste(self):
+        r = self._recs(["attente", "liste"])["Comp0806"]
+        assert r["statut_artwork"] == "En attente"
+        assert r["priorite"] == 5
+        assert r["date_validation"] == "2026-03-03"
+
+    def test_liste_puis_attente(self):
+        assert self._recs(["liste", "attente"])["Comp0806"]["statut_artwork"] == "En attente"
+
+    def test_reference_decimale_normalisee(self):
+        assert "401740" in self._recs(["attente", "liste"])
