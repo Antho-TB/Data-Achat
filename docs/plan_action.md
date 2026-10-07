@@ -582,15 +582,18 @@ copies MyReport de `public`.
 
 ### Onglet Artwork (notes d'Antho)
 
-- [ ] Distinguer trois dates : création, validation et mise à jour (aujourd'hui seulement la MAJ).
+- [x] Distinguer les dates (07/10) : date de demande pour les artworks en attente, dernière version et dernière validation pour la liste. Ce sont les dates tenues dans le gsheet ; une vraie date de création FUSEAU viendra avec la refonte.
 - [ ] Un identifiant propre à chaque artwork, plus seulement rattaché à l'article (par exemple n° article + date). Un article peut avoir plusieurs artworks, un artwork n'a qu'un article. Impact : `achat.artwork_statut` est aujourd'hui clé par article.
 - [ ] Afficher l'artwork (lien vers le PDF du Drive).
 - [ ] Pouvoir ajouter et modifier des lignes depuis FUSEAU.
-- [ ] Garder les deux tableaux du gsheet de Clarisse : artworks en attente, et archive pour rechercher l'existant.
+- [x] Garder les deux tableaux du gsheet de Clarisse (07/10) : « Artworks en attente », trié par priorité, et « Liste des artworks » pour rechercher l'existant.
 - [ ] Process : Clarisse passe une ligne en « validé », Maxence l'archive à la main une fois traitée. Voir pour automatiser cette suite.
 - [x] Supprimer les deux graphiques de l'onglet (07/10).
-- [ ] Ajouter Clarisse comme utilisatrice de FUSEAU (accès Entra à l'App Service).
+- [x] Clarisse peut déjà se connecter : l'application Entra « FUSEAU - Dashboard Achats » n'exige aucune affectation (vérifié le 07/10). Lui envoyer l'adresse suffit.
 - [ ] À prévoir, chantier plus gros : contrôle de l'artwork fournisseur contre celui de Clarisse (textes, codes-barres EAN, SPCB, PCB, n° de référence, désignation). Choix à faire entre OCR et vision par ordinateur.
+
+- [x] Défaut trouvé le 07/10 en préparant ces corrections : l'onglet « Artworks en attente » du gsheet était ignoré en entier depuis un changement de structure (plus d'intitulé en colonne A). FUSEAU n'affichait aucun artwork en attente actuel, seulement 6 lignes figées au 22/07. Corrigé dans `transform_artwork.py` (en-tête reconnu sans intitulé, « REF À CRÉER », colonne « Commentaire Maxence », en-tête remis à zéro à chaque onglet) ; l'API n'affiche plus les lignes absentes du dernier chargement.
+- [x] La modification du statut et des commentaires depuis FUSEAU est retirée de l'écran : elle était écrasée par le chargement suivant du gsheet. Elle reviendra avec la refonte, quand FUSEAU sera la source.
 
 ### À planifier (décision d'Antho du 06/10)
 

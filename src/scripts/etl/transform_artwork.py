@@ -124,7 +124,10 @@ def _header_map(row: list[str]) -> dict[str, int]:
             m["ref"] = i
         elif "designation" in n and "designation" not in m:
             m["designation"] = i
-        elif n.startswith("commentaire") and "andrea" in n:
+        elif n.startswith("commentaire") and ("andrea" in n or "maxence" in n):
+            # Maxence BRUN a repris la colonne d'Andrea (commentaire acheteur)
+            # a son depart. Sans ce cas, son commentaire tombait dans
+            # com_validation, le commentaire de l'onglet Liste.
             m["com_andrea"] = i
         elif n.startswith("commentaire") and "clarisse" in n:
             m["com_clarisse_thomas"] = i
@@ -140,11 +143,29 @@ def _header_map(row: list[str]) -> dict[str, int]:
             m["priorite"] = i
         elif n == "valideur":
             m["valideur"] = i
+    # L'onglet "Artworks en attente" n'a pas d'intitule en colonne A : la
+    # reference y est sans en-tete. Constate le 07/10/2026, l'onglet entier
+    # etait ignore et FUSEAU n'affichait plus aucun artwork en attente.
+    if "ref" not in m and m.get("designation", 0) > 0:
+        m["ref"] = 0
     return m
 
 
 def _is_header(row: list[str]) -> bool:
-    return bool(row) and _norm(row[0]) == "reference"
+    """
+    Reconnait une ligne d'en-tete, avec ou sans intitule en colonne A.
+
+    Junior Tip : on valide sur plusieurs colonnes plutot que sur la seule
+    premiere cellule. Le gsheet est tenu a la main : un intitule efface en
+    colonne A faisait ignorer un onglet entier, sans erreur.
+    """
+    if not row:
+        return False
+    if _norm(row[0]) == "reference":
+        return True
+    cellules = [_norm(c) for c in row]
+    return any("designation" in c for c in cellules) and any(
+        c == "valideur" or "derniere version" in c for c in cellules)
 
 
 def _get(row: list[str], idx: Optional[int]) -> Optional[str]:
@@ -161,7 +182,12 @@ def transform_rows(tagged_rows: list[tuple[str, list[str]]], source_fichier: str
     hmap: dict[str, int] = {}
     by_ref: dict[str, dict] = {}   # dédoublonnage : garde la dernière occurrence
     n_skip = 0
+    onglet_courant: Optional[str] = None
     for sheet_name, row in tagged_rows:
+        if sheet_name != onglet_courant:
+            # Les deux onglets n'ont ni les memes colonnes ni le meme ordre :
+            # garder l'en-tete du precedent lirait les mauvaises cellules.
+            onglet_courant, hmap = sheet_name, {}
         if _is_header(row):
             hmap = _header_map(row)
             continue
@@ -169,7 +195,8 @@ def transform_rows(tagged_rows: list[tuple[str, list[str]]], source_fichier: str
             continue
         ref = _get(row, hmap.get("ref"))
         designation = _get(row, hmap.get("designation"))
-        sans_code = bool(ref) and _norm(ref) in {"pas de ref", "pas de reference"}
+        sans_code = bool(ref) and _norm(ref) in {
+            "pas de ref", "pas de reference", "ref a creer", "reference a creer", "a creer"}
         # Titre de bloc/onglet capte parfois comme ref tant que hmap n'est pas
         # reinitialise -- un vrai code_article ne contient jamais d'espace.
         if not ref or (not sans_code and " " in ref.strip()):
