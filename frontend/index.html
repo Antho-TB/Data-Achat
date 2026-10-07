@@ -777,19 +777,26 @@ button { cursor: pointer; }
       <span class="badge badge-yellow" title="Source : Google Sheet 'Suivi des artworks-import' (Clarisse) via API Drive">GSheet Clarisse (Drive)</span>
     </div>
     <div class="artwork-stats" id="artwork-stats"></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">
+      Les artworks se saisissent et se modifient dans le
+      <a href="https://docs.google.com/spreadsheets/d/1FTr2nloJGIgLELjbEVkODVhLz4oaAjhaqtrWqXJ4Jrc/edit" target="_blank" rel="noopener">gsheet de Clarisse</a> : FUSEAU le relit chaque matin.
+      La saisie directe dans FUSEAU viendra avec la refonte de l'onglet.
+    </div>
     <div class="toolbar">
       <input id="f-art-article" type="text" placeholder="Code article…" oninput="filterArtwork()">
       <input id="f-art-designation" type="text" placeholder="Désignation…" oninput="filterArtwork()">
-      <select id="f-art-statut" onchange="filterArtwork()">
-        <option value="">Tous les statuts</option>
-        <option>En attente</option>
-        <option>Validé</option>
-      </select>
       <select id="f-art-valideur" onchange="filterArtwork()">
         <option value="">Tous les valideurs</option>
       </select>
       <button class="btn btn-ghost btn-sm" onclick="loadArtwork()">&#8635; Actualiser</button>
     </div>
+    <div class="section-header"><span class="section-title">Artworks en attente</span>
+      <span id="art-count-attente" style="font-size:12px;color:var(--muted);"></span></div>
+    <div id="table-artwork-attente">
+      <div class="loader"><span class="spinner"></span>Chargement…</div>
+    </div>
+    <div class="section-header" style="margin-top:16px;"><span class="section-title">Liste des artworks (archive, recherche de l'existant)</span>
+      <span id="art-count-liste" style="font-size:12px;color:var(--muted);"></span></div>
     <div id="table-artwork">
       <div class="loader"><span class="spinner"></span>Chargement…</div>
     </div>
@@ -3309,8 +3316,9 @@ async function loadPrevisionnelMesures() {
 }
 
 async function loadArtwork() {
-  document.getElementById('table-artwork').innerHTML =
-    '<div class="loader"><span class="spinner"></span>Chargement…</div>';
+  for (const id of ['table-artwork', 'table-artwork-attente']) {
+    document.getElementById(id).innerHTML = '<div class="loader"><span class="spinner"></span>Chargement…</div>';
+  }
   try {
     const r = await apiFetch('/api/artwork');
     _artwork = r.data;
@@ -3318,6 +3326,7 @@ async function loadArtwork() {
       document.getElementById('artwork-stats').innerHTML =
         `<div style="color:var(--yellow);font-size:13px;padding:8px;">⚠️ ${esc(r.warning)}</div>`;
       document.getElementById('table-artwork').innerHTML = '';
+      document.getElementById('table-artwork-attente').innerHTML = '';
       return;
     }
     renderArtworkStats(_artwork);
@@ -3341,12 +3350,10 @@ function wireArtworkValideurSelect(rows) {
 function filterArtwork() {
   const art = document.getElementById('f-art-article').value.toLowerCase();
   const des = document.getElementById('f-art-designation').value.toLowerCase();
-  const stat = document.getElementById('f-art-statut').value;
   const valideur = document.getElementById('f-art-valideur').value;
   const filtered = _artwork.filter(r =>
     (!art  || (r.code_article||'').toLowerCase().includes(art)) &&
     (!des  || (r.designation||'').toLowerCase().includes(des)) &&
-    (!stat || r.statut_artwork === stat) &&
     (!valideur || r.valideur === valideur)
   );
   renderArtwork(filtered);
@@ -3377,59 +3384,68 @@ function renderArtworkStats(rows) {
 function artworkCommentTitle(r) {
   if (r.statut_artwork === 'En attente') {
     const parts = [];
-    if (r.commentaire_andrea) parts.push(`Andréa : ${r.commentaire_andrea}`);
+    if (r.commentaire_andrea) parts.push(`Maxence : ${r.commentaire_andrea}`);
     if (r.commentaire_clarisse_thomas) parts.push(`Clarisse/Thomas : ${r.commentaire_clarisse_thomas}`);
     return parts.join(' — ');
   }
   return r.commentaire || '';
 }
 
+function artworkLigneCode(r) {
+  // Les lignes sans reference du gsheet ("PAS DE REF", "REF À CRÉER") recoivent
+  // un code technique NOUVEAU-<designation> : on l'affiche comme tel.
+  return (r.code_article || '').startsWith('NOUVEAU-')
+    ? '<span class="badge badge-gray" title="Pas encore de référence article dans le gsheet">à créer</span>'
+    : esc(r.code_article) || '—';
+}
+
 function renderArtwork(rows) {
-  if (!rows.length) {
-    document.getElementById('table-artwork').innerHTML =
-      '<div class="empty"><div class="empty-icon">🖼️</div>Aucun artwork trouvé</div>';
-    return;
-  }
-  document.getElementById('table-artwork').innerHTML = `
-    <div class="table-wrap">
-    <table>
+  const attente = rows.filter(r => r.statut_artwork === 'En attente')
+    .sort((a, b) => (a.priorite ?? 9) - (b.priorite ?? 9));
+  const liste = rows.filter(r => r.statut_artwork !== 'En attente');
+  document.getElementById('art-count-attente').textContent = `${attente.length} artwork${attente.length > 1 ? 's' : ''}`;
+  document.getElementById('art-count-liste').textContent = `${liste.length} artwork${liste.length > 1 ? 's' : ''}`;
+
+  document.getElementById('table-artwork-attente').innerHTML = !attente.length
+    ? '<div class="empty"><div class="empty-icon">🖼️</div>Aucun artwork en attente</div>'
+    : `<div class="table-wrap"><table>
       <thead><tr>
-        <th>Article</th><th>Désignation</th><th title="Onglet source du gsheet Clarisse (LIS-CON-28-0)">Statut</th>
-        <th title="Niveau de priorité du gsheet (1 = urgent -> 5), onglet 'Artworks en attente' uniquement">Prio.</th>
-        <th>Valideur</th><th>Commentaire</th><th title="N° de commande(s) connu(s) pour cet article, info seulement (n'influence jamais le statut)">PO</th>
-        <th>MAJ</th><th>Action / Drive</th>
+        <th>Article</th><th>Désignation</th>
+        <th title="Niveau de priorité du gsheet (1 = urgent, 5 = faible)">Prio.</th>
+        <th title="Date de demande de l'artwork (création), colonne du gsheet">Demande</th>
+        <th>Valideur</th><th>Commentaire Maxence</th><th>Commentaire Clarisse / Thomas</th>
+        <th title="N° de commande(s) connu(s) pour cet article">PO</th>
       </tr></thead>
-      <tbody>
-        ${rows.map(r => { const comment = artworkCommentTitle(r); return `<tr>
-          <td class="mono">${esc(r.code_article) || '—'}</td>
-          <td>${esc(r.designation) || '—'}</td>
-          <td class="editable-cell" id="awk-${esc(r.code_article)}">
-            <span class="view-mode" onclick="editCell(this,'select')">${badge(r.statut_artwork)}</span>
-            <span class="edit-mode">
-              <select>
-                ${['En attente', 'Validé'].map(s =>
-                  `<option ${r.statut_artwork===s?'selected':''}>${s}</option>`).join('')}
-              </select>
-              <button class="save-btn" onclick="saveArtworkStatut('${esc(r.code_article)}', this)">✓</button>
-              <button class="cancel-btn" onclick="cancelEdit(this)">✕</button>
-            </span>
-          </td>
-          <td style="text-align:center">${r.priorite ?? '—'}</td>
-          <td>${esc(r.valideur) || '—'}</td>
-          <td style="font-size:12px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:help" title="${esc(comment)}">
-            ${esc(comment) || '—'}
-          </td>
-          <td class="mono" style="font-size:11px;">${esc(r.po_number) || '—'}</td>
-          <td style="font-size:11px;color:var(--muted)">${fmt(r.updated_at,'date')}</td>
-          <td style="white-space:nowrap">
-            <button class="btn btn-ghost btn-sm"
-              onclick="openArtworkCommentaire('${esc(r.code_article)}', ${r.statut_artwork==='En attente' ? "'com_clarisse_thomas'" : "'commentaire'"}, '${esc(comment)}')">✎</button>
-            ${(r.drive_url || r.drive_file_id) ? `<a href="${esc(r.drive_url || 'https://drive.google.com/file/d/' + r.drive_file_id + '/view')}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="Ouvrir le fichier Artwork original (.pdf / .ai)">🎨 Fichier 📎</a>` : ''}
-          </td>
-        </tr>`; }).join('')}
-      </tbody>
-    </table>
-    </div>`;
+      <tbody>${attente.map(r => `<tr>
+        <td class="mono">${artworkLigneCode(r)}</td>
+        <td>${esc(r.designation) || '—'}</td>
+        <td style="text-align:center">${r.priorite ?? '—'}</td>
+        <td style="font-size:12px">${r.date_demande ? fmt(r.date_demande, 'date') : '—'}</td>
+        <td>${esc(r.valideur) || '—'}</td>
+        <td style="font-size:12px">${esc(r.commentaire_andrea) || '—'}</td>
+        <td style="font-size:12px;max-width:280px">${esc(r.commentaire_clarisse_thomas) || '—'}</td>
+        <td class="mono" style="font-size:11px;">${esc(r.po_number) || '—'}</td>
+      </tr>`).join('')}</tbody></table></div>`;
+
+  document.getElementById('table-artwork').innerHTML = !liste.length
+    ? '<div class="empty"><div class="empty-icon">🖼️</div>Aucun artwork trouvé</div>'
+    : `<div class="table-wrap"><table>
+      <thead><tr>
+        <th>Article</th><th>Désignation</th>
+        <th title="Date de la dernière version de l'artwork">Dernière version</th>
+        <th title="Date de la dernière validation">Dernière validation</th>
+        <th>Valideur</th><th>Commentaire sur la dernière version</th>
+        <th title="N° de commande(s) connu(s) pour cet article">PO</th>
+      </tr></thead>
+      <tbody>${liste.map(r => `<tr>
+        <td class="mono">${artworkLigneCode(r)}</td>
+        <td>${esc(r.designation) || '—'}</td>
+        <td style="font-size:12px">${r.derniere_version ? fmt(r.derniere_version, 'date') : '—'}</td>
+        <td style="font-size:12px">${r.date_validation ? fmt(r.date_validation, 'date') : '—'}</td>
+        <td>${esc(r.valideur) || '—'}</td>
+        <td style="font-size:12px;color:var(--muted);max-width:280px">${esc(r.commentaire) || '—'}</td>
+        <td class="mono" style="font-size:11px;">${esc(r.po_number) || '—'}</td>
+      </tr>`).join('')}</tbody></table></div>`;
 }
 
 async function saveArtworkStatut(codeArticle, btn) {

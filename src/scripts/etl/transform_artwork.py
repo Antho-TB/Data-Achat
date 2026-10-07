@@ -124,7 +124,10 @@ def _header_map(row: list[str]) -> dict[str, int]:
             m["ref"] = i
         elif "designation" in n and "designation" not in m:
             m["designation"] = i
-        elif n.startswith("commentaire") and "andrea" in n:
+        elif n.startswith("commentaire") and ("andrea" in n or "maxence" in n):
+            # Maxence BRUN a repris la colonne d'Andrea (commentaire acheteur)
+            # a son depart. Sans ce cas, son commentaire tombait dans
+            # com_validation, le commentaire de l'onglet Liste.
             m["com_andrea"] = i
         elif n.startswith("commentaire") and "clarisse" in n:
             m["com_clarisse_thomas"] = i
@@ -140,11 +143,29 @@ def _header_map(row: list[str]) -> dict[str, int]:
             m["priorite"] = i
         elif n == "valideur":
             m["valideur"] = i
+    # L'onglet "Artworks en attente" n'a pas d'intitule en colonne A : la
+    # reference y est sans en-tete. Constate le 07/10/2026, l'onglet entier
+    # etait ignore et FUSEAU n'affichait plus aucun artwork en attente.
+    if "ref" not in m and m.get("designation", 0) > 0:
+        m["ref"] = 0
     return m
 
 
 def _is_header(row: list[str]) -> bool:
-    return bool(row) and _norm(row[0]) == "reference"
+    """
+    Reconnait une ligne d'en-tete, avec ou sans intitule en colonne A.
+
+    Junior Tip : on valide sur plusieurs colonnes plutot que sur la seule
+    premiere cellule. Le gsheet est tenu a la main : un intitule efface en
+    colonne A faisait ignorer un onglet entier, sans erreur.
+    """
+    if not row:
+        return False
+    if _norm(row[0]) == "reference":
+        return True
+    cellules = [_norm(c) for c in row]
+    return any("designation" in c for c in cellules) and any(
+        c == "valideur" or "derniere version" in c for c in cellules)
 
 
 def _get(row: list[str], idx: Optional[int]) -> Optional[str]:
@@ -161,15 +182,24 @@ def transform_rows(tagged_rows: list[tuple[str, list[str]]], source_fichier: str
     hmap: dict[str, int] = {}
     by_ref: dict[str, dict] = {}   # dédoublonnage : garde la dernière occurrence
     n_skip = 0
+    onglet_courant: Optional[str] = None
     for sheet_name, row in tagged_rows:
+        if sheet_name != onglet_courant:
+            # Les deux onglets n'ont ni les memes colonnes ni le meme ordre :
+            # garder l'en-tete du precedent lirait les mauvaises cellules.
+            onglet_courant, hmap = sheet_name, {}
         if _is_header(row):
             hmap = _header_map(row)
             continue
         if not hmap:
             continue
         ref = _get(row, hmap.get("ref"))
+        if ref and re.fullmatch(r"\d+\.0", ref):
+            # Lecture en export xlsx : une reference numerique arrive "401740.0".
+            ref = ref[:-2]
         designation = _get(row, hmap.get("designation"))
-        sans_code = bool(ref) and _norm(ref) in {"pas de ref", "pas de reference"}
+        sans_code = bool(ref) and _norm(ref) in {
+            "pas de ref", "pas de reference", "ref a creer", "reference a creer", "a creer"}
         # Titre de bloc/onglet capte parfois comme ref tant que hmap n'est pas
         # reinitialise -- un vrai code_article ne contient jamais d'espace.
         if not ref or (not sans_code and " " in ref.strip()):
@@ -183,20 +213,38 @@ def transform_rows(tagged_rows: list[tuple[str, list[str]]], source_fichier: str
         version_raw = _get(row, hmap.get("version"))
         validation_raw = _get(row, hmap.get("validation"))
         prio = _get(row, hmap.get("priorite"))
-        by_ref[code] = {
+        try:
+            priorite = int(float(prio.replace(",", "."))) if prio else None
+        except ValueError:
+            priorite = None
+        record = {
             "code_article": code,
             "designation": designation,
             "statut_artwork": statut,
             "date_demande": parse_fr_date(_get(row, hmap.get("demande"))),
             "date_validation": parse_fr_date(validation_raw),
             "derniere_version": parse_fr_date(version_raw),
-            "priorite": int(prio) if (prio and prio.isdigit()) else None,
+            "priorite": priorite,
             "valideur": _get(row, hmap.get("valideur")),
             "commentaire": _get(row, hmap.get("com_validation")),
             "commentaire_andrea": _get(row, hmap.get("com_andrea")),
             "commentaire_clarisse_thomas": _get(row, hmap.get("com_clarisse_thomas")),
             "source_fichier": source_fichier,
         }
+        precedent = by_ref.get(code)
+        if precedent and precedent["statut_artwork"] != record["statut_artwork"]:
+            # Un meme article peut etre dans les deux onglets : ancienne version
+            # validee dans la Liste, nouvelle demande en attente. L'onglet "en
+            # attente" fait foi pour le statut (cf. cas 32030006 en tete de
+            # module), la Liste completant les dates de la version validee.
+            # Constate le 07/10/2026 sur Comp0806, sorti des "en attente" parce
+            # que la Liste, lue ensuite, l'ecrasait.
+            attente, liste = ((record, precedent) if record["statut_artwork"] == STATUT_EN_ATTENTE
+                              else (precedent, record))
+            for champ in ("date_validation", "derniere_version", "commentaire"):
+                attente[champ] = attente[champ] or liste[champ]
+            record = attente
+        by_ref[code] = record
     logger.info("[SUCCÈS] Artworks : %d article(s) (dédoublonnés), %d ligne(s) sans réf ignorée(s).",
                 len(by_ref), n_skip)
     return list(by_ref.values())

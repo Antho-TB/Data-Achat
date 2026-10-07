@@ -68,3 +68,86 @@ class TestParseFrDate:
     def test_literals_null(self):
         for x in ("NOUVEAU", "/", "#N/A", "\\#N/A", ""):
             assert parse_fr_date(x) is None
+
+
+class TestOngletEnAttenteReel:
+    """
+    Structure reelle du gsheet au 07/10/2026 : l'onglet "Artworks en attente"
+    n'a pas d'intitule en colonne A, la colonne de commentaire acheteur s'appelle
+    "Commentaire Maxence", et les lignes portent "REF À CRÉER" ou "PAS DE REF".
+    Avant correctif, tout l'onglet etait ignore.
+    """
+    H_ATTENTE = ["", "Désignation", "Date de dernière version", "Date de dernière validation",
+                 "Date de demande artwork", "Niveau de priorité\n1->5", "Valideur",
+                 "Commentaire Maxence", "Commentaire Clarisse / Thomas",
+                 "Date d'application :\n17/07/2025"]
+    LIGNES = [
+        ["REF À CRÉER", "BLOC À COUTEAUX VIDE EN ALUMINIUM", "NOUVEAU", "NOUVEAU", " /", "3",
+         "Clarisse", "Création", "ARTWORK EN COURS DE VALIDATION", ""],
+        ["PAS DE REF", "M16 - COUVERTS LAGUIOLE HÉRITAGE - INSPIRATION", "NOUVEAU", "NOUVEAU",
+         "/", "4", "Clarisse", "Création", "à valider avec Éric", ""],
+        ["Comp0806", "BOITE DETAIL VIDE POUR 3CTX", "NOUVEAU", "NOUVEAU", " /", "5",
+         "Clarisse", "Création", "en attente de DIE CUT", ""],
+        ["", "#N/A", "#N/A", "#N/A", "", "", "#N/A", "#N/A", "", ""],
+    ]
+    H_LISTE = ["Référence", "Désignation", "Date de dernière version",
+               "Date de dernière validation", "Valideur", "Commentaire sur dernière version"]
+    L_LISTE = ["402010", "M24 LAG METAL COF. + BANDEAU", "24-août-26", "24-août-26",
+               "Clarisse", "Version 2026"]
+
+    def setup_method(self):
+        rows = [("Artworks en attente", r) for r in [self.H_ATTENTE] + self.LIGNES]
+        rows += [("Liste artworks", r) for r in [["LISTE DES ARTWORKS"], self.H_LISTE, self.L_LISTE]]
+        self.recs = {r["code_article"]: r for r in transform_rows(rows, "test")}
+
+    def test_onglet_en_attente_lu(self):
+        attente = [r for r in self.recs.values() if r["statut_artwork"] == "En attente"]
+        assert len(attente) == 3
+
+    def test_ref_a_creer_et_pas_de_ref_recoivent_un_code_synthetique(self):
+        assert "NOUVEAU-BLOC-A-COUTEAUX-VIDE-EN-ALUMINIUM" in self.recs
+        assert "NOUVEAU-M16-COUVERTS-LAGUIOLE-HERITAGE-INSPIRATION" in self.recs
+        assert "REF À CRÉER" not in self.recs
+
+    def test_commentaire_maxence_dans_la_colonne_acheteur(self):
+        r = self.recs["Comp0806"]
+        assert r["commentaire_andrea"] == "Création"
+        assert r["commentaire"] is None
+        assert r["priorite"] == 5
+
+    def test_en_tete_de_l_onglet_precedent_non_reutilise(self):
+        r = self.recs["402010"]
+        assert r["statut_artwork"] == "Validé"
+        assert r["valideur"] == "Clarisse"
+        assert r["commentaire"] == "Version 2026"
+
+
+class TestEnAttentePrimeSurLaListe:
+    """Comp0806 (07/10/2026) : ancienne version validee dans la Liste, nouvelle
+    demande en attente. L'onglet en attente fait foi, quel que soit l'ordre."""
+    H_ATT = TestOngletEnAttenteReel.H_ATTENTE
+    L_ATT = ["Comp0806", "BOITE DETAIL VIDE", "NOUVEAU", "NOUVEAU", "/", "5.0",
+             "Clarisse", "Création", "en attente de DIE CUT", ""]
+    H_LST = TestOngletEnAttenteReel.H_LISTE
+    L_LST = ["Comp0806", "BOITE DETAIL VIDE", "3-mars-26", "3-mars-26", "Clarisse", "Version 2026"]
+
+    def _recs(self, ordre):
+        rows = []
+        for onglet in ordre:
+            if onglet == "attente":
+                rows += [("Artworks en attente", r) for r in [self.H_ATT, self.L_ATT]]
+            else:
+                rows += [("Liste artworks", r) for r in [self.H_LST, self.L_LST, ["401740.0", "PIERRE", "6-juin-24", "6-juin-24", "Clarisse", "x"]]]
+        return {r["code_article"]: r for r in transform_rows(rows, "test")}
+
+    def test_attente_puis_liste(self):
+        r = self._recs(["attente", "liste"])["Comp0806"]
+        assert r["statut_artwork"] == "En attente"
+        assert r["priorite"] == 5
+        assert r["date_validation"] == "2026-03-03"
+
+    def test_liste_puis_attente(self):
+        assert self._recs(["liste", "attente"])["Comp0806"]["statut_artwork"] == "En attente"
+
+    def test_reference_decimale_normalisee(self):
+        assert "401740" in self._recs(["attente", "liste"])

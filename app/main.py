@@ -1164,7 +1164,14 @@ def get_artwork(code_article: Optional[str] = None):
         filters.append("LOWER(code_article) LIKE :code_article")
         params["code_article"] = f"%{code_article.lower()}%"
 
-    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+    # Miroir du gsheet de Clarisse : une ligne retiree du gsheet n'est jamais
+    # supprimee par le chargement (upsert), elle reste en base avec sa date de
+    # dernier chargement. On n'affiche que les lignes vues au dernier passage :
+    # constate le 07/10/2026, 6 artworks "en attente" figes au 22/07 restaient
+    # affiches alors qu'ils n'existaient plus dans le gsheet.
+    filters.append(
+        f"updated_at >= (SELECT MAX(charge_le) FROM {SCHEMA}.artwork_statut) - INTERVAL '12 hours'")
+    where = "WHERE " + " AND ".join(filters)
 
     with engine.connect() as conn:
         try:
@@ -1174,7 +1181,12 @@ def get_artwork(code_article: Optional[str] = None):
                 ORDER BY updated_at DESC
                 LIMIT 1000
             """), params)
-            return {"data": rows_to_dicts(r)}
+            data = rows_to_dicts(r)
+            absentes = conn.execute(text(f"""
+                SELECT COUNT(*) FROM {SCHEMA}.artwork_statut
+                WHERE charge_le < (SELECT MAX(charge_le) FROM {SCHEMA}.artwork_statut) - INTERVAL '12 hours'
+            """)).scalar() or 0
+            return {"data": data, "absentes_du_gsheet": int(absentes)}
         except Exception as e:
             if "does not exist" in str(e):
                 return {"data": [], "warning": "Table achat.artwork_statut non encore creee"}
