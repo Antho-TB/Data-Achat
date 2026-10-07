@@ -232,10 +232,12 @@ def intitules_commande_sylob(conn: Any, pos: list[Any]) -> dict[str, str]:
     pas par une source a part. Sylob est la source de verite ; la colonne
     op_client_appro de l'IMPORT n'est qu'une recopie manuelle, gardee en repli.
 
-    Junior Tip : la lecture se fait dans un SAVEPOINT. Sans droit SELECT sur la
-    copie MyReport (droit perdu a chaque recreation de table par l'ETL MyReport),
-    la requete echoue ; le savepoint annule cette seule requete et laisse la
-    transaction utilisable pour le reste de l'endpoint.
+    Junior Tip : la lecture se fait dans un SAVEPOINT. Si la copie MyReport est
+    illisible (table en cours de recreation par l'ETL, droit retire), la requete
+    echoue ; le savepoint annule cette seule requete et laisse la transaction
+    utilisable pour le reste de l'endpoint. Le droit SELECT de l'API tient depuis
+    le 06/10 grace au default privilege du proprietaire MyReport (verifie le 07/10
+    apres recreation nocturne).
 
     Returns:
         {po_normalise: intitule}, vide si la copie MyReport est illisible.
@@ -265,19 +267,8 @@ def intitules_commande_sylob(conn: Any, pos: list[Any]) -> dict[str, str]:
                 sql, {"pos": cles, "max_ecart": MAX_ECART_JOURS_SOCIETE}).fetchall()
         return {po: intitule for po, intitule in rows}
     except Exception as exc:
-        logger.warning("[ATTENTION] Intitules Sylob illisibles dans %s (%s), essai du pont "
-                       "achat.fn_myreport_intitules_commande", table, str(exc).splitlines()[0])
-    # Pont SECURITY DEFINER (sql/20261005_pont_lecture_myreport_fuseau.sql), en
-    # attendant le default privilege du proprietaire MyReport.
-    try:
-        with conn.begin_nested():
-            rows = conn.execute(
-                text("SELECT po, intitule FROM achat.fn_myreport_intitules_commande(:pos, :max_ecart)"),
-                {"pos": cles, "max_ecart": MAX_ECART_JOURS_SOCIETE}).fetchall()
-        return {po: intitule for po, intitule in rows}
-    except Exception as exc:
-        logger.warning("[ATTENTION] Pont MyReport indisponible, repli sur l'IMPORT (%s)",
-                       str(exc).splitlines()[0])
+        logger.warning("[ATTENTION] Intitules Sylob illisibles dans %s, repli sur l'IMPORT (%s)",
+                       table, str(exc).splitlines()[0])
         return {}
 
 
@@ -1110,24 +1101,11 @@ def search_article(q: str = "", limit: int = 10):
                 if r.get("code_article"):
                     results[r["code_article"]] = r
         except Exception as e:
-            # Verifie le 28/07 puis le 05/10 : le role applicatif n'a PAS le droit
-            # SELECT sur public.articles3, perdu a chaque recreation de la table
-            # par l'ETL MyReport. Logue en WARNING pour que le manque se voie.
-            logger.warning("[ATTENTION] public.articles3 inaccessible, essai du pont "
-                           "achat.fn_myreport_recherche_article (%s)", str(e).splitlines()[0])
-            # 1 bis. Pont SECURITY DEFINER (sql/20261005_pont_lecture_myreport_fuseau.sql),
-            # tant que le default privilege du proprietaire MyReport n'est pas pose.
-            try:
-                with conn.begin_nested():
-                    rows = rows_to_dicts(conn.execute(
-                        text("SELECT * FROM achat.fn_myreport_recherche_article(:q, :lim)"),
-                        {"q": q, "lim": lim}))
-                for r in rows:
-                    if r.get("code_article"):
-                        results[r["code_article"]] = r
-            except Exception as e_pont:
-                logger.warning("[ATTENTION] Pont MyReport indisponible, repli sur achat.produit (%s)",
-                               str(e_pont).splitlines()[0])
+            # Le droit SELECT tient depuis le 06/10 (default privilege du
+            # proprietaire MyReport, verifie le 07/10 apres recreation nocturne).
+            # Un echec ici signale une regression : logue en WARNING pour qu'il se voie.
+            logger.warning("[ATTENTION] public.articles3 inaccessible, repli sur achat.produit (%s)",
+                           str(e).splitlines()[0])
 
         # 2. Complément achat.produit
         try:
