@@ -525,13 +525,15 @@ def transform_ot_transport(
         logger.info("[INFO] Source = fichier transitaire (%d lignes)", len(df_maritime))
         from src.scripts.etl.transform_maritime import transform_rows
         rows = df_maritime.fillna("").astype(str).values.tolist()
-        records = transform_rows(rows, campaign_year=2026, source_fichier="2026 SUIVI MARITIME.xlsx")
+        records = transform_rows(rows, campaign_year=2026, source_fichier="2026 SUIVI MARITIME.xlsx",
+                                 date_transmission=df_maritime.attrs.get("date_transmission"))
         if records:
             result = pd.DataFrame(records)
         else:
             result = pd.DataFrame(columns=[
                 "n_conteneur", "etd_reel", "eta", "date_livraison", "transport",
-                "transitaire", "n_bl", "n_facture", "lieu_livraison", "source_fichier"
+                "transitaire", "n_bl", "n_facture", "lieu_livraison", "source_fichier",
+                "date_transmission",
             ])
     else:
         # Mode degrade : bootstrap depuis les commandes (valeurs en cache).

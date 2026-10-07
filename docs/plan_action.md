@@ -562,8 +562,8 @@ copies MyReport de `public`.
 | ETA des pièces jointes Gmail | ✅ Le conteneur MSMU3526021 faisait un aller-retour d'ETA chaque matin (9 événements identiques depuis le 10/08) : un PDF du 20/05, relu à chaque passage, prenait l'heure du chargement comme date de transmission | PR #20. Purges appliquées (constaté le 06/10) : 8 doublons et la ligne `test_script` supprimés, archivés dans `achat._archive_transport_evenement_20261005` et `_test_20261005` |
 | Montants de facture | ❌ `achat.facture_fournisseur` est vide : l'étape n'a jamais tourné (flag `facture_auto.flag`) | **Activation décidée par Antho le 06/10.** Prompt `docs/20261006_FUSEAU_Prompt_SessionPosteMarlene_v3.md`, étape 3 : contrôles (clé Gemini, dépendance, table), dry-run d'octobre, rattrapage réel juillet à octobre, puis création du flag. Le flag ne traite que le mois courant, d'où le rattrapage |
 | NCR par mail | ✅ Par conception (enquête du 06/10). Le module regex `load_email_ncr` est écarté depuis le 28/07 (`dc66a7a`, « NE PAS ORDONNANCER »), pour ne pas capter deux fois. Les non-conformités arrivent par la tâche Cowork dans `achat.qualite_decision` : 367 décisions du 22/07 au 06/10, dont 91 non conformes sur 25 PO | 🔧 06/10, branche `feat/non-conformites-commande` : badge « NC » sur la ligne de Suivi commandes (dernière décision mail du stade non conforme, refermée par un conforme postérieur) et fiches Sylob de réception et transporteur (`public.fiche_non_conformite2`) sur la ligne et la fiche Article. 50 lignes (16 PO) avec une NC mail ouverte, 7 avec une fiche Sylob : les NC import se traitent surtout par mail |
-| Réceptions Sylob | ❌ `commande_enrichissement` figée au 28/07, car elle lisait `receptions_detaillees2`, figée au 04/08 | Branche `fix/receptions-sylob-grain-article` : lecture de `vue_reception_detail` des 3 sociétés dans Sylob, repli sur `public.receptions_detaillees4` (même volume que Sylob), grain article. Dry-run : 654 lignes rapprochées sur 964. ✅ `sql/20261005_reception_grain_article.sql` appliqué (constaté le 06/10) : les 98 lignes au grain PO n'ont plus de date, archivées ; 654 lignes au grain article rafraîchies par l'ETL du poste le 06/10 à 06:13 |
-| Droit de l'API sur MyReport | 🔧 05/10 : `dtpf_fuseau_api_prod` n'avait aucun SELECT sur les tables MyReport de `public`. Palliatif le jour même : pont `achat.fn_myreport_*` (SECURITY DEFINER, compte nominal d'Antho). 06/10 : droit posé par Antho dans pgAdmin sous `platform_team`, en `SET ROLE dtpf_sylob_myreport_prod` (membership SET accordée puis retirée dans la même transaction) : `GRANT SELECT` sur les tables existantes et default privilege sur `public`. Les 3 tables répondent `true` | ✅ 07/10 : droit vérifié après recréation nocturne (OID changés sur `articles3`, `commandes6`, `receptions_detaillees4`, SELECT `true` sur les trois). Pont retiré de `app/main.py`. Reste : `DROP` des deux fonctions `achat.fn_myreport_*` sur accord écrit. Partie schéma `myreport` non posée (schéma vide, USAGE chez `platform_team`) : à traiter à la bascule MyReport |
+| Réceptions Sylob | ❌ `commande_enrichissement` figée au 28/07, car elle lisait `receptions_detaillees2`, figée au 04/08 | Branche `fix/receptions-sylob-grain-article` : lecture de `vue_reception_detail` des 3 sociétés dans Sylob, repli sur `public.receptions_detaillees4` (même volume que Sylob), grain article. Dry-run : 654 lignes rapprochées sur 964. ✅ `sql/20261005_reception_grain_article.sql` appliqué (constaté le 06/10) : les 98 lignes au grain PO n'ont plus de date, archivées ; 654 lignes au grain article rafraîchies par l'ETL du poste le 06/10 à 06:13. 07/10 : relancé depuis le poste d'Antho, 654 lignes rapprochées, 0 écriture (table déjà à jour, dernière réception Sylob au 28/09) |
+| Droit de l'API sur MyReport | 🔧 05/10 : `dtpf_fuseau_api_prod` n'avait aucun SELECT sur les tables MyReport de `public`. Palliatif le jour même : pont `achat.fn_myreport_*` (SECURITY DEFINER, compte nominal d'Antho). 06/10 : droit posé par Antho dans pgAdmin sous `platform_team`, en `SET ROLE dtpf_sylob_myreport_prod` (membership SET accordée puis retirée dans la même transaction) : `GRANT SELECT` sur les tables existantes et default privilege sur `public`. Les 3 tables répondent `true` | ✅ 07/10 : droit vérifié après recréation nocturne (OID changés sur `articles3`, `commandes6`, `receptions_detaillees4`, SELECT `true` sur les trois). Pont retiré de `app/main.py` (PR #34). `DROP` des deux fonctions accordé le 07/10 : migration `sql/20261007_drop_pont_lecture_myreport.sql` prête, à exécuter par Antho (compte propriétaire). Partie schéma `myreport` non posée (schéma vide, USAGE chez `platform_team`) : à traiter à la bascule MyReport |
 | Saisies depuis Azure | ⚠️ Dernière annotation le 28/07 : aucune saisie depuis la bascule | À tester avec Marlène |
 | Garde-fou OAuth (§4.5) | 🔧 Branche `fix/garde-fou-scope-oauth`. Second défaut trouvé au passage : le preflight ne vérifiait que 2 scopes sur 3 | Reconsentement sur le poste (prompt, étape 3) |
 | Auto-pull (§4.5) | 🔧 Branche `fix/auto-pull-alerte` : un fichier non suivi ne bloque plus le pull ; un pull bloqué termine la tâche en `0x2` et dépose `deploy\logs\PULL_BLOQUE.txt` | Vérifier au premier run |
@@ -588,16 +588,46 @@ copies MyReport de `public`.
 - [ ] Pouvoir ajouter et modifier des lignes depuis FUSEAU.
 - [ ] Garder les deux tableaux du gsheet de Clarisse : artworks en attente, et archive pour rechercher l'existant.
 - [ ] Process : Clarisse passe une ligne en « validé », Maxence l'archive à la main une fois traitée. Voir pour automatiser cette suite.
-- [ ] Supprimer les deux graphiques de l'onglet.
+- [x] Supprimer les deux graphiques de l'onglet (07/10).
 - [ ] Ajouter Clarisse comme utilisatrice de FUSEAU (accès Entra à l'App Service).
 - [ ] À prévoir, chantier plus gros : contrôle de l'artwork fournisseur contre celui de Clarisse (textes, codes-barres EAN, SPCB, PCB, n° de référence, désignation). Choix à faire entre OCR et vision par ordinateur.
 
 ### À planifier (décision d'Antho du 06/10)
 
-- [ ] Tester une saisie depuis Azure avec Marlène (aucune depuis la bascule du 22/09).
+- [ ] Tester une saisie depuis Azure avec Marlène (aucune depuis la bascule du 22/09). À planifier après son compte rendu de la session poste du 07/10.
 - [ ] Faire valider en démo les références équivalentes de la Fiche Achat (PR #24).
 - [ ] Sortir l'ETL et le pipeline Gmail de la session Windows de Marlène (§3.1). Pas d'urgence ; rien côté réseau tant que Samuel est absent.
-- [ ] Écart de code relevé le 06/10 (lecture du code, non vérifié en base) : le chargement du fichier maritime (`load_ot_transport`, `src/scripts/etl/load.py`) écrase l'ETA sans tracer l'événement dans `transport_evenement` ni appliquer « la date transmise la plus récente gagne ». Les pastilles de changement d'ETA ne voient donc que les PJ Gmail. À traiter avec la bascule sur le gsheet.
+- [x] Corrigé le 07/10 : le suivi maritime passe par la même règle que les PJ Gmail (`_resolve_tracked`), daté par l'heure de lecture du gsheet ou la date de modification du fichier serveur ; le bootstrap IMPORT ne remplace plus une date déjà transmise. Constat d'origine, 06/10 : le chargement du fichier maritime (`load_ot_transport`, `src/scripts/etl/load.py`) écrase l'ETA sans tracer l'événement dans `transport_evenement` ni appliquer « la date transmise la plus récente gagne ». Les pastilles de changement d'ETA ne voient donc que les PJ Gmail. À traiter avec la bascule sur le gsheet.
+
+### Refonte Artwork
+
+Cadrage : `docs/20261007_FUSEAU_Cadrage_RefonteArtwork_v1.md`. Option recommandée :
+FUSEAU devient la source des artworks (reprise unique du gsheet, puis saisie dans
+FUSEAU), nouvelle table au grain artwork. **À valider avec Clarisse et Maxence
+avant code** (5 questions au §5 du cadrage). Accès de Clarisse : IT.
+
+### Qualité des OT (`achat.ot_transport`), constat du 07/10
+
+- `n_bl` pollué par les PJ Gmail : sur 64 conteneurs chargés par `parse_bl`, une
+  majorité porte autre chose qu'un BL (`PO00161201`, `EWAREBC`, `ATTACH`, `DHL`…).
+  Le gsheet, lui, range ses BL dans `ot_transport_bl` (114 BL, 2 de forme
+  douteuse). L'upsert Gmail fait `COALESCE`, donc une valeur fausse ne part plus.
+- `ot_transport_bl.fournisseur` vide sur 114 lignes sur 114 : le BL n'est pas
+  relié à son fournisseur au chargement.
+- Proposition : (1) valider la forme du BL au chargement Gmail (préfixe
+  transitaire `SZSE` + chiffres, ou format SCAC), sinon NULL et log ;
+  (2) faire du gsheet la source de `n_bl`, Gmail ne complétant qu'un conteneur
+  absent du gsheet ; (3) purge des `n_bl` invalides avec archive, sur accord ;
+  (4) relier BL et fournisseur dans `_load_ot_transport_bl`. Prévenir le projet
+  `fiche_de_controle`, qui lit ces deux tables.
+
+### Sondes de fraîcheur et de droits (07/10)
+
+`/api/sante/sources` (authentifié) : date de dernière alimentation de 11 sources
+comparée à leur rythme (48 h nocturne, 7 j pour les mails), droits SELECT de
+l'API sur les tables MyReport lues. Indicateur discret dans l'en-tête de
+l'interface, détail en infobulle. Contrôle des droits aussi au démarrage de
+l'API, logué en ERROR s'il manque. Mesure du 07/10 : 11 sources sur 11 à jour.
 
 ### BUG-007, lots 2 et 3
 
@@ -960,3 +990,4 @@ dans `05_ARCHIVES/Versions_Anterieures/`.
 | 05/10 (suite) | Audit des données. Réceptions lues dans Sylob, au grain article. ETA Gmail datée par le mail et non plus par le chargement. Promo/Opé alimenté par l'intitulé de commande Sylob. Garde-fou OAuth, alerte d'auto-pull, références équivalentes sur la Fiche Achat. Le droit de l'API sur MyReport est à poser sous le compte propriétaire. Prompt préparé pour le poste de Marlène |
 | 06/10 | Migrations du 05/10 constatées appliquées en base : purges `transport_evenement`, réceptions au grain article, pont de lecture MyReport. Droit durable de l'API sur MyReport posé sous `platform_team` (le compte propriétaire n'était pas nécessaire) ; preuve après recréation nocturne attendue le 07/10. Prompt de la deuxième session du poste de Marlène : `docs/20261005_FUSEAU_Prompt_SessionPosteMarlene_v2.md` |
 | 06/10 (suite) | PR #29 : bulles de source alignées sur les données réellement lues (Conteneurs et Prévisionnel annonçaient le gsheet maritime, alors que l'ETL lit encore la copie serveur sans BL). PR #30 : le repli du suivi maritime sur le fichier serveur plantait (`NameError`), corrigé avant d'activer le gsheet. Activation des factures décidée ; prompt v3 du poste pour le 07/10 (gsheet maritime et factures). NCR par mail : faux problème, captées par Cowork dans `qualite_decision`. Quatre documents réalignés sur le code (§4.2). Fichiers SQL du 04/08 rangés dans MyReport. Démo du 06/10 : retours Artwork au §3.10 |
+| 07/10 | Droit MyReport vérifié après recréation nocturne : pont retiré (PR #34), DROP des fonctions prêt. Réceptions Sylob relancées : déjà à jour (l'annonce d'une table figée au 28/07 était une erreur de lecture du plan). ETA du suivi maritime tracée et arbitrée comme les PJ Gmail. Sondes de fraîcheur et de droits. Graphiques Artwork retirés, cadrage de la refonte. Diagnostic de la qualité des OT |

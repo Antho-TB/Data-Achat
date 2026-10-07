@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 
 from app.database import check_connection, get_engine
+from app.sondes import journaliser_droits, mesurer_sources, verifier_droits_myreport
 from src.utils.config_manager import Config
 
 # -- Logging (ASCII pur : la console Windows cp850 corrompt les tirets cadratins) --
@@ -72,6 +73,13 @@ async def lifespan(app: FastAPI):
         logger.error("[ECHEC] Impossible de joindre PostgreSQL au demarrage.")
     else:
         logger.info("[SUCCES] API ERP Achat prete -- schema : %s", SCHEMA)
+        # Le droit SELECT sur MyReport s'est perdu chaque nuit jusqu'au 06/10 sans
+        # autre symptome qu'un repli silencieux : on le verifie a chaque demarrage.
+        try:
+            with get_engine().connect() as conn:
+                journaliser_droits(verifier_droits_myreport(conn))
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[ECHEC] Verification des droits MyReport impossible : %s", exc)
     if Config.AUTH_MODE == "entra":
         logger.info(
             "[INFO] Authentification deleguee a la plateforme Entra ID "
@@ -1092,7 +1100,7 @@ def search_article(q: str = "", limit: int = 10):
                 "SELECT code_article, "
                 "COALESCE(MAX(designation) FILTER (WHERE libelle_langue ILIKE 'fran%'), MAX(designation)) AS designation, "
                 "MAX(code_gtin_13) AS ean13, MAX(identifiant_edi) AS edi "
-                "FROM public.articles3 WHERE " + where + " "
+                f'FROM "{Config.MYREPORT_SCHEMA}".articles3 WHERE ' + where + " "
                 "GROUP BY code_article ORDER BY designation LIMIT :lim"
             )
             with conn.begin_nested():
@@ -1545,6 +1553,25 @@ def health():
         # mode entra, l'identite vient de la plateforme et la cle est ignoree.
         "auth_mode": Config.AUTH_MODE,
     }
+
+
+@app.get("/api/sante/sources")
+def sante_sources():
+    """
+    Fraicheur de chaque source et droits de lecture MyReport, derriere
+    l'authentification (au contraire de /api/health, publique). Le bandeau de
+    l'interface s'en sert pour signaler une source qui ne s'alimente plus.
+    """
+    try:
+        with get_engine().connect() as conn:
+            sources = mesurer_sources(conn)
+            droits = verifier_droits_myreport(conn)
+    except Exception as e:
+        raise internal_error(e)
+    alertes = [f"{s['source']} : {s['statut'].replace('_', ' ')}"
+               for s in sources if s["statut"] != "ok"]
+    alertes += [f"Droit de lecture manquant sur {t}" for t, ok in droits.items() if not ok]
+    return {"sources": sources, "droits_myreport": droits, "alertes": alertes}
 
 
 def _derniere_maj_commande() -> Optional[str]:

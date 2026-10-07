@@ -15,6 +15,7 @@ Les trois sources couvrent le catalogue produit (Matrice), le suivi commandes
 """
 import logging
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -186,7 +187,12 @@ def extract_suivi_maritime(file_path: str | Path | None) -> pd.DataFrame | None:
         try:
             lignes = _read_rows_gsheet(GSHEET_MARITIME_ID)
             logger.info("[SUCCES] SUIVI MARITIME lu depuis le gsheet : %d ligne(s)", len(lignes))
-            return pd.DataFrame(lignes)
+            df = pd.DataFrame(lignes)
+            # Le gsheet est vivant : son etat au moment de la lecture est la
+            # transmission la plus recente du transitaire. Sert a la preseance
+            # chronologique des ETA dans load_ot_transport.
+            df.attrs["date_transmission"] = datetime.now(timezone.utc).isoformat()
+            return df
         except Exception as exc:
             logger.warning("[ATTENTION] Gsheet maritime illisible (%s) -- repli sur le fichier serveur", exc)
             file_path = Config.SUIVI_MARITIME_PATH_FICHIER
@@ -200,5 +206,9 @@ def extract_suivi_maritime(file_path: str | Path | None) -> pd.DataFrame | None:
         return None
     logger.info("[INFO] Extraction SUIVI MARITIME : %s", path.name)
     df = pd.read_excel(path, sheet_name="CONTENEUR PLEIN")
+    # Copie serveur : datee par sa derniere modification, pas par l'heure de
+    # lecture, sinon une copie ancienne ecraserait une ETA plus recente.
+    df.attrs["date_transmission"] = datetime.fromtimestamp(
+        path.stat().st_mtime, tz=timezone.utc).isoformat()
     logger.info("[SUCCÈS] SUIVI MARITIME extrait : %d lignes", len(df))
     return df
