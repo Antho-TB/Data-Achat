@@ -99,12 +99,14 @@ SQL_RECEPTIONS_SYLOB = """
     GROUP BY 1, 2, 3
 """
 
-SQL_RECEPTIONS_REPLI = """
+# Schema en configuration : MyReport va basculer de "public" vers "myreport".
+# Une lecture codee en dur continuerait sur l'ancienne table, figee, sans erreur.
+SQL_RECEPTIONS_REPLI = f"""
     SELECT LTRIM(TRIM(commande_numero_de_la_commande), '0') AS po,
            TRIM(article_code_article)                       AS code_article,
            commande_creee_le                                AS creee_le,
            MAX(ligne_receptionnee_le)                       AS date_reception
-    FROM public.receptions_detaillees4
+    FROM "{Config.MYREPORT_SCHEMA}".receptions_detaillees4
     WHERE ligne_receptionnee_le IS NOT NULL
       AND ligne_receptionnee_le <= CURRENT_DATE
       AND article_code_article IS NOT NULL
@@ -112,9 +114,9 @@ SQL_RECEPTIONS_REPLI = """
     GROUP BY 1, 2, 3
 """
 
-SQL_FRAICHEUR_REPLI = """
+SQL_FRAICHEUR_REPLI = f"""
     SELECT CURRENT_DATE - MAX(ligne_date_modification_systeme)::date
-    FROM public.receptions_detaillees4
+    FROM "{Config.MYREPORT_SCHEMA}".receptions_detaillees4
 """
 
 SQL_UPSERT = f"""

@@ -18,6 +18,7 @@ import logging
 
 import pandas as pd
 from sqlalchemy import Engine, text
+from sqlalchemy.engine import Connection
 
 logger = logging.getLogger(__name__)
 
@@ -416,6 +417,62 @@ def _load_ot_transport_bl(df: pd.DataFrame, engine: Engine) -> int:
     return len(couples)
 
 
+def _valeur_ou_none(valeur: object) -> object:
+    """NaN / NaT pandas -> None, pour que l'absence de valeur soit vue comme telle."""
+    try:
+        return None if pd.isna(valeur) else valeur
+    except (TypeError, ValueError):
+        return valeur
+
+
+def _appliquer_preseance_eta(conn: Connection, df: pd.DataFrame) -> tuple[pd.DataFrame, list[dict]]:
+    """
+    Applique aux ETA et dates de livraison du suivi maritime la meme regle que
+    les pieces jointes Gmail : la valeur la plus recemment TRANSMISE gagne, et
+    chaque changement est trace dans achat.transport_evenement.
+
+    Pourquoi : jusqu'au 07/10/2026 ce chargement ecrasait l'ETA sans rien tracer.
+    Les pastilles de changement d'ETA (v_ot_transport_suivi) ne voyaient donc que
+    les PJ Gmail, et un fichier relu chaque nuit pouvait effacer une ETA plus
+    recente arrivee par mail.
+
+    Junior Tip : on reutilise _resolve_tracked de load_ot_gmail plutot que de
+    recopier la regle. Deux implementations de la meme regle finissent toujours
+    par diverger, et ici elles arbitrent la meme colonne.
+
+    Returns:
+        (DataFrame avec eta, date_livraison et *_maj_le arbitres ; evenements a inserer).
+    """
+    from src.scripts.gmail.load_ot_gmail import _resolve_tracked
+
+    evenements: list[dict] = []
+    arbitres: dict[str, list[object]] = {
+        "eta": [], "date_livraison": [], "eta_maj_le": [], "date_livraison_maj_le": []}
+    for rec in df.to_dict("records"):
+        params = {
+            "n_conteneur": rec["n_conteneur"],
+            "source_fichier": rec.get("source_fichier") or "suivi_maritime",
+            # Absente en mode bootstrap (IMPORT) : la valeur complete un champ
+            # vide mais n'ecrase jamais une date deja transmise.
+            "date_transmission": _valeur_ou_none(rec.get("date_transmission")),
+            "eta": _valeur_ou_none(rec.get("eta")),
+            "date_livraison": _valeur_ou_none(rec.get("date_livraison")),
+        }
+        evenements.extend(_resolve_tracked(conn, params))
+        for champ, valeurs in arbitres.items():
+            valeurs.append(params.get(champ))
+
+    df = df.copy()
+    df["eta"] = pd.Series(arbitres["eta"], index=df.index, dtype="object")
+    df["date_livraison"] = pd.to_datetime(
+        pd.Series(arbitres["date_livraison"], index=df.index), errors="coerce")
+    for champ in ("eta_maj_le", "date_livraison_maj_le"):
+        # Stockage en UTC naif, comme load_ot_gmail (colonnes "without time zone").
+        df[champ] = pd.to_datetime(pd.Series(arbitres[champ], index=df.index, dtype="object"),
+                                   utc=True, errors="coerce").dt.tz_localize(None)
+    return df, evenements
+
+
 def load_ot_transport(df: pd.DataFrame, engine: Engine) -> int:
     """
     UPSERT de achat.ot_transport par n_conteneur (table temporaire + ON CONFLICT).
@@ -459,28 +516,36 @@ def load_ot_transport(df: pd.DataFrame, engine: Engine) -> int:
     if "bls" in df.columns:
         _load_ot_transport_bl(df, engine)
 
-    ignorees = [c for c in df.columns if c not in colonnes_table]
+    # date_transmission n'a pas de colonne mais sert a l'arbitrage des ETA :
+    # le filtrage se fait apres, au moment d'ecrire.
+    ignorees = [c for c in df.columns if c not in colonnes_table and c != "date_transmission"]
     if ignorees:
         logger.info("[INFO] Colonnes hors table ot_transport, ignorees : %s", ", ".join(ignorees))
-        df = df[[c for c in df.columns if c in colonnes_table]]
-
-    cols = [c for c in df.columns if c != "n_conteneur"]
-    set_clause = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols)
-    set_clause += ", charge_le = now()"
+        df = df[[c for c in df.columns if c in colonnes_table or c == "date_transmission"]]
 
     tmp_table = "achat._tmp_ot_transport"
     with engine.begin() as conn:
-        df.to_sql("_tmp_ot_transport", conn, schema="achat",
-                  if_exists="replace", index=False, method="multi")
+        # Arbitrage dans la meme transaction que l'upsert : la valeur courante lue
+        # pour decider est celle qu'on remplace.
+        df, evenements = _appliquer_preseance_eta(conn, df)
+        cols = [c for c in df.columns if c != "n_conteneur" and c in colonnes_table]
+        set_clause = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols)
+        set_clause += ", charge_le = now()"
+        df[["n_conteneur"] + cols].to_sql("_tmp_ot_transport", conn, schema="achat",
+                                          if_exists="replace", index=False, method="multi")
         conn.execute(text(f"""
             INSERT INTO achat.ot_transport ({', '.join(['n_conteneur'] + cols)})
             SELECT {', '.join(['n_conteneur'] + cols)} FROM {tmp_table}
             ON CONFLICT (n_conteneur) DO UPDATE SET {set_clause};
         """))
         conn.execute(text(f"DROP TABLE IF EXISTS {tmp_table};"))
+        from src.scripts.gmail.load_ot_gmail import EVENT_SQL
+        for ev in evenements:
+            conn.execute(text(EVENT_SQL), ev)
 
     count = len(df)
-    logger.info("[SUCCES] ot_transport charge : %d conteneur(s).", count)
+    logger.info("[SUCCES] ot_transport charge : %d conteneur(s), %d changement(s) de date trace(s).",
+                count, len(evenements))
     return count
 
 

@@ -656,6 +656,8 @@ button { cursor: pointer; }
   <div class="header-db">
     <span class="dot" id="db-dot"></span>
     <span id="db-status">Connexion…</span>
+    <!-- Sources qui ne s'alimentent plus (/api/sante/sources), detail en infobulle. -->
+    <span id="sources-alerte" style="display:none;margin-left:8px;cursor:help;color:var(--red,#E2001A);font-weight:600;"></span>
   </div>
 </div>
 
@@ -775,16 +777,6 @@ button { cursor: pointer; }
       <span class="badge badge-yellow" title="Source : Google Sheet 'Suivi des artworks-import' (Clarisse) via API Drive">GSheet Clarisse (Drive)</span>
     </div>
     <div class="artwork-stats" id="artwork-stats"></div>
-    <div id="artwork-charts" style="display:none;gap:16px;margin-bottom:14px;flex-wrap:wrap;">
-      <div style="flex:1;min-width:220px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:10px;">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:6px;" title="Priorité déclarée dans le gsheet Clarisse (1 = urgent, 5 = faible), onglet 'Artworks en attente' uniquement.">Priorité — articles en attente (nb)</div>
-        <div style="height:170px;"><canvas id="chart-art-priorite"></canvas></div>
-      </div>
-      <div style="flex:1;min-width:220px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;padding:10px;">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:6px;" title="Qui a validé la dernière version (colonne Valideur du gsheet).">Répartition par valideur (nb)</div>
-        <div style="height:170px;"><canvas id="chart-art-valideur"></canvas></div>
-      </div>
-    </div>
     <div class="toolbar">
       <input id="f-art-article" type="text" placeholder="Code article…" oninput="filterArtwork()">
       <input id="f-art-designation" type="text" placeholder="Désignation…" oninput="filterArtwork()">
@@ -1980,9 +1972,28 @@ async function checkHealth() {
     dot.className = 'dot ' + (h.db === 'connected' ? 'ok' : 'err');
     lbl.textContent = h.db === 'connected' ? 'DWH connecté' : 'DWH hors ligne';
     afficherFraicheur(h.donnees_maj);
+    if (h.db === 'connected') afficherAlertesSources();
   } catch {
     document.getElementById('db-dot').className = 'dot err';
     document.getElementById('db-status').textContent = 'API hors ligne';
+  }
+}
+
+// Sources figees ou droits MyReport perdus : indicateur discret dans l'en-tete
+// plutot qu'un bandeau, car une source secondaire en retard ne doit pas
+// bloquer la lecture du reste. Le bandeau rouge reste reserve aux commandes.
+async function afficherAlertesSources() {
+  const el = document.getElementById('sources-alerte');
+  if (!el) return;
+  try {
+    const r = await apiFetch('/api/sante/sources');
+    const alertes = r.alertes || [];
+    if (!alertes.length) { el.style.display = 'none'; return; }
+    el.textContent = `⚠ ${alertes.length} source${alertes.length > 1 ? 's' : ''} à vérifier`;
+    el.title = alertes.join('\n') + '\n\nPrévenir Antho.';
+    el.style.display = 'inline';
+  } catch {
+    el.style.display = 'none';
   }
 }
 
@@ -3310,7 +3321,6 @@ async function loadArtwork() {
       return;
     }
     renderArtworkStats(_artwork);
-    renderArtworkCharts(_artwork);
     wireArtworkValideurSelect(_artwork);
     renderArtwork(_artwork);
   } catch (e) {
@@ -3342,34 +3352,7 @@ function filterArtwork() {
   renderArtwork(filtered);
 }
 
-let chartArtPriorite = null, chartArtValideur = null;
-function renderArtworkCharts(rows) {
-  const box = document.getElementById('artwork-charts');
-  if (!rows.length) { box.style.display = 'none'; return; }
-  box.style.display = 'flex';
-
-  // Priorite (1->5) des articles EN ATTENTE uniquement (seule population ou
-  // la priorite a un sens, cf. transform_artwork.py).
-  const enAttente = rows.filter(r => r.statut_artwork === 'En attente');
-  const prioCounts = [1, 2, 3, 4, 5].map(p => enAttente.filter(r => r.priorite === p).length);
-  if (chartArtPriorite) chartArtPriorite.destroy();
-  chartArtPriorite = new Chart(document.getElementById('chart-art-priorite'), {
-    type: 'bar',
-    data: { labels: ['1 (urgent)', '2', '3', '4', '5 (faible)'], datasets: [{ data: prioCounts, backgroundColor: TB.red, borderRadius: 3 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
-      scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
-  });
-
-  // Repartition par valideur (Clarisse / Carrefour / ...), toutes lignes.
-  const valideurs = [...new Set(rows.map(r => r.valideur).filter(Boolean))];
-  const valCounts = valideurs.map(v => rows.filter(r => r.valideur === v).length);
-  if (chartArtValideur) chartArtValideur.destroy();
-  chartArtValideur = new Chart(document.getElementById('chart-art-valideur'), {
-    type: 'doughnut',
-    data: { labels: valideurs, datasets: [{ data: valCounts, backgroundColor: [TB.navy, TB.orange, TB.red, '#999'], borderWidth: 2 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } }
-  });
-}
+// Graphiques priorite / valideur retires a la demo du 06/10 (retour metier).
 
 // Decision 22/07 : statut = UNIQUEMENT le gsheet Clarisse (2 etats, plus de
 // "A traiter/Envoye/Attente Carrefour/Archive" herites de l'Excel IMPORT).
