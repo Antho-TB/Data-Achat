@@ -2699,7 +2699,7 @@ function renderFournisseurs(rows) {
         <th>PO actifs</th>
         <th>Articles</th>
         <th title="Chiffre d'Affaires facturé sur les 3 dernières années">CA 3 ans ($)</th>
-        <th title="Nombre d'ARTICLES actuellement en retard opérationnel : ETD confirmé dépassé, pas livré, pas annulé (à relancer). Pas un cumul historique.">Retards (nb articles)</th>
+        <th title="Nombre d'ARTICLES actuellement en retard : retard de départ (ETD dépassé, pas encore parti de Chine) ou retard de livraison (ETA dépassée, pas livré). Une marchandise en mer dans les temps n'est pas en retard. Pas un cumul historique.">Retards (nb articles)</th>
         <th title="Retard d'expédition figé : ETD réel - ETD confirmé, plancher à 0 (une avance ne compte pas en négatif). Moyenne calculée sur les expéditions des 12 derniers mois glissants, une fois chaque retard figé au départ (pas recalculé contre la date du jour).">Retard moy. (j)</th>
         <th>Dernière activité</th>
         <th>Détail</th>
@@ -2712,7 +2712,7 @@ function renderFournisseurs(rows) {
           <td style="text-align:right">${r.ca_3ans != null ? Number(r.ca_3ans).toLocaleString('fr-FR') + ' $' : '-'}</td>
           <td style="text-align:center">
             ${r.nb_retards > 0
-              ? `<span class="badge badge-red">${r.nb_retards} art.</span>`
+              ? `<span class="badge badge-red" title="Retard de départ : ${r.nb_retards_depart ?? 0} article(s) · Retard de livraison : ${r.nb_retards_livraison ?? 0} article(s)">${r.nb_retards} art.</span>`
               : `<span class="badge badge-green">0 art.</span>`}
           </td>
           <td style="text-align:center">${r.retard_moyen_jours != null ? Math.round(r.retard_moyen_jours) + 'j' : '—'}</td>
