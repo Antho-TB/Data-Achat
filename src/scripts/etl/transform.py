@@ -14,6 +14,7 @@ transform_commande) constituent la couche "T" du pattern ETL et ne doivent
 jamais effectuer d'I/O (lecture fichier ou écriture DB).
 """
 import logging
+import numbers
 import re
 from typing import Any, Optional
 
@@ -24,6 +25,16 @@ logger = logging.getLogger(__name__)
 # Regex pour extraire une date au format JJ/MM/AAAA depuis un champ texte libre
 # Utilisé pour parser "Livrée le 18/09/2025" et en extraire la date
 _DATE_PATTERN = re.compile(r"(\d{2})/(\d{2})/(\d{4})")
+
+# Numeros de serie Excel : jour 0 = 30/12/1899 (heritage du bug Lotus 1-2-3
+# sur 1900 bissextile). Plage retenue : 01/01/2000 (36526) a 31/12/2099
+# (73050). Hors de cette plage, un nombre dans une colonne date n'en est pas une.
+_ORIGINE_EXCEL = pd.Timestamp("1899-12-30")
+_SERIE_EXCEL_MIN = 36526
+_SERIE_EXCEL_MAX = 73050
+
+# Saisies legitimes sans date (commande non payee) : ignorees sans alerte.
+_TEXTES_SANS_DATE = frozenset({"non", "-", "/", "na", "n/a"})
 
 # Ecart au-dela duquel un ETD anterieur a sa propre commande est considere
 # comme une faute de frappe sur l'annee, et non comme une date legitime.
@@ -100,11 +111,42 @@ def _to_date_or_none(val: object) -> Optional[str]:
     ou NaT (Not a Time). pd.Timestamp() unifie tous ces formats, et pd.isna()
     détecte les valeurs manquantes (NaN, NaT, None) de façon robuste.
 
+    Deux pieges du fichier IMPORT, constates le 08/10 sur la colonne "Payé ?" :
+
+    - un nombre (date tapee dans une cellule au format Standard) : Excel le
+      stocke en numero de serie, 46282 = 17/09/2026. pd.Timestamp(46282) le lit
+      en NANOSECONDES depuis 1970 et rendait silencieusement 1970-01-01. On le
+      convertit depuis l'origine Excel (30/12/1899) s'il tombe entre 2000 et
+      2099, sinon on l'ecarte.
+    - un texte JJ/MM/AAAA (cellule au format Texte) : pd.Timestamp lit
+      "05/09/2026" comme le 9 mai. On l'analyse explicitement en jour/mois.
+
+    "Non" est la saisie normale d'une commande non payee : None sans alerte.
+
     Args:
         val: Valeur brute issue d'un DataFrame pandas (any type).
     Returns:
         Date au format 'YYYY-MM-DD' ou None si non convertible.
     """
+    if isinstance(val, bool):
+        return None
+    if isinstance(val, numbers.Real) and not pd.isna(val):
+        if _SERIE_EXCEL_MIN <= val <= _SERIE_EXCEL_MAX:
+            return (_ORIGINE_EXCEL + pd.Timedelta(days=int(val))).date().isoformat()
+        logger.warning("[ATTENTION] _to_date_or_none: nombre hors plage de dates Excel %r", val)
+        return None
+    if isinstance(val, str):
+        texte = val.strip()
+        if not texte or texte.lower() in _TEXTES_SANS_DATE:
+            return None
+        m = _DATE_PATTERN.fullmatch(texte)
+        if m:
+            jour, mois, annee = (int(g) for g in m.groups())
+            try:
+                return pd.Timestamp(year=annee, month=mois, day=jour).date().isoformat()
+            except ValueError:
+                logger.warning("[ATTENTION] _to_date_or_none: date impossible %r", val)
+                return None
     try:
         ts = pd.Timestamp(val)  # type: ignore[arg-type]
         if pd.isna(ts):

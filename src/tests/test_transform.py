@@ -73,6 +73,28 @@ class TestToDateOrNone:
     def test_nat(self):
         assert _to_date_or_none(pd.NaT) is None
 
+    def test_numero_de_serie_excel(self):
+        """Cas du PO 'NA' (MOULE BLOC ALU) du 08/10 : 46282 rendait 1970-01-01."""
+        assert _to_date_or_none(46282) == "2026-09-17"
+        assert _to_date_or_none(46282.0) == "2026-09-17"
+
+    def test_nombre_hors_plage(self):
+        assert _to_date_or_none(53) is None
+        assert _to_date_or_none(1_000_000) is None
+
+    def test_texte_jour_mois(self):
+        assert _to_date_or_none("05/09/2026") == "2026-09-05"
+        assert _to_date_or_none(" 17/09/2026 ") == "2026-09-17"
+        assert _to_date_or_none("31/02/2026") is None
+
+    def test_textes_sans_date(self):
+        for val in ("Non", "non", " NON ", "", True, False):
+            assert _to_date_or_none(val) is None
+
+    def test_texte_libre_non_date(self):
+        assert _to_date_or_none("Julia") is None
+        assert _to_date_or_none("acompte OUI") is None
+
 
 class TestTransformCommande:
     """Invariants du DataFrame commande prêt pour PostgreSQL."""
@@ -149,3 +171,12 @@ class TestTransformCommande:
         # NULL comme distincts, pas de conflit possible.
         result = transform_commande(df_import)
         assert result["po_number"].notna().all()
+
+
+def test_to_date_or_none_types_numpy() -> None:
+    """pandas remonte les cellules numeriques en numpy, pas en int/float Python."""
+    import numpy as np
+
+    assert _to_date_or_none(np.int64(46282)) == "2026-09-17"
+    assert _to_date_or_none(np.float64(46282)) == "2026-09-17"
+    assert _to_date_or_none(np.float64("nan")) is None
