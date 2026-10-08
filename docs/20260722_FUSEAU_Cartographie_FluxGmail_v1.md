@@ -1,6 +1,6 @@
 # Cartographie exhaustive de l'information circulant par Gmail — FUSEAU / Data-Achat
 
-> Mis à jour le 06/10/2026 : statuts des lignes transport (changements d'ETA, retards, imprévus), qualité (décision Eric T), design (validation boîte), artwork, facture et promo réalignés sur le code ; note du 28/07 corrigée.
+> Mis à jour le 08/10/2026 : §5 ajouté, recherches Gmail de la tâche Cowork corrigées sur le poste. Mise à jour du 06/10 : statuts des lignes transport (changements d'ETA, retards, imprévus), qualité (décision Eric T), design (validation boîte), artwork, facture et promo réalignés sur le code ; note du 28/07 corrigée.
 
 > **Correction de la note du 28/07.** Celle-ci attribuait la captation des changements d'ETA à
 > `parse_email_eta.py` et `load_email_eta.py`. Ces deux modules existent (commit `7baf80e`, 27/07)
@@ -144,3 +144,22 @@ alimentation incomplète/manuelle/pilote · **Non capté** = circule uniquement 
 | Convention nommage PDF qualité avec code article | Évolution process côté Qualité. | RetoursDemo14h §🟡-4 |
 | Règle retard paiement = ETD_BL + 15 j | Implémentée ; date de réf vient du BL (mail/PJ). | questionnaire Q15 |
 | Flag promo modifiable à plusieurs étapes | Posé à la commande OU en milieu de circuit. Non modélisé. | questionnaire Q14 |
+
+## 5. Recherches Gmail de la tâche Cowork `fuseau-gmail-threads-achat` (référence au 08/10/2026)
+
+Le prompt de la tâche n'est pas versionné : il vit dans le `SKILL.md` de la tâche planifiée Cowork, sur le poste de Marlène. La version corrigée le 08/10 (sauvegarde `SKILL.md.bak_20261008` à côté) fait foi. **À recopier dans le dépôt au prochain passage sur le poste**, pour qu'un redéploiement ne réintroduise pas l'ancienne recherche.
+
+Étape 1 du prompt, recherches à lancer :
+
+```text
+a) newer_than:1d (label:01-fournisseurs-import OR label:01-fournisseurs-hors-import OR label:01-fournisseurs-dhl OR label:03-transitaires)
+b) newer_than:1d (from:qualitairsea.com OR from:dekra.com)
+c) newer_than:1d (from:tb-groupe.fr)
+```
+
+Pourquoi l'ancienne recherche a) (`label:04-FOURNISSEURS OR label:03-TRANSITAIRES`) ne ramenait que les transitaires (constat du 08/10, 5 fils sur 24 h contre 14 avec la nouvelle) :
+
+- `04-FOURNISSEURS` est un libellé parent **vide** (ancienne arborescence, aucun message sur 30 jours). Gmail n'inclut pas les sous-libellés dans `label:parent`. L'arborescence active est `01-FOURNISSEURS/IMPORT` (768 messages), `/HORS IMPORT` (189), `/DHL` (74).
+- Le connecteur Gmail de Cowork **n'accepte pas les ID** `Label_xxx` dans `label:` (`label:Label_509` renvoie 0), contrairement à sa documentation. Il faut le nom normalisé : minuscules, « / » et espaces remplacés par « - ».
+
+Limite qui rend la recherche c) indispensable : les libellés sont posés par message, à la main. Environ 75 % des mails fournisseurs récents (factures comprises) restent en INBOX sans libellé ; ils passent presque tous par le bureau HK (susanna@, debbie@, julia@ tb-groupe.fr).
