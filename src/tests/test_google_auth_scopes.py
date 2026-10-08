@@ -223,3 +223,16 @@ def test_gsheets_ne_masque_pas_le_scope_insuffisant(
     monkeypatch.setattr(gsheets, "_service_drive", _leve)
     with pytest.raises(ScopesInsuffisantsError):
         gsheets.metadonnees_drive("id")
+
+
+def test_sha_distant_branche_et_tag_annote() -> None:
+    """Le preflight compare HEAD au commit vise, y compris derriere un tag annote."""
+    sortie = (
+        "aaa\trefs/heads/feature/main\n"
+        "bbb\trefs/heads/main\n"
+        "ccc\trefs/tags/v1\n"
+        "ddd\trefs/tags/v1^{}\n"
+    )
+    assert preflight_gmail.sha_distant(sortie, "main") == "bbb"
+    assert preflight_gmail.sha_distant(sortie, "v1") == "ddd"
+    assert preflight_gmail.sha_distant(sortie, "absente") is None

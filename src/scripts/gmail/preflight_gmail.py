@@ -117,19 +117,52 @@ def check_gmail_token(
     return STATUT_OK
 
 
+def sha_distant(sortie_ls_remote: str, branche: str) -> str | None:
+    """
+    Extrait le sha vise par la branche ou le tag dans une sortie 'git ls-remote'.
+
+    Un tag annote apparait deux fois : l'objet tag, puis le commit pointe avec
+    le suffixe '^{}'. C'est le commit qu'il faut comparer a HEAD.
+    """
+    refs: dict[str, str] = {}
+    for ligne in sortie_ls_remote.splitlines():
+        morceaux = ligne.split()
+        if len(morceaux) == 2:
+            refs[morceaux[1]] = morceaux[0]
+    for ref in (f"refs/heads/{branche}", f"refs/tags/{branche}^{{}}", f"refs/tags/{branche}"):
+        if ref in refs:
+            return refs[ref]
+    return None
+
+
 def check_git_sync() -> bool:
-    """Verifie que le code local est bien a jour avec origin/main (evite de tourner sur du vieux code)."""
+    """
+    Verifie que le code local est a jour avec la branche cible (evite de tourner sur du vieux code).
+
+    Lecture seule : 'git ls-remote' interroge le distant sans rien ecrire dans
+    le depot. L'ancien 'git fetch origin' reecrivait FETCH_HEAD pendant que
+    FUSEAU_Files_ETL faisait son pull a la meme seconde, ce qui a produit le
+    faux [SUCCES] du 08/10. Le pull lui-meme est l'affaire de src.utils.git_sync.
+    """
+    from src.utils.config_manager import Config
+
+    branche = Config.BRANCHE_DEPLOIEMENT
     try:
-        subprocess.run(["git", "fetch", "origin"], cwd=ROOT, capture_output=True, timeout=30, check=True)
         local = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
-        remote = subprocess.run(["git", "rev-parse", "origin/main"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+        sortie = subprocess.run(["git", "ls-remote", "origin", branche], cwd=ROOT, capture_output=True,
+                                text=True, timeout=30, check=True).stdout
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
         logger.warning("[ATTENTION] impossible de verifier la synchro git : %s", exc)
         return False
+    remote = sha_distant(sortie, branche)
+    if remote is None:
+        logger.warning("[ATTENTION] %s introuvable sur origin : synchro git non verifiee.", branche)
+        return False
     if local == remote:
-        logger.info("[SUCCES] code a jour avec origin/main (%s).", local[:8])
+        logger.info("[SUCCES] code a jour avec origin/%s (%s).", branche, local[:8])
         return True
-    logger.warning("[ATTENTION] HEAD (%s) != origin/main (%s) : lancer 'git pull'.", local[:8], remote[:8])
+    logger.warning("[ATTENTION] HEAD (%s) != origin/%s (%s) : pull automatique en retard ou bloque.",
+                   local[:8], branche, remote[:8])
     return False
 
 
