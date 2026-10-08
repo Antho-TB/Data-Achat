@@ -2083,7 +2083,7 @@ async function loadActions(k) {
     }
 
     // 2. Relancer fournisseur / TB China : en retard de livraison ET pas encore parti
-    const bloque = rows.filter(x => x.est_en_retard && !x.est_parti);
+    const bloque = rows.filter(x => x.est_retard_depart);
     const parFrs = {};
     bloque.forEach(x => { const f = x.fournisseur || '—'; parFrs[f] = (parFrs[f] || 0) + 1; });
     Object.entries(parFrs).sort((a, b) => b[1] - a[1]).slice(0, 5).forEach(([f, n]) => {
@@ -2543,7 +2543,7 @@ function renderCommandes(rows) {
         <th title="Prix unitaire, en USD.">Prix unit. · USD</th>
         <th title="Acompte versé au fournisseur, en USD.">Acompte · USD</th>
         <th title="ETD confirmé : date de départ prévue depuis la Chine.">ETD confirmé</th>
-        <th title="Axe LOGISTIQUE : EN RETARD (ETD dépassé, pas livré) / DANS LES DÉLAIS / CLÔTURÉE. Différent du statut de la commande.">Statut retard</th>
+        <th title="Axe LOGISTIQUE : EN RETARD = pas parti alors que l'ETD est dépassé, ou pas livré alors que l'ETA est dépassée / DANS LES DÉLAIS / CLÔTURÉE. Une marchandise en mer dans les temps n'est pas en retard.">Statut retard</th>
         <th title="Axe COMMANDE : état du cycle de vie de la commande (En cours, En production, En cours de livraison, Livrée, Payée, Annulée).">Statut cde</th>
         <th title="Axe PAIEMENT (independant du statut commande) : Payé / À payer / À payer EN RETARD (ETD du BL + 15 j dépassé, non payé).">Paiement</th>
         <th title="N° du conteneur (si rattaché). Cliquer pour l'ouvrir dans l'onglet Suivi des conteneurs.">N° conteneur</th>
@@ -2570,7 +2570,7 @@ function renderCommandes(rows) {
             </span>
           </td>
           <td class="editable-cell">
-            <span class="view-mode" onclick="editCell(this, 'select')">${badge(r.statut_retard)}${r.statut_retard==='EN RETARD' ? (r.statut==='En cours de livraison' ? ` <span class="badge badge-blue" title="La marchandise a quitté la Chine mais arrive après l'ETD prévu.">parti</span>` : ` <span class="badge badge-red" title="ETD dépassé et la marchandise n'a pas encore quitté la Chine -- à relancer en priorité.">pas parti</span>`) : ''}</span>
+            <span class="view-mode" onclick="editCell(this, 'select')">${badge(r.statut_retard)}${r.statut_retard==='EN RETARD' ? (r.statut==='En cours de livraison' ? ` <span class="badge badge-blue" title="La marchandise est partie de Chine mais l'ETA est dépassée sans livraison.">parti</span>` : ` <span class="badge badge-red" title="ETD dépassé et la marchandise n'a pas encore quitté la Chine -- à relancer en priorité.">pas parti</span>`) : ''}</span>
             <span class="edit-mode">
               <select>
                 <option ${r.statut_retard==='EN RETARD' ?'selected':''}>EN RETARD</option>
@@ -3414,7 +3414,8 @@ const PREV_PHASES = {
   a_payer_en_retard: { lbl: 'À payer EN RETARD', color: 'var(--red,#c0392b)', def: 'Retard de PAIEMENT : lignes non payées dont l échéance (ETD du BL + 15 j) est dépassée. Le paiement se déclenche au BL.' },
   en_inspection: { lbl: 'En inspection', color: 'var(--blue-light)', def: 'Lignes en cours d inspection qualité (non encore livrées).' },
   parti:         { lbl: 'Parti',         color: 'var(--blue-light)', def: 'Lignes dont la marchandise est partie (ETD atteint), pas encore livrées.' },
-  en_retard:     { lbl: 'En retard',     color: 'var(--red,#c0392b)', def: 'Retard de LIVRAISON : ETD dépassé et pas encore livré.' },
+  retard_depart:    { lbl: 'Retard de départ',    color: 'var(--red,#c0392b)', def: "ETD dépassé et la marchandise n'est pas encore partie de Chine : à relancer." },
+  retard_livraison: { lbl: 'Retard de livraison', color: 'var(--red,#c0392b)', def: "ETA dépassée et pas encore livré. Une marchandise en mer dans les temps n'est pas en retard." },
   livre:         { lbl: 'Livré',         color: 'var(--green)',      def: 'Lignes livrées sur site.' },
 };
 
@@ -3439,7 +3440,7 @@ async function loadPrevisionnelMesures() {
     const frs = r.par_fournisseur || [];
     document.getElementById('prev-frs').innerHTML = frs.length ? `<div class="table-wrap"><table>
       <thead><tr><th>Fournisseur</th><th title="Nombre de lignes à payer.">À payer · nb</th><th title="Nombre de lignes en inspection qualité.">Inspection · nb</th><th title="Nombre de lignes parties (ETD atteint), pas livrées.">Parti · nb</th>
-      <th title="Nombre de lignes en retard de livraison (ETD dépassé, pas livré).">En retard · nb</th><th title="Montant des lignes en retard, en USD.">Montant retard · USD</th>
+      <th title="ETD dépassé, pas encore parti de Chine.">Retard départ · nb</th><th title="ETA dépassée, pas encore livré.">Retard livraison · nb</th><th title="Montant des lignes en retard (départ ou livraison), en USD.">Montant retard · USD</th>
       <th title="Reste dû total du fournisseur, en USD (IMPORT).">À payer · USD</th>
       <th title="Part du reste dû sans conteneur (commandes en production ou non encore expédiées). Elle n'apparaît pas dans la liste par conteneur : c'est l'écart entre les deux totaux.">dont sans conteneur · USD</th></tr></thead>
       <tbody>${frs.map(f => `<tr>
@@ -3447,7 +3448,8 @@ async function loadPrevisionnelMesures() {
         <td class="mono">${f.a_payer??0}</td>
         <td class="mono">${f.en_inspection??0}</td>
         <td class="mono">${f.parti??0}</td>
-        <td class="mono" style="color:var(--red,#c0392b)">${f.en_retard??0}</td>
+        <td class="mono" style="color:var(--red,#c0392b)">${f.retard_depart??0}</td>
+        <td class="mono" style="color:var(--red,#c0392b)">${f.retard_livraison??0}</td>
         <td class="mono">${Number(f.montant_retard).toLocaleString('en-US', {style:'currency', currency:'USD'})}</td>
         <td class="mono">${Number(f.montant_a_payer || 0).toLocaleString('en-US', {style:'currency', currency:'USD'})}</td>
         <td class="mono" style="color:var(--muted)">${Number(f.montant_a_payer_sans_conteneur || 0).toLocaleString('en-US', {style:'currency', currency:'USD'})}</td>

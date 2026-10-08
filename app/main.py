@@ -53,14 +53,49 @@ RAPPORTS_LIMIT_MAX = 1000
 # faire disparaitre du classement : ce sont justement les cas a regarder.
 SEUIL_RETARD_ABERRANT_JOURS = 180
 
-# Expression SQL de l'ETD effectif et du statut retard calcule
+# Expression SQL de l'ETD effectif et du statut retard calcule.
 SQL_ETD_EFF = "COALESCE(c.etd_reel, c.etd_confirme)"
+
+# Retards de depart et de livraison (regle d'Antho du 08/10/2026). Avant,
+# "en retard" valait "ETD depasse et pas encore livre" : une marchandise en mer,
+# dans les temps, comptait en retard des le lendemain de son ETD (43 lignes sur
+# 55 le 08/10).
+# - retard de depart : ETD depasse, pas parti (ni ETD reel, ni "en cours de
+#   livraison") ;
+# - retard de livraison : ETA depassee, pas livre ; l'ETA du suivi maritime
+#   (transitaire, tracee) prime sur celle de l'IMPORT ;
+# - est_retard : l'un ou l'autre.
+#
+# Junior Tip : la regle est calculee ici, au-dessus de la vue achat.v_previsionnel,
+# et non dans la vue elle-meme : la vue appartient au role platform_team, que
+# l'API et le compte nominal ne peuvent pas modifier. La colonne est_en_retard de
+# la vue garde l'ancienne regle ; ne plus l'utiliser.
+_SQL_PAS_CLOS = ("vp_c.date_livraison IS NULL "
+                 "AND vp_c.statut NOT IN ('Livrée', 'Annulée')")
+_SQL_RETARD_DEPART = (f"({_SQL_PAS_CLOS} AND vp_c.statut <> 'En cours de livraison' "
+                      "AND vp_c.etd_reel IS NULL AND vp_ot.etd_reel IS NULL "
+                      "AND vp_c.etd_confirme < CURRENT_DATE)")
+_SQL_RETARD_LIVRAISON = (f"({_SQL_PAS_CLOS} "
+                         "AND COALESCE(vp_ot.eta, vp_c.eta) < CURRENT_DATE)")
+SQL_V_PREVISIONNEL = f"""(
+    SELECT vp.*,
+           COALESCE(vp_ot.eta, vp_c.eta)                                   AS eta_eff,
+           COALESCE({_SQL_RETARD_DEPART}, false)                          AS est_retard_depart,
+           COALESCE({_SQL_RETARD_LIVRAISON}, false)                       AS est_retard_livraison,
+           COALESCE({_SQL_RETARD_DEPART} OR {_SQL_RETARD_LIVRAISON}, false) AS est_retard
+    FROM {SCHEMA}.v_previsionnel vp
+    JOIN {SCHEMA}.commande vp_c ON vp_c.id = vp.id
+    LEFT JOIN {SCHEMA}.ot_transport vp_ot ON vp_ot.n_conteneur = vp_c.n_conteneur
+)"""
+
+# Statut retard des lignes de commande. La requete doit joindre
+# SQL_V_PREVISIONNEL sous l'alias v.
 SQL_STATUT_RETARD = f"""
 COALESCE(a.statut_retard,
     CASE
         WHEN c.statut IN ('Livrée', 'Annulée')      THEN 'CLOTUREE'
+        WHEN v.est_retard                           THEN 'EN RETARD'
         WHEN {SQL_ETD_EFF} IS NULL                  THEN 'INCONNU'
-        WHEN {SQL_ETD_EFF} < CURRENT_DATE           THEN 'EN RETARD'
         ELSE 'DANS LES DELAIS'
     END
 )"""
@@ -409,11 +444,13 @@ def get_kpis():
             r = conn.execute(text(f"""
                 WITH lignes AS (
                     SELECT c.*, {SQL_ETD_EFF} AS etd_eff,
-                           a.statut_retard AS statut_force
+                           a.statut_retard AS statut_force,
+                           COALESCE(v.est_retard, false) AS est_en_retard
                     FROM {SCHEMA}.commande c
                     LEFT JOIN {SCHEMA}.commande_annotation a
                         ON a.po_number = c.po_number AND a.code_article = c.code_article
                     LEFT JOIN {SCHEMA}.acompte ac ON ac.po_number = c.po_number
+                    LEFT JOIN {SQL_V_PREVISIONNEL} v ON v.id = c.id
                 )
                 SELECT
                     COUNT(*)                                          AS total_lignes,
@@ -422,11 +459,12 @@ def get_kpis():
                     COUNT(*) FILTER (
                         WHERE COALESCE(statut_force,
                             CASE WHEN statut IN ('Livrée','Annulée') THEN 'X'
-                                 WHEN etd_eff < CURRENT_DATE THEN 'EN RETARD' END
+                                 WHEN est_en_retard THEN 'EN RETARD' END
                         ) = 'EN RETARD')                              AS lignes_en_retard,
                     COUNT(*) FILTER (
                         WHERE statut NOT IN ('Livrée','Annulée')
-                          AND etd_eff >= CURRENT_DATE)                AS lignes_dans_delais,
+                          AND etd_eff IS NOT NULL
+                          AND NOT est_en_retard)                      AS lignes_dans_delais,
                     -- Lignes ni closes ni datees (ETD reel/confirme absents des deux) --
                     -- avant ce compteur elles disparaissaient silencieusement du dashboard
                     -- (total_lignes ne recollait pas a en_retard + dans_delais). Retour
@@ -574,7 +612,8 @@ def get_commandes(
                         -- logistique, inspection. Permettent le cross-tab et l'OTD cote UI
                         -- sans reconflater le statut unique.
                         v.est_a_payer, v.est_a_payer_en_retard,
-                        v.est_parti, v.est_livre, v.est_en_retard, v.est_en_inspection,
+                        v.est_parti, v.est_livre, v.est_retard AS est_en_retard, v.est_en_inspection,
+                        v.est_retard_depart, v.est_retard_livraison,
                         a.commentaire,
                         ac.montant_acompte AS acompte,
                           c.op_client_appro,
@@ -599,7 +638,7 @@ def get_commandes(
                     LEFT JOIN {SCHEMA}.commande_annotation a
                         ON a.po_number = c.po_number AND a.code_article = c.code_article
                     LEFT JOIN {SCHEMA}.acompte ac ON ac.po_number = c.po_number
-                    LEFT JOIN {SCHEMA}.v_previsionnel v ON v.id = c.id
+                    LEFT JOIN {SQL_V_PREVISIONNEL} v ON v.id = c.id
                     LEFT JOIN {SCHEMA}.produit p ON p.code_article = c.code_article
                     LEFT JOIN {SCHEMA}.article_nomenclature n ON n.code_article = c.code_article
                 ) q
@@ -1351,8 +1390,9 @@ def get_previsionnel():
                                    ELSE COALESCE(c.prix_unitaire * c.quantite, 0) END), 2) AS valeur,
                     MAX(COALESCE(ot.etd_reel, c.etd_reel, c.etd_confirme)) AS etd,
                     MAX(ot.eta)                                AS eta,
-                    COUNT(*) FILTER (WHERE v.est_en_retard AND NOT v.est_parti) AS nb_bloques,
-                    BOOL_OR(v.est_en_retard AND NOT v.est_parti)               AS est_bloque,
+                    -- Bloque = pas parti alors que l'ETD est depasse (retard de depart).
+                    COUNT(*) FILTER (WHERE v.est_retard_depart) AS nb_bloques,
+                    BOOL_OR(v.est_retard_depart)               AS est_bloque,
                     COUNT(*) FILTER (WHERE v.est_a_payer_en_retard)                       AS nb_a_payer_retard,
                     COUNT(*) FILTER (WHERE v.est_a_payer AND NOT v.est_a_payer_en_retard) AS nb_a_payer,
                     COUNT(*) FILTER (WHERE NOT v.est_a_payer)                             AS nb_paye,
@@ -1363,7 +1403,7 @@ def get_previsionnel():
                     BOOL_OR(v.paiement_saisi_manuellement)                 AS paiement_saisi
                 FROM {SCHEMA}.commande c
                 LEFT JOIN {SCHEMA}.ot_transport ot ON ot.n_conteneur = c.n_conteneur
-                LEFT JOIN {SCHEMA}.v_previsionnel v ON v.id = c.id
+                LEFT JOIN {SQL_V_PREVISIONNEL} v ON v.id = c.id
                 -- " /" est la saisie IMPORT d'une ligne sans conteneur : elle
                 -- formait un faux conteneur "/" dans la liste.
                 WHERE NULLIF(NULLIF(TRIM(c.n_conteneur), ''), '/') IS NOT NULL
@@ -1818,7 +1858,8 @@ def get_previsionnel_mesures():
         ("achete", "est_achete"), ("a_payer", "est_a_payer"),
         ("a_payer_en_retard", "est_a_payer_en_retard"),
         ("en_inspection", "est_en_inspection"), ("parti", "est_parti"),
-        ("en_retard", "est_en_retard"), ("livre", "est_livre"),
+        ("retard_depart", "est_retard_depart"),
+        ("retard_livraison", "est_retard_livraison"), ("livre", "est_livre"),
     ]
     select_phase = ", ".join(
         f"COUNT(*) FILTER (WHERE {col}) AS n_{key}, "
@@ -1827,7 +1868,7 @@ def get_previsionnel_mesures():
     )
     with engine.connect() as conn:
         try:
-            row = conn.execute(text(f"SELECT {select_phase} FROM {SCHEMA}.v_previsionnel")).mappings().first()
+            row = conn.execute(text(f"SELECT {select_phase} FROM {SQL_V_PREVISIONNEL} v")).mappings().first()
             mesures = [
                 {"phase": key, "count": int(row[f"n_{key}"] or 0), "montant": float(row[f"m_{key}"] or 0)}
                 for key, _ in phases
@@ -1837,8 +1878,10 @@ def get_previsionnel_mesures():
                        COUNT(*) FILTER (WHERE est_a_payer)       AS a_payer,
                        COUNT(*) FILTER (WHERE est_en_inspection) AS en_inspection,
                        COUNT(*) FILTER (WHERE est_parti)         AS parti,
-                       COUNT(*) FILTER (WHERE est_en_retard)     AS en_retard,
-                       COALESCE(ROUND(SUM(montant) FILTER (WHERE est_en_retard), 2), 0) AS montant_retard,
+                       COUNT(*) FILTER (WHERE est_retard)        AS en_retard,
+                       COUNT(*) FILTER (WHERE est_retard_depart)    AS retard_depart,
+                       COUNT(*) FILTER (WHERE est_retard_livraison) AS retard_livraison,
+                       COALESCE(ROUND(SUM(montant) FILTER (WHERE est_retard), 2), 0) AS montant_retard,
                        -- Reconciliation avec la liste par conteneur (BUG-001) :
                        -- elle ne montre que les lignes rattachees a un conteneur,
                        -- soit ~10 % du reste du au 25/09. La difference est ici.
@@ -1847,7 +1890,7 @@ def get_previsionnel_mesures():
                            WHERE est_a_payer AND NULLIF(NULLIF(TRIM(n_conteneur), ''), '/') IS NULL
                        ), 2), 0) AS montant_a_payer_sans_conteneur
                 FROM (SELECT v.*, cc.n_conteneur
-                      FROM {SCHEMA}.v_previsionnel v
+                      FROM {SQL_V_PREVISIONNEL} v
                       JOIN {SCHEMA}.commande cc ON cc.id = v.id) p
                 WHERE fournisseur IS NOT NULL
                 GROUP BY fournisseur
