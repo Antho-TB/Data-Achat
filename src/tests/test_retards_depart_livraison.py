@@ -31,3 +31,11 @@ def test_l_ancienne_colonne_de_la_vue_n_est_plus_lue():
     import inspect
     source = inspect.getsource(m)
     assert "v.est_en_retard" not in source
+
+
+def test_onglet_fournisseurs_et_tableau_de_bord_suivent_la_regle():
+    """L'ancienne vue v_retard_article comptait toute marchandise en mer apres son ETD."""
+    import inspect
+    source = inspect.getsource(m)
+    assert "{SCHEMA}.v_retard_article" not in source
+    assert "nb_retards_depart" in source and "nb_retards_livraison" in source

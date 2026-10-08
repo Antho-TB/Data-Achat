@@ -514,11 +514,20 @@ def get_kpis():
                 SELECT
                     e.fournisseur,
                     MAX(e.jours_retard) FILTER (WHERE e.jours_retard <= :seuil) AS retard_max_jours,
-                    COUNT(*) FILTER (WHERE a.statut_retard = 'EN RETARD')       AS nb_articles_en_retard,
+                    -- Articles actuellement en retard, regle du 08/10 (retard de
+                    -- depart ou de livraison). L'ancienne vue v_retard_article
+                    -- comptait toute marchandise en mer apres son ETD.
+                    MAX(ra.nb_retards)                                          AS nb_articles_en_retard,
                     COUNT(*) FILTER (WHERE e.jours_retard > :seuil)             AS nb_retards_aberrants
                 FROM {SCHEMA}.v_retard_expedition e
-                LEFT JOIN {SCHEMA}.v_retard_article a
-                    ON a.code_article = e.code_article AND a.fournisseur = e.fournisseur
+                LEFT JOIN (
+                    SELECT fournisseur,
+                           COUNT(DISTINCT code_article) FILTER (WHERE est_retard)           AS nb_retards,
+                           COUNT(DISTINCT code_article) FILTER (WHERE est_retard_depart)    AS nb_retards_depart,
+                           COUNT(DISTINCT code_article) FILTER (WHERE est_retard_livraison) AS nb_retards_livraison
+                    FROM {SQL_V_PREVISIONNEL} rv
+                    GROUP BY fournisseur
+                ) ra ON ra.fournisseur = e.fournisseur
                 WHERE e.fournisseur IS NOT NULL
                 GROUP BY e.fournisseur
                 HAVING MAX(e.jours_retard) FILTER (WHERE e.jours_retard <= :seuil) IS NOT NULL
@@ -804,7 +813,8 @@ def annotate_commande(
 # ==============================================================================
 @app.get("/api/fournisseurs")
 def get_fournisseurs():
-    """Stats consolidees par fournisseur (retards par article via v_retard_article)."""
+    """Stats consolidees par fournisseur. Retards : regle du 08/10 (depart ou
+    livraison), via SQL_V_PREVISIONNEL ; retard moyen : ecart fige des 12 mois."""
     engine = get_engine()
     with engine.connect() as conn:
         try:
@@ -813,22 +823,29 @@ def get_fournisseurs():
                     c.fournisseur,
                     COUNT(DISTINCT c.po_number)                       AS nb_po,
                     COUNT(DISTINCT c.code_article)                    AS nb_articles,
-                    COUNT(DISTINCT v.code_article) FILTER (
-                        WHERE v.statut_retard = 'EN RETARD')          AS nb_retards,
+                    MAX(ra.nb_retards)                                AS nb_retards,
+                    MAX(ra.nb_retards_depart)                         AS nb_retards_depart,
+                    MAX(ra.nb_retards_livraison)                      AS nb_retards_livraison,
                     -- Retard moyen FIGE (etd_reel - etd_confirme, plancher 0),
                     -- 12 mois glissants -- definition metier 07/07 (v_retard_fournisseur).
                     MAX(rf.retard_moyen_jours)                       AS retard_moyen_jours,
                     MAX(COALESCE(c.date_statut, c.date_commande))     AS derniere_activite,
                     MAX(ca.ca_3ans)                                   AS ca_3ans
                 FROM {SCHEMA}.commande c
-                LEFT JOIN {SCHEMA}.v_retard_article v
-                    ON v.code_article = c.code_article AND v.fournisseur = c.fournisseur
+                LEFT JOIN (
+                    SELECT fournisseur,
+                           COUNT(DISTINCT code_article) FILTER (WHERE est_retard)           AS nb_retards,
+                           COUNT(DISTINCT code_article) FILTER (WHERE est_retard_depart)    AS nb_retards_depart,
+                           COUNT(DISTINCT code_article) FILTER (WHERE est_retard_livraison) AS nb_retards_livraison
+                    FROM {SQL_V_PREVISIONNEL} rv
+                    GROUP BY fournisseur
+                ) ra ON ra.fournisseur = c.fournisseur
                 LEFT JOIN {SCHEMA}.v_retard_fournisseur rf
                     ON rf.fournisseur = c.fournisseur
                 LEFT JOIN {SCHEMA}.fournisseur_ca ca ON ca.fournisseur = c.fournisseur
                 WHERE c.fournisseur IS NOT NULL
                 GROUP BY c.fournisseur
-                ORDER BY nb_retards DESC, nb_po DESC
+                ORDER BY nb_retards DESC NULLS LAST, nb_po DESC
             """))
             return {"data": rows_to_dicts(r)}
         except Exception as e:
