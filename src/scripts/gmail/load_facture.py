@@ -91,8 +91,22 @@ SQL_MONTANT_IMPORT = f"""
     SELECT ROUND(SUM(CASE WHEN code_article IS NULL THEN COALESCE(total_prix, 0)
                           ELSE COALESCE(prix_unitaire * quantite, 0) END), 2) AS montant
     FROM {SCHEMA}.commande
-    WHERE po_number = ANY(:pos) AND statut <> 'Annulée'
+    WHERE LTRIM(po_number::text, '0') = ANY(:pos) AND statut <> 'Annulée'
 """
+
+
+def normaliser_pos(pos: list[str]) -> list[str]:
+    """
+    PO sans zeros de tete, pour les comparer a achat.commande.
+
+    Junior Tip : la piece donne le PO sur 8 chiffres ("00173654"), le fichier
+    IMPORT le stocke sans les zeros ("173654"). Compares tels quels, ils ne se
+    rejoignaient jamais : constate le 06/10/2026 sur le poste de Marlene, le
+    controle d'ecart repondait "aucun montant IMPORT" pour chaque piece et ne
+    pouvait donc jamais signaler un ecart.
+    """
+    propres = (str(po).strip().lstrip("0") for po in pos if po is not None)
+    return sorted({po for po in propres if po})
 
 
 def _ecart_relatif(montant_piece: float, montant_import: float) -> float:
@@ -116,7 +130,7 @@ def _controler_ecart(conn: Any, piece: dict[str, Any]) -> None:
     pos = piece.get("po_numbers")
     if montant is None or not pos:
         return
-    ligne = conn.execute(text(SQL_MONTANT_IMPORT), {"pos": list(pos)}).mappings().first()
+    ligne = conn.execute(text(SQL_MONTANT_IMPORT), {"pos": normaliser_pos(list(pos))}).mappings().first()
     montant_import = float(ligne["montant"]) if ligne and ligne["montant"] else 0.0
     if not montant_import:
         logger.warning("[ATTENTION] %s : aucun montant IMPORT pour les PO %s, "
@@ -176,6 +190,9 @@ def charger(pieces: list[dict[str, Any]], dry_run: bool = False) -> int:
                 logger.info("[INFO] (dry-run) %s : %s %s %s",
                             piece["source_fichier"], piece["type_piece"],
                             piece["montant"], piece.get("devise"))
+                # Compte aussi les pieces analysees en dry-run : le bilan
+                # affichait 0 alors que des pieces avaient ete lues (06/10).
+                ecrites += 1
                 continue
 
             parametres = {cle: piece.get(cle) for cle in (
