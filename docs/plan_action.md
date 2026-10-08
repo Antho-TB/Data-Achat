@@ -583,7 +583,7 @@ copies MyReport de `public`.
 ### Onglet Artwork (notes d'Antho)
 
 - [x] Distinguer les dates (07/10) : date de demande pour les artworks en attente, dernière version et dernière validation pour la liste. Ce sont les dates tenues dans le gsheet ; une vraie date de création FUSEAU viendra avec la refonte.
-- [ ] Un identifiant propre à chaque artwork, plus seulement rattaché à l'article (par exemple n° article + date). Un article peut avoir plusieurs artworks, un artwork n'a qu'un article. Impact : `achat.artwork_statut` est aujourd'hui clé par article.
+- [ ] Un identifiant propre à chaque artwork, plus seulement rattaché à l'article. **Format validé par Clarisse le 08/10 : n° d'article + date de création concaténés** (`32030006-20261008`, suffixe `-2` si deux le même jour, date figée à la création). Clarisse testera aussi l'onglet Artwork. Un article peut avoir plusieurs artworks, un artwork n'a qu'un article. Impact : `achat.artwork_statut` est aujourd'hui clé par article.
 - [ ] Afficher l'artwork (lien vers le PDF du Drive).
 - [ ] Pouvoir ajouter et modifier des lignes depuis FUSEAU.
 - [x] Garder les deux tableaux du gsheet de Clarisse (07/10) : « Artworks en attente », trié par priorité, et « Liste des artworks » pour rechercher l'existant.

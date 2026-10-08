@@ -33,11 +33,18 @@ Les points 4, 6 et 7 de la démo vont tous vers A.
 
 ### 2.2 Forme de l'identifiant
 
-La proposition « n° article + date » donne le même identifiant à deux artworks
-d'un même article créés le même jour, et change si la date est corrigée.
-Proposition : un identifiant technique attribué par la base (séquence), et un
-code lisible affiché, du type `ART-32030006-03` (article + rang de l'artwork
-pour cet article), calculé et jamais saisi.
+**Tranché le 08/10 avec Clarisse : n° d'article et date concaténés**, par exemple
+`32030006-20261008`. Deux garde-fous pour éviter les pièges de ce format :
+
+- la date est celle de la **création** de l'artwork, figée à la création : l'ID ne
+  change jamais, même si une date est corrigée ensuite ;
+- deux artworks du même article créés le même jour reçoivent un suffixe :
+  `32030006-20261008`, puis `32030006-20261008-2`.
+
+L'ID est calculé par FUSEAU à la création, jamais saisi. Une clé technique
+(séquence) reste en base pour les jointures. Pour la reprise du gsheet, les
+artworks existants reçoivent la date de demande, ou à défaut la date de dernière
+version.
 
 ## 3. Modèle de données cible (option A)
 
