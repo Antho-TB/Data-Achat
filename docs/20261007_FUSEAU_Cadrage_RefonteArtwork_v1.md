@@ -80,6 +80,6 @@ saisies, jamais rechargée en full-refresh :
 
 1. Option A : Clarisse est-elle d'accord pour saisir dans FUSEAU et figer le gsheet ?
 2. Les 385 lignes « Liste artworks » sont-elles à classer en validées ou en archivées ?
-3. Le passage en archive : action manuelle de Maxence dans FUSEAU, ou automatique après combien de jours ?
+3. ~~Le passage en archive : action manuelle de Maxence dans FUSEAU, ou automatique après combien de jours ?~~ **Tranché le 08/10 (Antho) : clic manuel de Maxence**, qui vérifie puis lance lui-même la suite de son process.
 4. Où sont rangés les PDF sur le Drive, et le lien est-il déjà dans le gsheet ?
 5. Qui d'autre que Clarisse doit pouvoir créer ou valider un artwork ?

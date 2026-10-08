@@ -87,6 +87,16 @@ class Config:
     MYREPORT_SCHEMA: str = os.getenv("MYREPORT_SCHEMA", "public")
     MYREPORT_TABLE_COMMANDES: str = os.getenv("MYREPORT_TABLE_COMMANDES", "commandes6")
     MYREPORT_TABLE_NCR: str = os.getenv("MYREPORT_TABLE_NCR", "fiche_non_conformite2")
+    # Facturation intersite des analyses qualite (SE <-> CIE) : lignes de
+    # commandes d'achat, commandes et lignes de vente, BL et lignes de BL.
+    MYREPORT_TABLE_COMMANDES_DETAIL: str = os.getenv(
+        "MYREPORT_TABLE_COMMANDES_DETAIL", "commandes_detaillees")
+    MYREPORT_TABLE_VENTES: str = os.getenv("MYREPORT_TABLE_VENTES", "commandes3")
+    MYREPORT_TABLE_VENTES_DETAIL: str = os.getenv(
+        "MYREPORT_TABLE_VENTES_DETAIL", "commandes_detaillees25")
+    MYREPORT_TABLE_LIVRAISONS: str = os.getenv("MYREPORT_TABLE_LIVRAISONS", "livraisons")
+    MYREPORT_TABLE_LIVRAISONS_DETAIL: str = os.getenv(
+        "MYREPORT_TABLE_LIVRAISONS_DETAIL", "livraisons_detaillees2_07_2026")
 
     # Répertoire des fichiers sources Excel
     DATA_DIR: str = os.getenv("DATA_DIR", "Service_Achat")

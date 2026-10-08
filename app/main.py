@@ -1755,6 +1755,43 @@ def get_qualite(
             raise internal_error(e)
 
 
+@app.get("/api/qualite/facturation")
+def get_qualite_facturation(depuis: Optional[date] = Query(None)):
+    """
+    Facturation intersite des analyses qualite : une ligne par commande
+    d'analyse SE (CA), rapprochee de son BL CIE. Lecture seule depuis Sylob, via
+    les copies MyReport. Detail et regles : app/facturation_intersite.py.
+
+    Args:
+        depuis: date de creation minimale des CA. Par defaut, le 1er janvier de
+            l'annee precedente.
+    """
+    from app.facturation_intersite import enrichir, sql_facturation
+
+    aujourd_hui = date.today()
+    depuis = depuis or date(aujourd_hui.year - 1, 1, 1)
+    engine = get_engine()
+    with engine.connect() as conn:
+        try:
+            lignes = rows_to_dicts(conn.execute(text(sql_facturation()), {"depuis": depuis}))
+        except Exception as e:
+            if "permission denied" in str(e) or "does not exist" in str(e):
+                logger.error("[ECHEC] Facturation intersite : copie MyReport illisible (%s)",
+                             str(e).splitlines()[0])
+                return {"data": [], "warning": "Données Sylob (MyReport) illisibles : "
+                                                "droits ou noms de tables à vérifier."}
+            raise internal_error(e)
+    # rows_to_dicts serialise les dates en texte : on les relit pour le delai.
+    for ligne in lignes:
+        if isinstance(ligne.get("date_ca"), str):
+            ligne["date_ca"] = date.fromisoformat(ligne["date_ca"][:10])
+    lignes = enrichir(lignes, aujourd_hui)
+    for ligne in lignes:
+        if isinstance(ligne.get("date_ca"), date):
+            ligne["date_ca"] = ligne["date_ca"].isoformat()
+    return {"data": lignes, "depuis": depuis.isoformat()}
+
+
 @app.get("/api/qualite/fournisseurs")
 def get_qualite_fournisseurs():
     """Evaluation qualite agregee par fournisseur (taux FAIL, NCR, receptions NC)."""
