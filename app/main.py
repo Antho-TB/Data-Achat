@@ -15,6 +15,7 @@ Modele de donnees (DWH = source de verite, decision 2026-06-10) :
 - ETD effectif = COALESCE(etd_reel, etd_confirme)
 - Retard calcule PAR ARTICLE, les statuts 'Livree'/'Annulee' ne sont jamais en retard
 """
+import json
 import logging
 import secrets
 from contextlib import asynccontextmanager
@@ -22,13 +23,16 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
 from app.database import check_connection, get_engine
+from app.droits import (ACCES_COMPLET, PUBLIC, Droits, droits_depuis_roles, masquer_montants,
+                        regle_pour, roles_du_principal)
 from app.sondes import journaliser_droits, mesurer_sources, verifier_droits_myreport
 from src.utils.config_manager import Config
 
@@ -152,6 +156,76 @@ async def revalider_html(request, call_next):
     if response.headers.get("content-type", "").startswith("text/html"):
         response.headers["Cache-Control"] = "no-cache"
     return response
+
+
+def droits_de(request: Request) -> Droits:
+    """Droits de l'appelant. Hors mode entra (poste metier, dev), acces complet."""
+    if Config.AUTH_MODE != "entra" or Config.DROITS_MODE == "off":
+        return ACCES_COMPLET
+    h = request.headers
+    identite = h.get("x-ms-client-principal-name") or h.get("x-ms-client-principal-id") or ""
+    return droits_depuis_roles(identite, roles_du_principal(h.get("x-ms-client-principal", "")))
+
+
+@app.middleware("http")
+async def controler_droits(request: Request, call_next):
+    """Droits par onglet sur toutes les routes /api (app/droits.py).
+
+    Un seul point de controle plutot qu'une dependance par route : une route
+    oubliee dans REGLES est refusee en mode bloquant au lieu de rester ouverte.
+    """
+    chemin = request.url.path
+    if not chemin.startswith("/api/") or request.method == "OPTIONS":
+        return await call_next(request)
+    droits = droits_de(request)
+    if droits is ACCES_COMPLET:
+        return await call_next(request)
+    regle = regle_pour(request.method, chemin)
+    autorise = regle is not None and droits.autorise(regle)
+    if not autorise:
+        logger.warning("[ATTENTION] [DROITS] %s %s %s refuse (roles=%s, regle=%s, mode=%s)",
+                       droits.identite or "?", request.method, chemin, sorted(droits.roles),
+                       "non declaree" if regle is None else regle, Config.DROITS_MODE)
+        if Config.DROITS_MODE != "journal":
+            message = ("Accès non attribué : demandez l'ouverture de FUSEAU à Antho."
+                       if not droits.onglets else
+                       "Cette partie de FUSEAU n'est pas ouverte à votre profil.")
+            return JSONResponse(status_code=403, content={"detail": message})
+    response = await call_next(request)
+    if (Config.DROITS_MODE == "journal" or droits.montants or regle == PUBLIC
+            or not response.headers.get("content-type", "").startswith("application/json")):
+        return response
+    corps = b"".join([morceau async for morceau in response.body_iterator])
+    entetes = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
+    try:
+        contenu = json.dumps(masquer_montants(json.loads(corps)), default=str)
+    except ValueError:
+        # Corps illisible : on ne renvoie rien plutot qu'un montant non masque.
+        logger.error("[ECHEC] [DROITS] Reponse JSON illisible sur %s, non transmise.", chemin)
+        return JSONResponse(status_code=500, content={"detail": "Réponse illisible."})
+    return Response(content=contenu,
+                    status_code=response.status_code, headers=entetes,
+                    media_type="application/json")
+
+
+@app.get("/api/moi")
+def get_moi(request: Request) -> dict[str, Any]:
+    """Identite, profil et onglets visibles : l'interface masque les autres.
+
+    En mode journal, l'interface montre tout (rien ne change pour l'utilisateur),
+    mais renvoie le profil qui s'appliquera, pour verification.
+    """
+    droits = droits_de(request)
+    effectif = droits if Config.DROITS_MODE not in ("off", "journal") else ACCES_COMPLET
+    return {
+        "identite": droits.identite,
+        "roles": sorted(droits.roles),
+        "mode": Config.DROITS_MODE if Config.AUTH_MODE == "entra" else "local",
+        "onglets": sorted(effectif.onglets),
+        "montants": effectif.montants,
+        "permissions": sorted(effectif.permissions),
+        "onglets_profil": sorted(droits.onglets),
+    }
 
 
 # -- Securite ------------------------------------------------------------------

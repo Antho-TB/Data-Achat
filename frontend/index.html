@@ -3710,7 +3710,7 @@ function actionsArtwork(r) {
   const id = esc(r.identifiant);
   const boutons = [`<button class="btn btn-ghost btn-sm" title="Modifier" onclick="modifierArtwork('${id}')">✎</button>`];
   if (r.statut === 'en_attente') boutons.push(`<button class="btn btn-ghost btn-sm" title="Valider (Clarisse)" onclick="changerStatutArtwork('${id}','valider')">✓ Valider</button>`);
-  if (r.statut === 'valide') boutons.push(`<button class="btn btn-ghost btn-sm" title="Archiver (Maxence, après vérification)" onclick="changerStatutArtwork('${id}','archiver')">Archiver</button>`);
+  if (r.statut === 'valide' && peutArchiver()) boutons.push(`<button class="btn btn-ghost btn-sm" title="Archiver (Maxence, après vérification)" onclick="changerStatutArtwork('${id}','archiver')">Archiver</button>`);
   boutons.push(`<button class="btn btn-ghost btn-sm" title="Historique des modifications" onclick="historiqueArtwork('${id}')">🕘</button>`);
   if (r.lien_drive) boutons.push(`<a class="btn btn-ghost btn-sm" href="${esc(r.lien_drive)}" target="_blank" rel="noopener" title="Ouvrir le PDF">📎</a>`);
   return `<td style="white-space:nowrap">${boutons.join(' ')}</td>`;
@@ -4500,11 +4500,47 @@ function renderCash(rows) {
 // ════════════════════════════════════════════════════════════════════════════
 // Init
 // ════════════════════════════════════════════════════════════════════════════
+// Droits par onglet (app/droits.py) : l'API refuse deja ce qui n'est pas ouvert
+// au profil ; ici on n'affiche que les onglets utiles. Si /api/moi est
+// indisponible (ancienne API), on montre tout : l'API reste le garde-fou.
+let MOI = null;
+function peutArchiver() {
+  return !MOI || (MOI.permissions || []).includes('artwork.archiver');
+}
+async function initDroits() {
+  try { MOI = await apiFetch('/api/moi'); } catch (e) { MOI = null; }
+  if (!MOI) return 'dashboard';
+  const ouverts = new Set(MOI.onglets || []);
+  let premier = null;
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    const m = (b.getAttribute('onclick') || '').match(/switchTab\('([a-z_]+)'\)/);
+    if (!m) return;
+    const visible = ouverts.has(m[1]);
+    b.style.display = visible ? '' : 'none';
+    if (visible && !premier) premier = m[1];
+  });
+  if (!premier) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    const bar = document.querySelector('.tabs-bar');
+    bar.insertAdjacentHTML('afterend', `<div class="empty" style="margin:40px auto;max-width:560px">
+      <div class="empty-icon">🔒</div>Accès non attribué pour ${esc(MOI.identite || 'ce compte')}.<br>
+      Demandez l'ouverture de FUSEAU à Antho Bezille.</div>`);
+  }
+  return premier;
+}
+
 checkHealth();
 setInterval(checkHealth, 30000);
-loadDashboard();
-loaded.add('dashboard');
-document.getElementById('header-source').title = SOURCE_INFO.dashboard;
+initDroits().then(premier => {
+  if (!premier) return;
+  if (premier === 'dashboard') {
+    loadDashboard();
+    loaded.add('dashboard');
+    document.getElementById('header-source').title = SOURCE_INFO.dashboard;
+  } else {
+    switchTab(premier);
+  }
+});
 
 // 🎨🎨🎨 TRI DES TABLEAUX (DOM) 🎨🎨🎨
 document.addEventListener('click', function(e) {
