@@ -321,6 +321,15 @@ STATUTS_RETARD = ["EN RETARD", "DANS LES DELAIS", "INCONNU", "CLOTUREE"]
 # sql/20260722_artwork_gsheet_only.sql.
 STATUTS_ARTWORK = ["En attente", "Validé"]
 
+# Miroir du gsheet de Clarisse : une ligne retiree du gsheet n'est jamais
+# supprimee par le chargement (upsert), elle reste en base avec sa date de
+# dernier chargement. On ne lit que les lignes vues au dernier passage :
+# constate le 07/10/2026, 6 artworks "en attente" figes au 22/07 restaient
+# affiches alors qu'ils n'existaient plus dans le gsheet. Le 08/10, le tableau
+# de bord et la fiche Article les comptaient encore : meme filtre partout.
+FILTRE_ARTWORK_DERNIER_CHARGEMENT = (
+    f"updated_at >= (SELECT MAX(charge_le) FROM {SCHEMA}.artwork_statut) - INTERVAL '12 hours'")
+
 
 # -- Helper --------------------------------------------------------------------
 def rows_to_dicts(result) -> list[dict[str, Any]]:
@@ -629,6 +638,7 @@ def get_kpis():
                     COUNT(*) FILTER (WHERE statut_artwork = 'Validé')     AS valides,
                     COUNT(*) FILTER (WHERE statut_artwork = 'En attente') AS en_attente
                 FROM {SCHEMA}.v_artwork
+                WHERE {FILTRE_ARTWORK_DERNIER_CHARGEMENT}
             """))
             row = r.fetchone()
             kpis.update({
@@ -1077,7 +1087,8 @@ def get_produit(code_article: str):
                 WHERE code_article = :c ORDER BY position
             """), {"c": code_article}))
             artwork = rows_to_dicts(conn.execute(
-                text(f"SELECT * FROM {SCHEMA}.v_artwork WHERE code_article = :c"),
+                text(f"SELECT * FROM {SCHEMA}.v_artwork WHERE code_article = :c"
+                     f" AND {FILTRE_ARTWORK_DERNIER_CHARGEMENT}"),
                 {"c": code_article}))
             cycle_vie = rows_to_dicts(conn.execute(
                 text(f"SELECT * FROM {SCHEMA}.article_cycle_vie WHERE code_article = :c"),
@@ -1299,13 +1310,7 @@ def get_artwork(code_article: Optional[str] = None):
         filters.append("LOWER(code_article) LIKE :code_article")
         params["code_article"] = f"%{code_article.lower()}%"
 
-    # Miroir du gsheet de Clarisse : une ligne retiree du gsheet n'est jamais
-    # supprimee par le chargement (upsert), elle reste en base avec sa date de
-    # dernier chargement. On n'affiche que les lignes vues au dernier passage :
-    # constate le 07/10/2026, 6 artworks "en attente" figes au 22/07 restaient
-    # affiches alors qu'ils n'existaient plus dans le gsheet.
-    filters.append(
-        f"updated_at >= (SELECT MAX(charge_le) FROM {SCHEMA}.artwork_statut) - INTERVAL '12 hours'")
+    filters.append(FILTRE_ARTWORK_DERNIER_CHARGEMENT)
     where = "WHERE " + " AND ".join(filters)
 
     with engine.connect() as conn:

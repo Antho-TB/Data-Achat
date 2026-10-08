@@ -494,6 +494,43 @@ button { cursor: pointer; }
 
 /* ── Artwork grid ─────────────────────────────────────────────────────────── */
 .artwork-stats { display: flex; gap: 12px; margin-bottom: 16px; }
+/* Grille facon tableur (onglet Artwork, 08/10) : l'equipe vit dans le gsheet de
+   Clarisse. Memes colonnes, memes couleurs de priorite, onglets de feuille,
+   filtre par colonne, edition au double-clic. */
+.sheet-onglets { display: flex; gap: 2px; border-bottom: 2px solid var(--border); }
+.sheet-onglet {
+  padding: 7px 16px; font-size: 13px; cursor: pointer; border: 1px solid var(--border);
+  border-bottom: none; border-radius: 6px 6px 0 0; background: var(--tb-grey-100); color: var(--muted);
+}
+.sheet-onglet.actif { background: #fff; color: var(--text); font-weight: 600; }
+.sheet-onglet .nb { font-family: var(--font-mono); font-size: 11px; margin-left: 6px; color: var(--muted); }
+.table-wrap.sheet { border-radius: 0 0 var(--radius) var(--radius); }
+.table-wrap.sheet table { font-size: 12.5px; }
+.table-wrap.sheet th { padding: 6px 8px; text-align: center; white-space: normal; line-height: 1.25; border: 1px solid var(--tb-grey-200); }
+.table-wrap.sheet td { padding: 4px 8px; line-height: 1.3; border: 1px solid var(--tb-grey-200); }
+.table-wrap.sheet tbody tr:nth-child(even) { background: #fff; }
+.table-wrap.sheet tr.filtres th { top: var(--sheet-entete, 44px); background: #fff; padding: 3px; cursor: default; }
+.table-wrap.sheet tr.filtres input {
+  width: 100%; min-width: 50px; font-size: 11.5px; padding: 3px 5px;
+  border: 1px solid var(--tb-grey-200); border-radius: 3px;
+}
+.table-wrap.sheet td.centre { text-align: center; }
+.table-wrap.sheet td.edit { cursor: cell; }
+.table-wrap.sheet td.edit:hover { outline: 1px solid #1a73e8; outline-offset: -1px; }
+.table-wrap.sheet td.en-edition { padding: 0; outline: 2px solid #1a73e8; outline-offset: -2px; }
+.table-wrap.sheet td.en-edition input, .table-wrap.sheet td.en-edition select,
+.table-wrap.sheet td.en-edition textarea {
+  width: 100%; border: none; font: inherit; padding: 4px 8px; background: #fff; outline: none;
+}
+.table-wrap.sheet td.en-edition textarea { min-height: 60px; resize: vertical; }
+.prio { font-weight: 700; }
+.prio-1 { background: #e06666 !important; color: #fff; }
+.prio-2 { background: #f6b26b !important; }
+.prio-3 { background: #f1c232 !important; }
+.prio-4 { background: #93c47d !important; color: #fff; }
+.prio-5 { background: #d9ead3 !important; }
+.sans-ref { color: #cc0000; font-weight: 700; }
+.nouveau { color: var(--muted); font-size: 11px; letter-spacing: .3px; }
 .artwork-stat {
   background: var(--card); border-radius: var(--radius);
   padding: 12px 20px; box-shadow: var(--shadow);
@@ -772,37 +809,23 @@ button { cursor: pointer; }
 
   <!-- ═══ ARTWORK ════════════════════════════════════════════════════════════ -->
   <div id="tab-artwork" class="tab-panel">
-    <div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;">
+    <div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <span style="font-weight:600;font-size:15px;color:var(--text);">Suivi des Artworks & Packaging</span>
-      <span class="badge badge-yellow" title="Source : Google Sheet 'Suivi des artworks-import' (Clarisse) via API Drive">GSheet Clarisse (Drive)</span>
-    </div>
-    <div class="artwork-stats" id="artwork-stats"></div>
-    <div id="artwork-actions-ecriture" style="display:none;gap:8px;align-items:center;margin-bottom:8px;">
-      <button class="btn btn-sm" style="background:var(--blue);color:#fff;" onclick="nouvelArtwork()">+ Nouvel artwork</button>
-      <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;">
-        <input id="f-art-archives" type="checkbox" onchange="filterArtwork()"> Afficher les archivés
-      </label>
+      <span id="artwork-source" class="badge badge-yellow" title="Source : Google Sheet 'Suivi des artworks-import' (Clarisse) via API Drive">GSheet Clarisse (Drive)</span>
+      <span style="flex:1"></span>
+      <button id="artwork-btn-nouveau" class="btn btn-sm" style="display:none;background:var(--blue);color:#fff;" onclick="nouvelArtwork()">+ Nouvel artwork</button>
+      <button class="btn btn-ghost btn-sm" onclick="loadArtwork()">&#8635; Actualiser</button>
     </div>
     <div id="artwork-consigne-gsheet" style="font-size:12px;color:var(--muted);margin-bottom:8px;">
       Les artworks se saisissent et se modifient dans le
       <a href="https://docs.google.com/spreadsheets/d/1FTr2nloJGIgLELjbEVkODVhLz4oaAjhaqtrWqXJ4Jrc/edit" target="_blank" rel="noopener">gsheet de Clarisse</a> : FUSEAU le relit chaque matin.
       La saisie directe dans FUSEAU viendra avec la refonte de l'onglet.
     </div>
-    <div class="toolbar">
-      <input id="f-art-article" type="text" placeholder="Code article…" oninput="filterArtwork()">
-      <input id="f-art-designation" type="text" placeholder="Désignation…" oninput="filterArtwork()">
-      <select id="f-art-valideur" onchange="filterArtwork()">
-        <option value="">Tous les valideurs</option>
-      </select>
-      <button class="btn btn-ghost btn-sm" onclick="loadArtwork()">&#8635; Actualiser</button>
+    <div id="artwork-consigne-fuseau" style="display:none;font-size:12px;color:var(--muted);margin-bottom:8px;">
+      Comme dans le gsheet : <b>double-clic</b> sur une cellule pour la modifier, <b>Entrée</b> pour enregistrer, <b>Échap</b> pour annuler.
+      Chaque modification est tracée (🕘).
     </div>
-    <div class="section-header"><span class="section-title">Artworks en attente</span>
-      <span id="art-count-attente" style="font-size:12px;color:var(--muted);"></span></div>
-    <div id="table-artwork-attente">
-      <div class="loader"><span class="spinner"></span>Chargement…</div>
-    </div>
-    <div class="section-header" style="margin-top:16px;"><span class="section-title">Liste des artworks (archive, recherche de l'existant)</span>
-      <span id="art-count-liste" style="font-size:12px;color:var(--muted);"></span></div>
+    <div class="sheet-onglets" id="artwork-feuilles"></div>
     <div id="table-artwork">
       <div class="loader"><span class="spinner"></span>Chargement…</div>
     </div>
@@ -3534,30 +3557,27 @@ let _artworkFuseau = false;
 const LIBELLE_STATUT_ARTWORK = { en_attente: 'En attente', valide: 'Validé', archive: 'Archivé' };
 
 async function loadArtwork() {
-  for (const id of ['table-artwork', 'table-artwork-attente']) {
-    document.getElementById(id).innerHTML = '<div class="loader"><span class="spinner"></span>Chargement…</div>';
-  }
+  document.getElementById('table-artwork').innerHTML = '<div class="loader"><span class="spinner"></span>Chargement…</div>';
   try {
     // Phase d'écriture : si la saisie est activée, FUSEAU est la source.
     const mode = await apiFetch('/api/artworks/mode').catch(() => ({ ecriture: false }));
     _artworkFuseau = !!mode.ecriture;
-    const barre = document.getElementById('artwork-actions-ecriture');
-    if (barre) barre.style.display = _artworkFuseau ? 'flex' : 'none';
-    const consigne = document.getElementById('artwork-consigne-gsheet');
-    if (consigne) consigne.style.display = _artworkFuseau ? 'none' : '';
+    document.getElementById('artwork-btn-nouveau').style.display = _artworkFuseau ? '' : 'none';
+    document.getElementById('artwork-consigne-gsheet').style.display = _artworkFuseau ? 'none' : '';
+    document.getElementById('artwork-consigne-fuseau').style.display = _artworkFuseau ? '' : 'none';
+    const source = document.getElementById('artwork-source');
+    source.textContent = _artworkFuseau ? 'Saisie FUSEAU' : 'GSheet Clarisse (Drive)';
+    source.className = 'badge ' + (_artworkFuseau ? 'badge-green' : 'badge-yellow');
     const r = _artworkFuseau ? await apiFetch('/api/artworks') : await apiFetch('/api/artwork');
     if (_artworkFuseau) r.data.forEach(a => { a.statut_artwork = LIBELLE_STATUT_ARTWORK[a.statut] || a.statut; });
     _artwork = r.data;
     if (r.warning) {
-      document.getElementById('artwork-stats').innerHTML =
+      document.getElementById('artwork-feuilles').innerHTML = '';
+      document.getElementById('table-artwork').innerHTML =
         `<div style="color:var(--yellow);font-size:13px;padding:8px;">⚠️ ${esc(r.warning)}</div>`;
-      document.getElementById('table-artwork').innerHTML = '';
-      document.getElementById('table-artwork-attente').innerHTML = '';
       return;
     }
-    renderArtworkStats(_artwork);
-    wireArtworkValideurSelect(_artwork);
-    renderArtwork(_artwork);
+    renderArtwork();
   } catch (e) {
     document.getElementById('table-artwork').innerHTML =
       `<div class="empty"><div class="empty-icon">⚠️</div>${esc(e.message)}</div>`;
@@ -3565,99 +3585,183 @@ async function loadArtwork() {
   }
 }
 
-function wireArtworkValideurSelect(rows) {
-  const sel = document.getElementById('f-art-valideur');
-  const current = sel.value;
-  const valideurs = [...new Set(rows.map(r => r.valideur).filter(Boolean))].sort();
-  sel.innerHTML = '<option value="">Tous les valideurs</option>'
-    + valideurs.map(v => `<option ${v === current ? 'selected' : ''}>${esc(v)}</option>`).join('');
-}
+// ── Grille Artwork facon gsheet (08/10) ─────────────────────────────────────
+// L'equipe vit dans le gsheet de Clarisse : memes feuilles (onglets), memes
+// colonnes dans le meme ordre, memes couleurs de priorite, un filtre par
+// colonne et, en saisie FUSEAU, l'edition au double-clic. Une ligne normalisee
+// sert les deux sources (miroir du gsheet ou saisie FUSEAU).
+let _artworkFeuille = 'attente';
+const _artworkFiltres = {};
 
-function filterArtwork() {
-  const art = document.getElementById('f-art-article').value.toLowerCase();
-  const des = document.getElementById('f-art-designation').value.toLowerCase();
-  const valideur = document.getElementById('f-art-valideur').value;
-  const filtered = _artwork.filter(r =>
-    (!art  || (r.code_article||'').toLowerCase().includes(art)) &&
-    (!des  || (r.designation||'').toLowerCase().includes(des)) &&
-    (!valideur || r.valideur === valideur)
-  );
-  renderArtwork(filtered);
-}
-
-// Graphiques priorite / valideur retires a la demo du 06/10 (retour metier).
-
-// Decision 22/07 : statut = UNIQUEMENT le gsheet Clarisse (2 etats, plus de
-// "A traiter/Envoye/Attente Carrefour/Archive" herites de l'Excel IMPORT).
-function renderArtworkStats(rows) {
-  const counts = {};
-  rows.forEach(r => { counts[r.statut_artwork] = (counts[r.statut_artwork] || 0) + 1; });
-  const statuts = ['En attente', 'Validé'];
-  document.getElementById('artwork-stats').innerHTML = [
-    { lbl: 'Total', num: rows.length, color: 'var(--blue-light)' },
-    ...statuts.map(s => ({ lbl: s, num: counts[s] || 0, color: s === 'Validé' ? 'var(--green)' : 'var(--orange)' }))
-  ].map(({ lbl, num, color }) =>
-    `<div class="artwork-stat">
-       <div class="num" style="color:${color}">${num}</div>
-       <div class="lbl">${lbl}</div>
-     </div>`
-  ).join('');
-}
-
-// Commentaire contextuel : le gsheet a 2 commentaires distincts sur l'onglet
-// "en attente" (Andrea / Clarisse-Thomas), un seul sur "Liste artworks"
-// (validation) -- jamais fusionnes (cf. transform_artwork.py 22/07).
-function artworkCommentTitle(r) {
-  if (r.statut_artwork === 'En attente') {
-    const parts = [];
-    if (r.commentaire_andrea) parts.push(`Maxence : ${r.commentaire_andrea}`);
-    if (r.commentaire_clarisse_thomas) parts.push(`Clarisse/Thomas : ${r.commentaire_clarisse_thomas}`);
-    return parts.join(' — ');
+function artworkLigne(r) {
+  if (_artworkFuseau) {
+    return {
+      cle: r.identifiant,
+      statut: r.statut === 'en_attente' ? 'attente' : r.statut === 'archive' ? 'archive' : 'liste',
+      ref: r.code_article, designation: r.designation, derniere_version: r.date_derniere_version,
+      validation: r.valide_le, demande: r.date_demande, priorite: r.priorite, valideur: r.valideur,
+      com_maxence: r.commentaire_acheteur, com_design: r.commentaire_design,
+      com_version: r.commentaire_version, po: r.po_number, brut: r,
+    };
   }
-  return r.commentaire || '';
+  // Lignes sans reference du gsheet ("PAS DE REF", "REF À CRÉER") : code
+  // technique NOUVEAU-<designation> cote ETL, affiche « PAS DE REF » comme le gsheet.
+  const sansRef = (r.code_article || '').startsWith('NOUVEAU-');
+  return {
+    cle: r.code_article, statut: r.statut_artwork === 'En attente' ? 'attente' : 'liste',
+    ref: sansRef ? null : r.code_article, designation: r.designation, derniere_version: r.derniere_version,
+    validation: r.date_validation, demande: r.date_demande, priorite: r.priorite, valideur: r.valideur,
+    com_maxence: r.commentaire_andrea, com_design: r.commentaire_clarisse_thomas,
+    com_version: r.commentaire, po: r.po_number, brut: r,
+  };
 }
 
-function renderArtworkFuseau(rows) {
-  const voirArchives = !!document.getElementById('f-art-archives')?.checked;
-  const attente = rows.filter(r => r.statut === 'en_attente').sort((a, b) => (a.priorite ?? 9) - (b.priorite ?? 9));
-  const liste = rows.filter(r => r.statut === 'valide' || (voirArchives && r.statut === 'archive'));
-  document.getElementById('art-count-attente').textContent = `${attente.length} artwork${attente.length > 1 ? 's' : ''}`;
-  document.getElementById('art-count-liste').textContent = `${liste.length} artwork${liste.length > 1 ? 's' : ''}`;
-  const tete = (extra) => `<thead><tr><th>Identifiant</th><th>Article</th><th>Désignation</th>${extra}<th>Valideur</th><th>Actions</th></tr></thead>`;
-  document.getElementById('table-artwork-attente').innerHTML = !attente.length
-    ? '<div class="empty"><div class="empty-icon">🖼️</div>Aucun artwork en attente</div>'
-    : `<div class="table-wrap"><table>${tete('<th>Prio.</th><th>Demande</th><th>Commentaire Maxence</th><th>Commentaire Clarisse / Thomas</th>')}
-      <tbody>${attente.map(r => `<tr>
-        <td class="mono" style="font-size:11px">${esc(r.identifiant)}</td>
-        <td class="mono">${esc(r.code_article) || '<span class="badge badge-gray">à créer</span>'}</td>
-        <td>${esc(r.designation)}</td>
-        <td style="text-align:center">${r.priorite ?? '—'}</td>
-        <td style="font-size:12px">${r.date_demande ? fmt(r.date_demande, 'date') : '—'}</td>
-        <td style="font-size:12px">${esc(r.commentaire_acheteur) || '—'}</td>
-        <td style="font-size:12px;max-width:260px">${esc(r.commentaire_design) || '—'}</td>
-        <td>${esc(r.valideur) || '—'}</td>${actionsArtwork(r)}
-      </tr>`).join('')}</tbody></table></div>`;
-  document.getElementById('table-artwork').innerHTML = !liste.length
-    ? '<div class="empty"><div class="empty-icon">🖼️</div>Aucun artwork trouvé</div>'
-    : `<div class="table-wrap"><table>${tete('<th>Créé le</th><th>Validé le</th><th>Archivé le</th><th>Commentaire version</th>')}
-      <tbody>${liste.map(r => `<tr${r.statut === 'archive' ? ' style="opacity:.6"' : ''}>
-        <td class="mono" style="font-size:11px">${esc(r.identifiant)}</td>
-        <td class="mono">${esc(r.code_article) || '<span class="badge badge-gray">à créer</span>'}</td>
-        <td>${esc(r.designation)}</td>
-        <td style="font-size:12px" title="Créé par ${esc(r.cree_par)}">${fmt(r.cree_le, 'date')}</td>
-        <td style="font-size:12px" title="${r.valide_par ? 'Validé par ' + esc(r.valide_par) : ''}">${r.valide_le ? fmt(r.valide_le, 'date') : '—'}</td>
-        <td style="font-size:12px" title="${r.archive_par ? 'Archivé par ' + esc(r.archive_par) : ''}">${r.archive_le ? fmt(r.archive_le, 'date') : '—'}</td>
-        <td style="font-size:12px;color:var(--muted);max-width:240px">${esc(r.commentaire_version) || '—'}</td>
-        <td>${esc(r.valideur) || '—'}</td>${actionsArtwork(r)}
-      </tr>`).join('')}</tbody></table></div>`;
+// champ : champ de PATCH /api/artworks (saisie FUSEAU) ; absent = non modifiable.
+const COLONNES_ARTWORK = {
+  ref:              { titre: 'Référence', champ: 'code_article', classe: 'mono centre' },
+  designation:      { titre: 'Désignation', champ: 'designation', large: true },
+  derniere_version: { titre: 'Date de dernière version', champ: 'date_derniere_version', type: 'date' },
+  validation:       { titre: 'Date de dernière validation', type: 'date' },
+  demande:          { titre: 'Date de demande artwork', champ: 'date_demande', type: 'date' },
+  priorite:         { titre: 'Niveau de priorité 1→5', champ: 'priorite', type: 'select', options: ['', 1, 2, 3, 4, 5] },
+  valideur:         { titre: 'Valideur', champ: 'valideur', type: 'select', classe: 'centre',
+                      options: ['', 'Clarisse', 'Thomas', 'Jonathan', 'Carrefour', 'Siplec'] },
+  com_maxence:      { titre: 'Commentaire Maxence', champ: 'commentaire_acheteur', type: 'textarea', classe: 'centre' },
+  com_design:       { titre: 'Commentaire Clarisse / Thomas', champ: 'commentaire_design', type: 'textarea', classe: 'centre', large: true },
+  com_version:      { titre: 'Commentaire sur la dernière version', champ: 'commentaire_version', type: 'textarea', large: true },
+  po:               { titre: 'PO', classe: 'mono' },
+};
+const FEUILLES_ARTWORK = {
+  attente: { titre: 'Artworks en attente',
+             colonnes: ['ref', 'designation', 'derniere_version', 'validation', 'demande', 'priorite', 'valideur', 'com_maxence', 'com_design', 'po'] },
+  liste:   { titre: 'Liste artworks',
+             colonnes: ['ref', 'designation', 'derniere_version', 'validation', 'valideur', 'com_version', 'po'] },
+  archive: { titre: 'Archivés', fuseauSeul: true,
+             colonnes: ['ref', 'designation', 'derniere_version', 'validation', 'valideur', 'com_version', 'po'] },
+};
+
+function artworkCellule(l, col) {
+  const def = COLONNES_ARTWORK[col];
+  const v = l[col];
+  const classes = (def.classe || '').split(' ').filter(Boolean);
+  let contenu;
+  if (col === 'ref') {
+    contenu = v ? esc(v) : '<span class="sans-ref" title="Pas encore de référence Sylob">PAS DE REF</span>';
+  } else if (col === 'priorite') {
+    classes.push('centre');
+    if (v) classes.push('prio', `prio-${Number(v)}`);
+    contenu = v ?? '';
+  } else if (def.type === 'date') {
+    classes.push('centre');
+    contenu = v ? fmt(v, 'date') : (!l.ref ? '<span class="nouveau">NOUVEAU</span>' : '');
+  } else {
+    contenu = esc(v) || '';
+  }
+  let attributs = '';
+  if (_artworkFuseau && def.champ) {
+    classes.push('edit');
+    attributs = ` ondblclick="editerCelluleArtwork(this,'${esc(l.cle)}','${col}')" title="Double-clic pour modifier"`;
+  }
+  const style = def.large ? ' style="min-width:220px"' : def.type === 'date' ? ' style="white-space:nowrap"' : '';
+  return `<td class="${classes.join(' ')}"${style}${attributs}>${contenu}</td>`;
 }
 
-function artworkLigneCode(r) {
-  // Les lignes sans reference du gsheet ("PAS DE REF", "REF À CRÉER") recoivent
-  // un code technique NOUVEAU-<designation> : on l'affiche comme tel.
-  return (r.code_article || '').startsWith('NOUVEAU-')
-    ? '<span class="badge badge-gray" title="Pas encore de référence article dans le gsheet">à créer</span>'
-    : esc(r.code_article) || '—';
+function artworkTexteFiltre(l, col) {
+  const v = l[col];
+  if (col === 'ref' && !v) return 'pas de ref';
+  if (COLONNES_ARTWORK[col].type === 'date') return v ? fmtDateFr(v) : (!l.ref ? 'nouveau' : '');
+  return String(v ?? '');
+}
+
+function artworkLignesFeuille(feuille) {
+  const colonnes = FEUILLES_ARTWORK[feuille].colonnes;
+  const lignes = _artwork.map(artworkLigne).filter(l => l.statut === feuille);
+  if (feuille === 'attente') lignes.sort((a, b) => (a.priorite ?? 9) - (b.priorite ?? 9));
+  return lignes.filter(l => colonnes.every(c => {
+    const f = (_artworkFiltres[feuille + ':' + c] || '').toLowerCase().trim();
+    return !f || artworkTexteFiltre(l, c).toLowerCase().includes(f);
+  }));
+}
+
+function renderArtwork() {
+  const feuilles = Object.entries(FEUILLES_ARTWORK).filter(([, f]) => !f.fuseauSeul || _artworkFuseau);
+  if (!feuilles.some(([k]) => k === _artworkFeuille)) _artworkFeuille = 'attente';
+  const tous = _artwork.map(artworkLigne);
+  document.getElementById('artwork-feuilles').innerHTML = feuilles.map(([k, f]) =>
+    `<div class="sheet-onglet${k === _artworkFeuille ? ' actif' : ''}" onclick="choisirFeuilleArtwork('${k}')">${f.titre}`
+    + `<span class="nb">${tous.filter(l => l.statut === k).length}</span></div>`).join('');
+  const colonnes = FEUILLES_ARTWORK[_artworkFeuille].colonnes;
+  document.getElementById('table-artwork').innerHTML = `<div class="table-wrap sheet"><table>
+    <thead><tr>${colonnes.map(c => `<th>${COLONNES_ARTWORK[c].titre}</th>`).join('')}${_artworkFuseau ? '<th>Actions</th>' : ''}</tr>
+    <tr class="filtres">${colonnes.map(c => `<th><input placeholder="Filtrer…" value="${esc(_artworkFiltres[_artworkFeuille + ':' + c] || '')}"
+      oninput="filtrerColonneArtwork('${c}', this.value)"></th>`).join('')}${_artworkFuseau ? '<th></th>' : ''}</tr></thead>
+    <tbody id="artwork-corps"></tbody></table></div>`;
+  // La ligne de filtres reste collee sous l'en-tete, dont la hauteur varie (titres sur 2-3 lignes).
+  const entete = document.querySelector('#table-artwork thead tr');
+  document.querySelector('#table-artwork .table-wrap').style.setProperty('--sheet-entete', entete.offsetHeight + 'px');
+  renderArtworkCorps();
+}
+
+function renderArtworkCorps() {
+  const corps = document.getElementById('artwork-corps');
+  if (!corps) return;
+  const colonnes = FEUILLES_ARTWORK[_artworkFeuille].colonnes;
+  const lignes = artworkLignesFeuille(_artworkFeuille);
+  corps.innerHTML = lignes.length
+    ? lignes.map(l => `<tr>${colonnes.map(c => artworkCellule(l, c)).join('')}${_artworkFuseau ? actionsArtwork(l.brut) : ''}</tr>`).join('')
+    : `<tr><td colspan="${colonnes.length + (_artworkFuseau ? 1 : 0)}" style="text-align:center;padding:30px;color:var(--muted)">`
+      + `${_artworkFeuille === 'attente' ? 'Aucun artwork en attente' : 'Aucun artwork'}</td></tr>`;
+}
+
+function choisirFeuilleArtwork(feuille) {
+  _artworkFeuille = feuille;
+  renderArtwork();
+}
+
+function filtrerColonneArtwork(col, valeur) {
+  _artworkFiltres[_artworkFeuille + ':' + col] = valeur;
+  renderArtworkCorps();  // seul le corps : le champ de filtre garde le focus
+}
+
+function editerCelluleArtwork(td, cle, col) {
+  if (td.classList.contains('en-edition')) return;
+  const a = _artwork.find(x => x.identifiant === cle);
+  const def = COLONNES_ARTWORK[col];
+  if (!a || !def.champ) return;
+  const estDate = def.type === 'date';
+  const actuelle = String(a[def.champ] ?? '').slice(0, estDate ? 10 : undefined);
+  td.classList.add('en-edition');
+  td.innerHTML = def.type === 'select'
+    ? `<select>${def.options.map(o => `<option value="${o}"${String(o) === actuelle ? ' selected' : ''}>${o === '' ? '—' : o}</option>`).join('')}</select>`
+    : def.type === 'textarea' ? `<textarea>${esc(actuelle)}</textarea>`
+    : `<input type="${estDate ? 'date' : 'text'}" value="${esc(actuelle)}">`;
+  const champ = td.firstElementChild;
+  champ.focus();
+  let fini = false;
+  const annuler = () => { if (!fini) { fini = true; renderArtworkCorps(); } };
+  const enregistrer = async () => {
+    if (fini) return;
+    fini = true;
+    const saisie = champ.value.trim();
+    if (saisie === actuelle || (def.champ === 'designation' && !saisie)) return renderArtworkCorps();
+    const valeur = !saisie ? null : def.champ === 'priorite' ? Number(saisie) : saisie;
+    const r = await apiEcrire(`/api/artworks/${encodeURIComponent(cle)}`, 'PATCH',
+                              { [def.champ]: valeur, version: a.version }, null).catch(() => null);
+    if (r && r.identifiant) {
+      const i = _artwork.findIndex(x => x.identifiant === cle);
+      _artwork[i] = { ...r, statut_artwork: LIBELLE_STATUT_ARTWORK[r.statut] || r.statut };
+      renderArtworkCorps();
+    } else {
+      await loadArtwork();  // conflit de version (409) ou erreur : on repart de la base
+    }
+  };
+  champ.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); annuler(); }
+    // Entree enregistre ; dans un commentaire, Alt+Entree ou Maj+Entree passe a la ligne, comme dans Sheets.
+    if (e.key === 'Enter' && !(def.type === 'textarea' && (e.shiftKey || e.altKey))) { e.preventDefault(); enregistrer(); }
+  });
+  champ.addEventListener('blur', enregistrer);
+  if (def.type === 'select') champ.addEventListener('change', enregistrer);
 }
 
 const CHAMPS_ARTWORK = [
@@ -3714,56 +3818,6 @@ function actionsArtwork(r) {
   boutons.push(`<button class="btn btn-ghost btn-sm" title="Historique des modifications" onclick="historiqueArtwork('${id}')">🕘</button>`);
   if (r.lien_drive) boutons.push(`<a class="btn btn-ghost btn-sm" href="${esc(r.lien_drive)}" target="_blank" rel="noopener" title="Ouvrir le PDF">📎</a>`);
   return `<td style="white-space:nowrap">${boutons.join(' ')}</td>`;
-}
-
-function renderArtwork(rows) {
-  if (_artworkFuseau) return renderArtworkFuseau(rows);
-  const attente = rows.filter(r => r.statut_artwork === 'En attente')
-    .sort((a, b) => (a.priorite ?? 9) - (b.priorite ?? 9));
-  const liste = rows.filter(r => r.statut_artwork !== 'En attente');
-  document.getElementById('art-count-attente').textContent = `${attente.length} artwork${attente.length > 1 ? 's' : ''}`;
-  document.getElementById('art-count-liste').textContent = `${liste.length} artwork${liste.length > 1 ? 's' : ''}`;
-
-  document.getElementById('table-artwork-attente').innerHTML = !attente.length
-    ? '<div class="empty"><div class="empty-icon">🖼️</div>Aucun artwork en attente</div>'
-    : `<div class="table-wrap"><table>
-      <thead><tr>
-        <th>Article</th><th>Désignation</th>
-        <th title="Niveau de priorité du gsheet (1 = urgent, 5 = faible)">Prio.</th>
-        <th title="Date de demande de l'artwork (création), colonne du gsheet">Demande</th>
-        <th>Valideur</th><th>Commentaire Maxence</th><th>Commentaire Clarisse / Thomas</th>
-        <th title="N° de commande(s) connu(s) pour cet article">PO</th>
-      </tr></thead>
-      <tbody>${attente.map(r => `<tr>
-        <td class="mono">${artworkLigneCode(r)}</td>
-        <td>${esc(r.designation) || '—'}</td>
-        <td style="text-align:center">${r.priorite ?? '—'}</td>
-        <td style="font-size:12px">${r.date_demande ? fmt(r.date_demande, 'date') : '—'}</td>
-        <td>${esc(r.valideur) || '—'}</td>
-        <td style="font-size:12px">${esc(r.commentaire_andrea) || '—'}</td>
-        <td style="font-size:12px;max-width:280px">${esc(r.commentaire_clarisse_thomas) || '—'}</td>
-        <td class="mono" style="font-size:11px;">${esc(r.po_number) || '—'}</td>
-      </tr>`).join('')}</tbody></table></div>`;
-
-  document.getElementById('table-artwork').innerHTML = !liste.length
-    ? '<div class="empty"><div class="empty-icon">🖼️</div>Aucun artwork trouvé</div>'
-    : `<div class="table-wrap"><table>
-      <thead><tr>
-        <th>Article</th><th>Désignation</th>
-        <th title="Date de la dernière version de l'artwork">Dernière version</th>
-        <th title="Date de la dernière validation">Dernière validation</th>
-        <th>Valideur</th><th>Commentaire sur la dernière version</th>
-        <th title="N° de commande(s) connu(s) pour cet article">PO</th>
-      </tr></thead>
-      <tbody>${liste.map(r => `<tr>
-        <td class="mono">${artworkLigneCode(r)}</td>
-        <td>${esc(r.designation) || '—'}</td>
-        <td style="font-size:12px">${r.derniere_version ? fmt(r.derniere_version, 'date') : '—'}</td>
-        <td style="font-size:12px">${r.date_validation ? fmt(r.date_validation, 'date') : '—'}</td>
-        <td>${esc(r.valideur) || '—'}</td>
-        <td style="font-size:12px;color:var(--muted);max-width:280px">${esc(r.commentaire) || '—'}</td>
-        <td class="mono" style="font-size:11px;">${esc(r.po_number) || '—'}</td>
-      </tr>`).join('')}</tbody></table></div>`;
 }
 
 async function saveArtworkStatut(codeArticle, btn) {

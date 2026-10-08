@@ -49,6 +49,25 @@ function Log($m) { $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"; "$ts  $m" | Tee
 Set-Location $Repo
 Log "=== DEBUT ETL quotidien ==="
 
+# --- 0. Mise a jour du code avant de charger ----------------------------------
+# Au demarrage du poste, cette tache peut partir avant FUSEAU_Files_ETL, seule a
+# faire le git pull : les 07 et 08/10, le gsheet artwork a ete relu avec l'ancien
+# parseur (0 artwork en attente au lieu de 10) alors que le correctif etait
+# publie. On tente donc ici une avance rapide. La gestion complete du pull
+# bloque (marqueur PULL_BLOQUE.txt, code de sortie) reste dans
+# run_etl_scheduled.ps1 : ici, un echec est journalise et l'ETL continue sur le
+# code local, les donnees du jour comptant plus que la version du code.
+$Branche = if ($env:BRANCHE_DEPLOIEMENT) { $env:BRANCHE_DEPLOIEMENT } else { "main" }
+$Modifs = @(& git -C $Repo status --porcelain --untracked-files=no)
+if ($Modifs.Count -gt 0) {
+    Log "[ATTENTION] fichiers suivis modifies localement : pas de mise a jour du code"
+} else {
+    & git -C $Repo fetch origin $Branche *>> $Log
+    if ($LASTEXITCODE -eq 0) { & git -C $Repo merge --ff-only FETCH_HEAD *>> $Log }
+    if ($LASTEXITCODE -ne 0) { Log "[ATTENTION] mise a jour du code impossible, ETL sur le code local" }
+}
+Log ("[INFO] code execute : {0}" -f (& git -C $Repo rev-parse --short HEAD))
+
 # Chaque source est independante : l'echec de l'artwork ne doit pas empecher le
 # rafraichissement de la qualite. On compte les echecs et on sort en erreur a la
 # fin, pour que le Planificateur de taches les signale sans perdre le reste.
