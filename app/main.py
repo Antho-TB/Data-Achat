@@ -440,6 +440,33 @@ def non_conformites_mail(conn: Any, pos: list[Any]) -> list[dict[str, Any]]:
     """), {"pos": cles}))
 
 
+def reservations_inspection(conn: Any, pos: list[Any]) -> dict[str, str]:
+    """
+    Date de la derniere reservation d'inspection DEKRA connue, par PO normalise.
+
+    La tache Cowork lit le devis DEKRA (inspection reservee) et l'enregistre en
+    decision "reservee", stade "inspection", date_info = date d'inspection
+    prevue. Un report met a jour la meme ligne (load_evenements.py). Indicatif :
+    une decision mail ne fabrique jamais un statut (regle du 08/10).
+
+    Returns:
+        {po_normalise: date ISO}, vide si aucun PO.
+    """
+    cles = sorted({normaliser_po(p) for p in pos if normaliser_po(p)})
+    if not cles:
+        return {}
+    rows = conn.execute(text(f"""
+        SELECT DISTINCT ON (LTRIM(TRIM(d.po_number), '0'))
+               LTRIM(TRIM(d.po_number), '0') AS po, d.date_info
+        FROM {SCHEMA}.qualite_decision d
+        WHERE LTRIM(TRIM(d.po_number), '0') = ANY(:pos)
+          AND d.decision = 'reservee' AND d.stade = 'inspection'
+          AND d.date_info IS NOT NULL
+        ORDER BY LTRIM(TRIM(d.po_number), '0'), d.created_at DESC, d.date_info DESC
+    """), {"pos": cles}).fetchall()
+    return {po: date_info.isoformat() for po, date_info in rows}
+
+
 def fiches_ncr_sylob(conn: Any, codes_article: list[Any]) -> list[dict[str, Any]]:
     """
     Fiches de non-conformite Sylob (reception, transporteur) des articles donnes,
@@ -750,8 +777,10 @@ def get_commandes(
             """), params)
             data = rows_to_dicts(r)
             intitules = intitules_commande_sylob(conn, [d["po_number"] for d in data])
+            reservations = reservations_inspection(conn, [d["po_number"] for d in data])
             for d in data:
                 d["intitule_commande"] = intitules.get(normaliser_po(d.get("po_number")))
+                d["inspection_reservee_le"] = reservations.get(normaliser_po(d.get("po_number")))
             rattacher_non_conformites(
                 data,
                 non_conformites_mail(conn, [d["po_number"] for d in data]),
@@ -1806,7 +1835,9 @@ def get_qualite(
       par la reference DEKRA ("4961649.00-6_Item#_..."), a defaut par PO et article.
       L'ancienne jointure sur qualite_doc.ref_rapport ne trouvait rien : ce champ
       porte une CA, pas une reference DEKRA ;
-    - PO compares sans zeros de tete (6 chiffres dans l'IMPORT, 8 sur le Drive).
+    - PO compares sans zeros de tete (6 chiffres dans l'IMPORT, 8 sur le Drive) ;
+    - derniere reservation d'inspection DEKRA lue dans les mails
+      (inspection_reservee_le, inspection_reservee_motif), indicative.
     """
     engine = get_engine()
     filters: list[str] = []
@@ -1825,7 +1856,9 @@ def get_qualite(
         try:
             r = conn.execute(text(f"""
                 SELECT q.*, doc.drive_url, an.conformite, dec.decisions, ana.analyses,
-                       cmd.statut AS statut_commande
+                       cmd.statut AS statut_commande,
+                       resa.date_info AS inspection_reservee_le,
+                       resa.motif AS inspection_reservee_motif
                 FROM {SCHEMA}.qualite q
                 -- Statut de la commande : une commande annulee s'affiche barree
                 -- (Maxence la barre dans l'IMPORT, mise en forme que l'ETL ne lit pas).
@@ -1877,6 +1910,17 @@ def get_qualite(
                         ORDER BY d.stade, d.charge_le DESC
                     ) y
                 ) ana ON true
+                -- Derniere reservation d'inspection DEKRA lue dans les mails
+                -- (devis DEKRA, decision "reservee"), indicative.
+                LEFT JOIN LATERAL (
+                    SELECT d.date_info, d.motif
+                    FROM {SCHEMA}.qualite_decision d
+                    WHERE LTRIM(TRIM(d.po_number), '0') = LTRIM(TRIM(q.po_number), '0')
+                      AND (d.code_article IS NULL OR d.code_article = q.code_article)
+                      AND d.decision = 'reservee' AND d.stade = 'inspection'
+                    ORDER BY d.created_at DESC, d.date_info DESC NULLS LAST
+                    LIMIT 1
+                ) resa ON true
                 {where}
                 ORDER BY q.date_inspection DESC NULLS LAST
                 LIMIT 1000
