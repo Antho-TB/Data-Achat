@@ -91,6 +91,7 @@ SONDES: tuple[SondeFraicheur, ...] = (
     _sonde_myreport("Articles Sylob (MyReport)", "articles3"),
     _sonde_myreport("Commandes Sylob (MyReport)", Config.MYREPORT_TABLE_COMMANDES),
     _sonde_myreport("Receptions Sylob (MyReport)", "receptions_detaillees4"),
+    _sonde_myreport("BL CIE (MyReport)", Config.MYREPORT_TABLE_LIVRAISONS_DETAIL),
 )
 
 # Tables MyReport lues par l'API elle-meme : sans SELECT, la recherche article,
@@ -99,6 +100,11 @@ TABLES_MYREPORT_LUES: tuple[str, ...] = (
     "articles3",
     Config.MYREPORT_TABLE_COMMANDES,
     Config.MYREPORT_TABLE_NCR,
+    Config.MYREPORT_TABLE_COMMANDES_DETAIL,
+    Config.MYREPORT_TABLE_VENTES,
+    Config.MYREPORT_TABLE_VENTES_DETAIL,
+    Config.MYREPORT_TABLE_LIVRAISONS,
+    Config.MYREPORT_TABLE_LIVRAISONS_DETAIL,
 )
 
 

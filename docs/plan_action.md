@@ -587,7 +587,7 @@ copies MyReport de `public`.
 - [ ] Afficher l'artwork (lien vers le PDF du Drive).
 - [ ] Pouvoir ajouter et modifier des lignes depuis FUSEAU.
 - [x] Garder les deux tableaux du gsheet de Clarisse (07/10) : « Artworks en attente », trié par priorité, et « Liste des artworks » pour rechercher l'existant.
-- [ ] Process : Clarisse passe une ligne en « validé », Maxence l'archive à la main une fois traitée. Voir pour automatiser cette suite.
+- [ ] Process : Clarisse passe une ligne en « validé », Maxence l'archive à la main une fois traitée. **Tranché le 08/10 par Antho : un bouton « archiver » cliqué par Maxence**, pas d'archivage automatique ; il vérifie, puis lance lui-même la suite de son process.
 - [x] Supprimer les deux graphiques de l'onglet (07/10).
 - [x] Clarisse peut déjà se connecter : l'application Entra « FUSEAU - Dashboard Achats » n'exige aucune affectation (vérifié le 07/10). Lui envoyer l'adresse suffit.
 - [ ] À prévoir, chantier plus gros : contrôle de l'artwork fournisseur contre celui de Clarisse (textes, codes-barres EAN, SPCB, PCB, n° de référence, désignation). Choix à faire entre OCR et vision par ordinateur.
@@ -650,7 +650,15 @@ Réponses reçues par mail le 08/10 (Maxence BRUN). Correctifs livrés le 08/10 
 Reste, cadré par ses réponses :
 - [ ] Lot 2 : n° de CA et date d'envoi en analyse depuis Sylob (date de la commande
   d'analyse).
-- [ ] Lot 3 : trois tableaux, Analyses en cours (archivage manuel une fois traitée),
+- [x] Lot 3, tableau de facturation en lecture seule (08/10) : une ligne par
+  commande d'analyse SE adressée à CIE, rapprochée **ligne à ligne** de son BL CIE
+  (commande de vente CIE, puis lignes de vente, puis lignes de BL), depuis les copies
+  MyReport. Statuts : BL manquant (plus de 30 jours), écart de montant, à facturer,
+  attente BL, facturée (les deux sociétés). Mesure du 08/10 depuis le 01/01/2025 :
+  1 097 CA, 1 056 facturées, 13 à facturer, 6 écarts, 20 en attente, 2 BL manquants.
+  Les cases « à facturer » et « facturation faite » du gsheet ne sont pas reprises :
+  le statut Sylob les remplace.
+- [ ] Lot 3, suite : trois tableaux, Analyses en cours (archivage manuel une fois traitée),
   Archives, Facturation (BL qualité CIE contre commande SE, « À facturer » si les
   montants concordent, « Facturation faite »). Le tableau de facturation est jugé
   « hyper important » : il révèle les BL CIE qui ne remontent pas vers SE.

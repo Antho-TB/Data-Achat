@@ -923,6 +923,21 @@ button { cursor: pointer; }
       <span id="qual-count" style="font-size:12px;color:var(--muted);margin-left:auto;"></span>
     </div>
     <div id="table-qualite"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
+    <div class="section-header" style="margin-top:20px;">
+      <span class="section-title">Facturation intersite des analyses (SE ↔ CIE)</span>
+      <span class="badge badge-blue" style="margin-left:8px;" title="Commandes d'analyse SE adressées à TARRERIAS ET CIE, rapprochées ligne à ligne de leur BL CIE, depuis Sylob (copies MyReport). Lecture seule.">Sylob</span>
+    </div>
+    <div id="fact-compteurs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;"></div>
+    <div class="toolbar">
+      <input id="f-fact-q" type="text" placeholder="CA, PO, BL, référence..." oninput="filterFacturation()">
+      <select id="f-fact-stade" onchange="filterFacturation()">
+        <option value="">Tous stades</option><option>MAT</option><option>SP</option><option>BAT</option><option>RECEP</option>
+      </select>
+      <select id="f-fact-statut" onchange="filterFacturation()"></select>
+      <label style="font-size:12px;">Depuis <input id="f-fact-depuis" type="date" onchange="loadFacturation()"></label>
+      <span id="fact-count" style="font-size:12px;color:var(--muted);margin-left:auto;"></span>
+    </div>
+    <div id="table-facturation"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
     <details id="qual-reporting-frs" style="margin-top:16px;">
       <summary class="section-title" style="cursor:pointer;">Reporting fournisseurs (inspection / NCR)</summary>
       <div id="table-qualite-frs" style="margin-top:8px;"><div class="loader"><span class="spinner"></span>Chargement...</div></div>
@@ -3192,6 +3207,7 @@ async function loadQualite() {
     ]);
     _qualite = q.data;
     renderQualiteFournisseurs(f.data, f.warning);
+    loadFacturation();
     if (q.warning) { renderQualite([], q.warning); return; }
     filterQualite();
   } catch (e) {
@@ -3303,6 +3319,93 @@ function renderQualite(rows, warning) {
       <td>${esc(r.conformite)||'-'}</td>
       <td class="mono">${esc(r.ncr)||'-'}</td>
     </tr>`; }).join('')}</tbody></table></div>`;
+}
+
+// ── Facturation intersite (SE <-> CIE), lecture seule ─────────────────────
+// Processus de Maxence : BL CIE compare a la CA SE ; montants egaux = a
+// facturer ; factures editees sur les deux societes = facturee.
+const STATUT_FACTURATION = {
+  bl_manquant: { lbl: 'BL manquant',  css: 'background:var(--red,#c0392b);color:#fff', def: "Pas de BL CIE plus de 30 jours après la commande d'analyse : BL non émis ou non remonté vers SE." },
+  ecart:       { lbl: 'écart',        css: 'background:var(--orange);color:#fff', def: 'Le montant du BL CIE diffère de celui de la commande SE.' },
+  a_facturer:  { lbl: 'à facturer',   css: 'background:var(--blue-light);color:#fff', def: 'BL CIE reçu, montants identiques : facturation à faire.' },
+  attente_bl:  { lbl: 'attente BL',   css: 'background:#999;color:#fff', def: "Commande d'analyse de moins de 30 jours, BL pas encore émis." },
+  facturee:    { lbl: 'facturée',     css: 'background:var(--green);color:#fff', def: 'Factures éditées sur les deux sociétés.' },
+};
+let _facturation = [];
+let _factStatutActif = '';
+
+async function loadFacturation() {
+  const el = document.getElementById('table-facturation');
+  if (!el) return;
+  const sel = document.getElementById('f-fact-statut');
+  if (sel && !sel.options.length) {
+    sel.innerHTML = '<option value="">Tous statuts</option>'
+      + Object.entries(STATUT_FACTURATION).map(([k, v]) => `<option value="${k}">${v.lbl}</option>`).join('');
+  }
+  el.innerHTML = '<div class="loader"><span class="spinner"></span>Chargement...</div>';
+  const depuis = document.getElementById('f-fact-depuis')?.value;
+  try {
+    const r = await apiFetch('/api/qualite/facturation' + (depuis ? `?depuis=${encodeURIComponent(depuis)}` : ''));
+    if (r.warning) { el.innerHTML = `<div style="color:var(--yellow);font-size:13px;padding:8px;">${esc(r.warning)}</div>`; return; }
+    _facturation = r.data || [];
+    const d = document.getElementById('f-fact-depuis');
+    if (d && !d.value && r.depuis) d.value = r.depuis;
+    renderFacturationCompteurs();
+    filterFacturation();
+  } catch (e) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">!</div>${esc(e.message)}</div>`;
+  }
+}
+
+function renderFacturationCompteurs() {
+  const n = {};
+  _facturation.forEach(r => { n[r.statut] = (n[r.statut] || 0) + 1; });
+  document.getElementById('fact-compteurs').innerHTML = Object.entries(STATUT_FACTURATION).map(([k, v]) =>
+    `<button class="btn btn-ghost btn-sm" title="${esc(v.def)}" onclick="document.getElementById('f-fact-statut').value='${k}';filterFacturation()">
+       <span class="badge" style="${v.css}">${n[k] || 0}</span> ${v.lbl}</button>`).join('');
+}
+
+function filterFacturation() {
+  const q = (document.getElementById('f-fact-q')?.value || '').toLowerCase().replace(/^0+/, '');
+  const stade = document.getElementById('f-fact-stade')?.value || '';
+  const statut = document.getElementById('f-fact-statut')?.value || '';
+  const rows = _facturation.filter(r =>
+    (!stade || r.stade === stade) && (!statut || r.statut === statut) &&
+    (!q || [r.ca, r.po_number, r.bl, r.reference, r.ref_article].some(v => String(v || '').toLowerCase().replace(/^0+/, '').includes(q)))
+  );
+  document.getElementById('fact-count').textContent = `${rows.length} commande${rows.length > 1 ? 's' : ''} d'analyse / ${_facturation.length}`;
+  renderFacturation(rows);
+}
+
+function renderFacturation(rows) {
+  const el = document.getElementById('table-facturation');
+  if (!rows.length) { el.innerHTML = '<div class="empty">Aucune commande d\'analyse</div>'; return; }
+  const qte = v => v != null ? Number(v) : '<span style="color:var(--muted)">—</span>';
+  const eur = v => v != null ? Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €' : '<span style="color:var(--muted)">—</span>';
+  el.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr>
+      <th>Stade</th><th>PO fournisseur</th><th title="Commande d'analyse SE adressée à TARRERIAS ET CIE">CA</th><th>Date CA</th>
+      <th title="Spectro">S</th><th title="Dureté">D</th><th title="Mécanique">M</th><th title="Cycles">C</th><th title="Rapport">R</th>
+      <th>Montant HT CA</th><th>Date BL</th><th title="BL de la prestation, émis par CIE">BL CIE</th><th>Montant HT BL</th>
+      <th title="Montant BL moins montant CA">Écart</th><th>Statut</th>
+    </tr></thead>
+    <tbody>${rows.map(r => {
+      const st = STATUT_FACTURATION[r.statut] || { lbl: r.statut, css: '' };
+      return `<tr>
+        <td>${esc(r.stade) || '<span style="color:var(--muted)" title="' + esc(r.reference) + '">?</span>'}</td>
+        <td class="mono" title="Référence de la CA : ${esc(r.reference)}">${esc(r.po_number) || esc(r.reference) || '—'}</td>
+        <td class="mono">${esc(r.ca)}</td>
+        <td style="font-size:12px">${fmt(r.date_ca, 'date')}</td>
+        <td style="text-align:right">${qte(r.qte_s)}</td><td style="text-align:right">${qte(r.qte_d)}</td>
+        <td style="text-align:right">${qte(r.qte_m)}</td><td style="text-align:right">${qte(r.qte_c)}</td>
+        <td style="text-align:right">${qte(r.qte_r)}</td>
+        <td style="text-align:right">${eur(r.montant_ca)}</td>
+        <td style="font-size:12px">${r.date_bl ? fmt(r.date_bl, 'date') : '<span style="color:var(--muted)">—</span>'}</td>
+        <td class="mono">${esc(r.bl) || '<span style="color:var(--muted)">—</span>'}</td>
+        <td style="text-align:right">${eur(r.montant_bl)}</td>
+        <td style="text-align:right;${r.ecart_montant ? 'color:var(--red,#c0392b);font-weight:bold' : ''}">${r.ecart_montant != null && Math.abs(r.ecart_montant) > 0.01 ? eur(r.ecart_montant) : '<span style="color:var(--muted)">—</span>'}</td>
+        <td title="${esc(st.def || '')}"><span class="badge" style="${st.css}">${esc(st.lbl)}</span></td>
+      </tr>`; }).join('')}</tbody></table></div>`;
 }
 
 const PREV_PHASES = {
