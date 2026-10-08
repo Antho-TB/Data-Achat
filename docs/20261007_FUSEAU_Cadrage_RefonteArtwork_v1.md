@@ -126,7 +126,11 @@ saisies, jamais rechargée en full-refresh :
 ## 5. Questions pour Clarisse et Maxence
 
 1. Option A : Clarisse est-elle d'accord pour saisir dans FUSEAU et figer le gsheet ?
+   **Réponse de Clarisse (08/10, 11:18) : oui**, « la plateforme est très bien ».
 2. Les 385 lignes « Liste artworks » sont-elles à classer en validées ou en archivées ?
+   **Réponse de Clarisse (08/10) :** même réponse que Maxence, il faut les vérifier
+   avant chaque nouvelle commande. Reprise en `valide`, pas en `archive`. Une nouvelle
+   commande doit déclencher une vérification de l'artwork.
 3. ~~Le passage en archive : action manuelle de Maxence dans FUSEAU, ou automatique après combien de jours ?~~ **Tranché le 08/10 (Antho) : clic manuel de Maxence**, qui vérifie puis lance lui-même la suite de son process.
 4. Où sont rangés les PDF sur le Drive, et le lien est-il déjà dans le gsheet ?
    **Réponse de Maxence (08/10) : Drive partagé « Design et Achat »**
@@ -140,6 +144,12 @@ saisies, jamais rechargée en full-refresh :
    fichier ; Clarisse doit aussi pouvoir modifier, **sauf l'archivage (la
    « descente »), réservé à Maxence**. Appel de Clarisse : le commerce pourrait
    créer lui-même une demande (§2.3).
+   **Réponse de Clarisse (08/10) :** Éric et le service qualité valident les textes
+   et les infos techniques ; Jonathan valide le respect de la charte graphique,
+   comme Clarisse. Il y a donc **deux validations distinctes** (technique et
+   graphique) : faut-il les deux pour qu'un artwork passe `valide` ? À trancher.
+   Clarisse rappelle aussi qu'il faut pouvoir ajouter les artworks en cours sans
+   référence (§2.3).
 6. Les artworks en attente qui « dorment » : **réponse de Maxence (08/10)**,
    ils restent en attente tant qu'il n'y a pas de commande ; certains sont
    d'actualité, d'autres non, et on ne le sait que lorsqu'il met à jour le
