@@ -211,6 +211,11 @@ def require_utilisateur(
 # Nom historique conserve : les dependances des endpoints d'ecriture le citent.
 require_api_key = require_utilisateur
 
+# Domaines saisis dans FUSEAU (phase d'ecriture). Enregistres avant le montage
+# du frontend sur "/", qui intercepterait sinon leurs routes.
+from app.artwork_fuseau import construire_router as _router_artworks  # noqa: E402
+app.include_router(_router_artworks(require_utilisateur, get_engine))
+
 
 def internal_error(exc: Exception) -> HTTPException:
     """Log complet cote serveur, message generique cote client (pas de fuite SQL)."""

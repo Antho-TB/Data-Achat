@@ -189,6 +189,11 @@ class Config:
     # une faute de frappe ne doit pas ouvrir les ecritures.
     AUTH_MODE: str = os.getenv("AUTH_MODE", "apikey").strip().lower()
 
+    # Phase d'ecriture (docs/20261008_FUSEAU_Cadrage_PhaseEcriture_v1.md) : un
+    # interrupteur par domaine. Eteint, FUSEAU lit l'ancienne source (gsheet) ;
+    # allume, FUSEAU devient la source. Revenir en arriere = repasser a 0.
+    ECRITURE_ARTWORK: bool = os.getenv("ECRITURE_ARTWORK", "0") == "1"
+
     API_KEY: str = os.getenv("API_KEY", "")
     # Empreinte du commit reellement servi, posee par le pipeline de deploiement
     # dans les app settings de la Web App.

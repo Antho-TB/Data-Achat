@@ -777,7 +777,13 @@ button { cursor: pointer; }
       <span class="badge badge-yellow" title="Source : Google Sheet 'Suivi des artworks-import' (Clarisse) via API Drive">GSheet Clarisse (Drive)</span>
     </div>
     <div class="artwork-stats" id="artwork-stats"></div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">
+    <div id="artwork-actions-ecriture" style="display:none;gap:8px;align-items:center;margin-bottom:8px;">
+      <button class="btn btn-sm" style="background:var(--blue);color:#fff;" onclick="nouvelArtwork()">+ Nouvel artwork</button>
+      <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;">
+        <input id="f-art-archives" type="checkbox" onchange="filterArtwork()"> Afficher les archivés
+      </label>
+    </div>
+    <div id="artwork-consigne-gsheet" style="font-size:12px;color:var(--muted);margin-bottom:8px;">
       Les artworks se saisissent et se modifient dans le
       <a href="https://docs.google.com/spreadsheets/d/1FTr2nloJGIgLELjbEVkODVhLz4oaAjhaqtrWqXJ4Jrc/edit" target="_blank" rel="noopener">gsheet de Clarisse</a> : FUSEAU le relit chaque matin.
       La saisie directe dans FUSEAU viendra avec la refonte de l'onglet.
@@ -1067,9 +1073,73 @@ async function apiFetch(path, options = {}) {
   }
   if (!r.ok) {
     const err = await r.json().catch(() => ({ detail: r.statusText }));
-    throw new Error(err.detail || r.statusText);
+    const detail = err.detail;
+    const e = new Error((detail && typeof detail === 'object' ? detail.message : detail) || r.statusText);
+    e.status = r.status;          // 409 = conflit de version (phase d'écriture)
+    e.detail = detail;
+    throw e;
   }
   return r.json();
+}
+
+// ── Saisie (phase d'écriture) ────────────────────────────────────────────
+// Fenêtre de formulaire générique. champs : [{cle, libelle, type, options,
+// requis, aide}]. Résout avec les valeurs saisies, ou null si annulé.
+function ouvrirFormulaire(titre, champs, valeurs = {}) {
+  return new Promise(resolve => {
+    const dlg = document.createElement('dialog');
+    dlg.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:18px;min-width:420px;max-width:640px;background:var(--card,#fff);color:var(--text);';
+    const champHtml = c => {
+      const v = valeurs[c.cle] ?? '';
+      const commun = `name="${c.cle}" ${c.requis ? 'required' : ''} style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;font:inherit;"`;
+      let input;
+      if (c.type === 'textarea') input = `<textarea ${commun} rows="3">${esc(v)}</textarea>`;
+      else if (c.type === 'select') input = `<select ${commun}>${['', ...c.options].map(o => `<option ${String(o) === String(v) ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+      else input = `<input ${commun} type="${c.type || 'text'}" value="${esc(String(v).slice(0, c.type === 'date' ? 10 : undefined))}">`;
+      return `<label style="display:block;margin-bottom:10px;font-size:13px;">${esc(c.libelle)}${c.requis ? ' *' : ''}
+        ${input}${c.aide ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;">${esc(c.aide)}</div>` : ''}</label>`;
+    };
+    dlg.innerHTML = `<form method="dialog">
+      <div style="font-weight:600;font-size:15px;margin-bottom:12px;">${esc(titre)}</div>
+      ${champs.map(champHtml).join('')}
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+        <button type="button" class="btn btn-ghost btn-sm" data-annuler>Annuler</button>
+        <button type="submit" class="btn btn-sm" style="background:var(--blue);color:#fff;">Enregistrer</button>
+      </div></form>`;
+    document.body.appendChild(dlg);
+    const fermer = res => { dlg.close(); dlg.remove(); resolve(res); };
+    dlg.querySelector('[data-annuler]').onclick = () => fermer(null);
+    dlg.addEventListener('cancel', () => fermer(null));
+    dlg.querySelector('form').addEventListener('submit', ev => {
+      ev.preventDefault();
+      const out = {};
+      champs.forEach(c => {
+        const brut = dlg.querySelector(`[name="${c.cle}"]`).value.trim();
+        out[c.cle] = brut === '' ? null : (c.type === 'number' ? Number(brut) : brut);
+      });
+      fermer(out);
+    });
+    dlg.showModal();
+  });
+}
+
+// Écriture avec gestion du conflit de version : si quelqu'un a enregistré
+// entre-temps, on prévient et on recharge au lieu d'écraser son travail.
+async function apiEcrire(path, method, body, recharger) {
+  try {
+    const r = await apiFetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    toast('Enregistré ✓');
+    if (recharger) await recharger();
+    return r;
+  } catch (e) {
+    if (e.status === 409) {
+      toast(e.message, true);
+      if (recharger) await recharger();
+      return null;
+    }
+    toast(e.message, true);
+    throw e;
+  }
 }
 
 function toast(msg, isError = false) {
@@ -3460,12 +3530,23 @@ async function loadPrevisionnelMesures() {
   }
 }
 
+let _artworkFuseau = false;
+const LIBELLE_STATUT_ARTWORK = { en_attente: 'En attente', valide: 'Validé', archive: 'Archivé' };
+
 async function loadArtwork() {
   for (const id of ['table-artwork', 'table-artwork-attente']) {
     document.getElementById(id).innerHTML = '<div class="loader"><span class="spinner"></span>Chargement…</div>';
   }
   try {
-    const r = await apiFetch('/api/artwork');
+    // Phase d'écriture : si la saisie est activée, FUSEAU est la source.
+    const mode = await apiFetch('/api/artworks/mode').catch(() => ({ ecriture: false }));
+    _artworkFuseau = !!mode.ecriture;
+    const barre = document.getElementById('artwork-actions-ecriture');
+    if (barre) barre.style.display = _artworkFuseau ? 'flex' : 'none';
+    const consigne = document.getElementById('artwork-consigne-gsheet');
+    if (consigne) consigne.style.display = _artworkFuseau ? 'none' : '';
+    const r = _artworkFuseau ? await apiFetch('/api/artworks') : await apiFetch('/api/artwork');
+    if (_artworkFuseau) r.data.forEach(a => { a.statut_artwork = LIBELLE_STATUT_ARTWORK[a.statut] || a.statut; });
     _artwork = r.data;
     if (r.warning) {
       document.getElementById('artwork-stats').innerHTML =
@@ -3536,6 +3617,41 @@ function artworkCommentTitle(r) {
   return r.commentaire || '';
 }
 
+function renderArtworkFuseau(rows) {
+  const voirArchives = !!document.getElementById('f-art-archives')?.checked;
+  const attente = rows.filter(r => r.statut === 'en_attente').sort((a, b) => (a.priorite ?? 9) - (b.priorite ?? 9));
+  const liste = rows.filter(r => r.statut === 'valide' || (voirArchives && r.statut === 'archive'));
+  document.getElementById('art-count-attente').textContent = `${attente.length} artwork${attente.length > 1 ? 's' : ''}`;
+  document.getElementById('art-count-liste').textContent = `${liste.length} artwork${liste.length > 1 ? 's' : ''}`;
+  const tete = (extra) => `<thead><tr><th>Identifiant</th><th>Article</th><th>Désignation</th>${extra}<th>Valideur</th><th>Actions</th></tr></thead>`;
+  document.getElementById('table-artwork-attente').innerHTML = !attente.length
+    ? '<div class="empty"><div class="empty-icon">🖼️</div>Aucun artwork en attente</div>'
+    : `<div class="table-wrap"><table>${tete('<th>Prio.</th><th>Demande</th><th>Commentaire Maxence</th><th>Commentaire Clarisse / Thomas</th>')}
+      <tbody>${attente.map(r => `<tr>
+        <td class="mono" style="font-size:11px">${esc(r.identifiant)}</td>
+        <td class="mono">${esc(r.code_article) || '<span class="badge badge-gray">à créer</span>'}</td>
+        <td>${esc(r.designation)}</td>
+        <td style="text-align:center">${r.priorite ?? '—'}</td>
+        <td style="font-size:12px">${r.date_demande ? fmt(r.date_demande, 'date') : '—'}</td>
+        <td style="font-size:12px">${esc(r.commentaire_acheteur) || '—'}</td>
+        <td style="font-size:12px;max-width:260px">${esc(r.commentaire_design) || '—'}</td>
+        <td>${esc(r.valideur) || '—'}</td>${actionsArtwork(r)}
+      </tr>`).join('')}</tbody></table></div>`;
+  document.getElementById('table-artwork').innerHTML = !liste.length
+    ? '<div class="empty"><div class="empty-icon">🖼️</div>Aucun artwork trouvé</div>'
+    : `<div class="table-wrap"><table>${tete('<th>Créé le</th><th>Validé le</th><th>Archivé le</th><th>Commentaire version</th>')}
+      <tbody>${liste.map(r => `<tr${r.statut === 'archive' ? ' style="opacity:.6"' : ''}>
+        <td class="mono" style="font-size:11px">${esc(r.identifiant)}</td>
+        <td class="mono">${esc(r.code_article) || '<span class="badge badge-gray">à créer</span>'}</td>
+        <td>${esc(r.designation)}</td>
+        <td style="font-size:12px" title="Créé par ${esc(r.cree_par)}">${fmt(r.cree_le, 'date')}</td>
+        <td style="font-size:12px" title="${r.valide_par ? 'Validé par ' + esc(r.valide_par) : ''}">${r.valide_le ? fmt(r.valide_le, 'date') : '—'}</td>
+        <td style="font-size:12px" title="${r.archive_par ? 'Archivé par ' + esc(r.archive_par) : ''}">${r.archive_le ? fmt(r.archive_le, 'date') : '—'}</td>
+        <td style="font-size:12px;color:var(--muted);max-width:240px">${esc(r.commentaire_version) || '—'}</td>
+        <td>${esc(r.valideur) || '—'}</td>${actionsArtwork(r)}
+      </tr>`).join('')}</tbody></table></div>`;
+}
+
 function artworkLigneCode(r) {
   // Les lignes sans reference du gsheet ("PAS DE REF", "REF À CRÉER") recoivent
   // un code technique NOUVEAU-<designation> : on l'affiche comme tel.
@@ -3544,7 +3660,64 @@ function artworkLigneCode(r) {
     : esc(r.code_article) || '—';
 }
 
+const CHAMPS_ARTWORK = [
+  { cle: 'designation', libelle: 'Désignation', requis: true },
+  { cle: 'code_article', libelle: 'Référence article', aide: "Laisser vide si la référence n'existe pas encore." },
+  { cle: 'priorite', libelle: 'Priorité (1 = urgent, 5 = faible)', type: 'select', options: [1, 2, 3, 4, 5] },
+  { cle: 'valideur', libelle: 'Valideur', type: 'select', options: ['Clarisse', 'Carrefour', 'Siplec', 'Thomas'] },
+  { cle: 'date_demande', libelle: 'Date de demande', type: 'date' },
+  { cle: 'commentaire_acheteur', libelle: 'Commentaire acheteur (Maxence)', type: 'textarea' },
+  { cle: 'commentaire_design', libelle: 'Commentaire design (Clarisse / Thomas)', type: 'textarea' },
+  { cle: 'lien_drive', libelle: "Lien du PDF de l'artwork (Drive)" },
+];
+
+async function nouvelArtwork() {
+  const v = await ouvrirFormulaire('Nouvel artwork', CHAMPS_ARTWORK, { date_demande: new Date().toISOString().slice(0, 10) });
+  if (!v) return;
+  Object.keys(v).forEach(k => { if (v[k] === null) delete v[k]; });
+  await apiEcrire('/api/artworks', 'POST', v, loadArtwork);
+}
+
+async function modifierArtwork(identifiant) {
+  const a = _artwork.find(x => x.identifiant === identifiant);
+  if (!a) return;
+  const champs = [...CHAMPS_ARTWORK, { cle: 'date_derniere_version', libelle: 'Date de dernière version', type: 'date' },
+                  { cle: 'commentaire_version', libelle: 'Commentaire sur la dernière version', type: 'textarea' }];
+  const v = await ouvrirFormulaire(`Modifier ${identifiant}`, champs, a);
+  if (!v) return;
+  await apiEcrire(`/api/artworks/${encodeURIComponent(identifiant)}`, 'PATCH', { ...v, version: a.version }, loadArtwork);
+}
+
+async function changerStatutArtwork(identifiant, action) {
+  const a = _artwork.find(x => x.identifiant === identifiant);
+  if (!a) return;
+  const libelle = action === 'valider' ? 'Valider' : 'Archiver';
+  if (!confirm(`${libelle} l'artwork ${identifiant} (${a.designation}) ?`)) return;
+  await apiEcrire(`/api/artworks/${encodeURIComponent(identifiant)}/${action}`, 'POST', { version: a.version }, loadArtwork);
+}
+
+async function historiqueArtwork(identifiant) {
+  try {
+    const r = await apiFetch(`/api/artworks/${encodeURIComponent(identifiant)}/historique`);
+    const lignes = r.data.map(h => `${fmt(h.fait_le, 'date')} · ${h.auteur} · ${h.action}`
+      + (h.apres ? ' · ' + Object.entries(h.apres).filter(([k]) => !['maj_le', 'maj_par', 'version', 'id'].includes(k))
+          .slice(0, 6).map(([k, val]) => `${k} = ${val ?? '—'}`).join(', ') : ''));
+    alert(`Historique de ${identifiant}\n\n` + (lignes.join('\n') || 'Aucune modification enregistrée.'));
+  } catch (e) { toast(e.message, true); }
+}
+
+function actionsArtwork(r) {
+  const id = esc(r.identifiant);
+  const boutons = [`<button class="btn btn-ghost btn-sm" title="Modifier" onclick="modifierArtwork('${id}')">✎</button>`];
+  if (r.statut === 'en_attente') boutons.push(`<button class="btn btn-ghost btn-sm" title="Valider (Clarisse)" onclick="changerStatutArtwork('${id}','valider')">✓ Valider</button>`);
+  if (r.statut === 'valide') boutons.push(`<button class="btn btn-ghost btn-sm" title="Archiver (Maxence, après vérification)" onclick="changerStatutArtwork('${id}','archiver')">Archiver</button>`);
+  boutons.push(`<button class="btn btn-ghost btn-sm" title="Historique des modifications" onclick="historiqueArtwork('${id}')">🕘</button>`);
+  if (r.lien_drive) boutons.push(`<a class="btn btn-ghost btn-sm" href="${esc(r.lien_drive)}" target="_blank" rel="noopener" title="Ouvrir le PDF">📎</a>`);
+  return `<td style="white-space:nowrap">${boutons.join(' ')}</td>`;
+}
+
 function renderArtwork(rows) {
+  if (_artworkFuseau) return renderArtworkFuseau(rows);
   const attente = rows.filter(r => r.statut_artwork === 'En attente')
     .sort((a, b) => (a.priorite ?? 9) - (b.priorite ?? 9));
   const liste = rows.filter(r => r.statut_artwork !== 'En attente');

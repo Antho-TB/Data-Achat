@@ -667,6 +667,37 @@ Reste, cadré par ses réponses :
 
 ---
 
+## 3.11 Phase d'écriture : socle préparé le 08/10
+
+Décision d'Antho du 08/10 : une fois la phase de contrôle de la qualité et de la
+fraîcheur des données terminée, FUSEAU devient la source des données hors ERP
+tenues aujourd'hui dans des gsheets. Cadrage :
+`docs/20261008_FUSEAU_Cadrage_PhaseEcriture_v1.md`.
+
+Préparé, **rien n'est activé** :
+- [x] Migration `sql/20261008_socle_ecriture.sql` : journal des modifications,
+  tables `artwork`, `analyse_suivi`, `facturation_intersite_suivi` ; l'API reçoit
+  SELECT, INSERT, UPDATE, jamais DELETE. À appliquer par Antho (compte nominal).
+- [x] `app/ecriture.py` : création, modification versionnée (conflit = 409 au
+  lieu d'écraser), archivage, journal, identifiant d'artwork.
+- [x] Artworks : API `/api/artworks` et écran de saisie (nouvel artwork, modifier,
+  valider, archiver, historique), allumés par `ECRITURE_ARTWORK=1`.
+- [x] Reprise unique du gsheet : `python -m src.scripts.etl.reprise_artwork_gsheet`
+  (dry-run par défaut). Simulation du 08/10 : 385 artworks, 385 identifiants
+  uniques. Refuse de tourner tant que le miroir n'a pas d'artwork en attente.
+
+Mise en route des artworks, dans l'ordre :
+- [ ] Le poste de Marlène charge le gsheet avec le parseur corrigé (10 artworks en attente visibles).
+- [ ] Antho applique la migration SQL.
+- [ ] Reprise en dry-run, puis `--commit`.
+- [ ] `ECRITURE_ARTWORK=1` sur la Web App ; Clarisse et Maxence testent.
+- [ ] Gsheet de Clarisse en lecture seule ; chargement artwork retiré de `run_daily_etl.ps1`.
+
+Ensuite, sur le même socle : écrans de saisie du suivi des analyses et de
+« facturation faite » (lot 3 de BUG-007).
+
+---
+
 ## 4. Priorité 3 — dette et incohérences à arbitrer
 
 ### 4.1 Bloqué par une action externe
