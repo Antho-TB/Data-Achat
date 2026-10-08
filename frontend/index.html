@@ -2582,7 +2582,7 @@ function renderCommandes(rows) {
               <button class="cancel-btn" onclick="cancelEdit(this)">✕</button>
             </span>
           </td>
-          <td>${badge(r.statut)}${r.date_reception_sylob ? ` <span class="badge badge-green" title="Date de réception magasin répertoriée dans Sylob : ${fmt(r.date_reception_sylob, 'date')}">📦 ${fmt(r.date_reception_sylob, 'date')}</span>` : ''}${ncBadge(r)}</td>
+          <td>${badge(r.statut)}${r.date_reception_sylob ? ` <span class="badge badge-green" title="Date de réception magasin répertoriée dans Sylob : ${fmt(r.date_reception_sylob, 'date')}">📦 ${fmt(r.date_reception_sylob, 'date')}</span>` : ''}${inspectionPrevueBadge(r)}${ncBadge(r)}</td>
           <td>${payBadge(r)}</td>
           <td class="mono">${r.n_conteneur ? '<a href="#" title="Voir dans Suivi des conteneurs" onclick="focusConteneur(\'' + esc(r.n_conteneur) + '\');return false;">' + esc(r.n_conteneur) + '</a>' : '<span style="color:var(--muted)">—</span>'}</td>
           <td style="font-size:12px;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer"
@@ -3249,6 +3249,33 @@ function inspBadge(v) {
   return '<span class="badge">-</span>';
 }
 
+// Libelles francais des decisions mail produites par la tache Cowork. Les
+// valeurs DEKRA (08/10/2026) : rapport Pending avec accord d'expedition TB,
+// Pending sans decision TB, devis DEKRA = inspection reservee.
+const LIBELLES_DECISION_MAIL = {
+  conforme: 'conforme',
+  non_conforme: 'non conforme',
+  conforme_sous_reserve: 'conforme sous réserve',
+  en_attente: 'en attente (Pending)',
+  reservee: 'inspection réservée',
+};
+function libelleDecisionMail(v) {
+  return LIBELLES_DECISION_MAIL[v] || v || '?';
+}
+
+// Reservation d'inspection DEKRA lue dans les mails, a afficher dans la
+// colonne Inspection quand aucun resultat n'est encore connu, ou quand la
+// reservation est posterieure a la derniere inspection (nouvelle inspection).
+function reservationInspectionBadge(r) {
+  const le = r.inspection_reservee_le;
+  if (!le) return '';
+  const sansResultat = !String(r.resultat_inspection || '').trim();
+  const posterieure = r.date_inspection && String(le).slice(0, 10) > String(r.date_inspection).slice(0, 10);
+  if (!sansResultat && !posterieure) return '';
+  const titre = `Inspection DEKRA réservée (devis reçu par mail, indicatif)${r.inspection_reservee_motif ? ' : ' + r.inspection_reservee_motif : ''}`;
+  return ` <span class="badge badge-blue" title="${esc(titre)}">réservée le ${fmt(le, 'date')}</span>`;
+}
+
 // Cellule de statut d'un stade : statut de l'IMPORT, seul a faire foi. La
 // derniere decision recue par mail est donnee en infobulle, a titre indicatif
 // (Maxence, 08/10 : Eric peut valider une analyse hors standard TB).
@@ -3258,7 +3285,7 @@ function statutQualiteCell(r, stade, colBrute, cleDecision) {
   const urlAnalyse = cleDecision ? (r.analyses || {})[cleDecision] : null;
   const lignes = [`IMPORT : ${r[colBrute] || 'vide'}`];
   if (dec) {
-    lignes.push(`Décision mail, indicative${dec.date ? ', du ' + fmt(dec.date, 'date') : ''}${dec.acteur ? ' (' + dec.acteur + ')' : ''} : ${dec.decision === 'non_conforme' ? 'non conforme' : (dec.decision || '?')}${dec.motif ? ', ' + dec.motif : ''}${dec.nb > 1 ? ' [' + dec.nb + ' décisions]' : ''}`);
+    lignes.push(`Décision mail, indicative${dec.date ? ', du ' + fmt(dec.date, 'date') : ''}${dec.acteur ? ' (' + dec.acteur + ')' : ''} : ${libelleDecisionMail(dec.decision)}${dec.motif ? ', ' + dec.motif : ''}${dec.nb > 1 ? ' [' + dec.nb + ' décisions]' : ''}`);
   }
   if (['mat', 'sp', 'bat'].includes(stade)) lignes.push("Date d'envoi en analyse : à venir (commande d'analyse Sylob)");
   const meta = STATUT_QUALITE[st];
@@ -3315,7 +3342,7 @@ function renderQualite(rows, warning) {
       ${statutQualiteCell(r, 'ech', 'echantillon_conformite', null)}
       ${statutQualiteCell(r, 'bat', 'production_bat', 'BAT')}
       ${statutQualiteCell(r, 'recep', 'reception', 'reception')}
-      <td style="white-space:nowrap">${inspBadge(r.resultat_inspection)} <small>${esc(r.date_inspection)||''}</small>${r.ref_rapport ? ' <small class="mono">' + (r.drive_url ? `<a href="${esc(r.drive_url)}" target="_blank" rel="noopener" title="Ouvrir le rapport ${esc(r.ref_rapport)} dans Drive">${esc(r.ref_rapport)} 📎</a>` : `<span title="Rapport introuvable sur le Drive qualité">${esc(r.ref_rapport)}</span>`) + '</small>' : ''}</td>
+      <td style="white-space:nowrap">${inspBadge(r.resultat_inspection)} <small>${esc(r.date_inspection)||''}</small>${reservationInspectionBadge(r)}${r.ref_rapport ?' <small class="mono">' + (r.drive_url ? `<a href="${esc(r.drive_url)}" target="_blank" rel="noopener" title="Ouvrir le rapport ${esc(r.ref_rapport)} dans Drive">${esc(r.ref_rapport)} 📎</a>` : `<span title="Rapport introuvable sur le Drive qualité">${esc(r.ref_rapport)}</span>`) + '</small>' : ''}</td>
       <td>${esc(r.conformite)||'-'}</td>
       <td class="mono">${esc(r.ncr)||'-'}</td>
     </tr>`; }).join('')}</tbody></table></div>`;
@@ -3716,6 +3743,19 @@ function blCell(r) {
 // elle est "non conforme" (tache Cowork, achat.qualite_decision) ; et les fiches
 // de non-conformite Sylob de reception ou transporteur, declarees depuis la
 // date de commande. Rien ne s'affiche quand la ligne n'en a aucune.
+// Inspection DEKRA reservee (devis recu par mail, 08/10/2026) : rappel discret
+// tant que la date n'est pas passee et que la ligne n'est pas livree.
+function inspectionPrevueBadge(r) {
+  const le = r.inspection_reservee_le;
+  if (!le || r.est_livre || r.date_reception_sylob) return '';
+  const jour = String(le).slice(0, 10);
+  const auj = new Date();
+  const aujIso = `${auj.getFullYear()}-${String(auj.getMonth() + 1).padStart(2, '0')}-${String(auj.getDate()).padStart(2, '0')}`;
+  if (jour < aujIso) return '';
+  const jjmm = `${jour.slice(8, 10)}/${jour.slice(5, 7)}`;
+  return ` <span class="badge badge-blue" title="Inspection DEKRA réservée le ${fmt(jour, 'date')} (devis reçu par mail, indicatif)">inspection le ${jjmm}</span>`;
+}
+
 function ncBadge(r) {
   const mails = r.non_conformites || [];
   const fiches = r.fiches_ncr || [];

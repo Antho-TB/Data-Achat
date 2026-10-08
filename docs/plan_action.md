@@ -665,6 +665,37 @@ Reste, cadré par ses réponses :
   L'archivage et la case « Facturation faite » demandent que FUSEAU écrive, même
   décision que la refonte Artwork.
 
+### Décisions qualité des mails : doublons et DEKRA (08/10)
+
+Constat du poste (06/10) : 57 lignes en trop sur 366 dans `achat.qualite_decision`
+(PO avec ou sans zéros de tête, ancien format de clé, champs transport remplis au
+hasard, ligne « tout le PO » puis lignes par article, « FRI » contre
+« inspection »). Plus grave : le stade n'était pas dans la clé, un « SP conforme »
+après un « MAT conforme » du même fil et du même PO était perdu.
+
+Livré, branche `fix/decisions-qualite-cle-dekra` :
+- [x] `load_evenements.py` : PO sur 8 chiffres, décision et type en minuscules,
+  stade canonique (FRI devient inspection) avant la clé et l'insertion. Clé
+  qualité : `thread|qualite|decision|po|article|stade`, sans les champs transport.
+  Clé transport inchangée.
+- [x] Réservation d'inspection DEKRA (décision `reservee`, clé
+  `dekra_resa|<thread>|<po>`) : un report met à jour la date prévue, le motif et
+  le texte, au lieu d'être ignoré.
+- [x] Nouvelles valeurs du prompt Cowork affichées en français dans les
+  infobulles : conforme sous réserve, en attente (Pending), inspection réservée.
+  Toujours indicatives.
+- [x] Onglet Qualité : badge « réservée le JJ/MM/AA » dans la colonne Inspection
+  (pas encore de résultat, ou réservation postérieure à la dernière inspection).
+  Suivi commandes : badge bleu « inspection le JJ/MM » à côté du statut, tant que
+  la date n'est pas passée et la ligne pas livrée.
+- [ ] **À exécuter par Antho, dans cet ordre** : déployer le code sur le poste,
+  puis `sql/20261008_dedoublonnage_qualite_decision.sql`. Mesure du 08/10 sur 383
+  lignes : 64 supprimées (56 doublons, 8 lignes « tout le PO »), 8 requalifiées
+  en « conforme sous réserve », 15 PO et 8 stades renormalisés, 319 clés
+  recalculées toutes distinctes. Archive dans
+  `achat._archive_qualite_decision_doublons_20261008`, garde-fou de volume et
+  restauration dans l'en-tête du script.
+
 ---
 
 ## 4. Priorité 3 — dette et incohérences à arbitrer
