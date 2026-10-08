@@ -27,15 +27,20 @@ la mettre à jour ni la dépanner. En revanche, **l'ETL et le pipeline Gmail
 tournent toujours sur ce poste**, car ils ont besoin du partage réseau, du DWH
 Sylob on-premise et de la boîte Gmail Achats (§3.0).
 
-Automatisations du poste de Marlène, état constaté sur le poste le 24/09 :
+Automatisations du poste de Marlène, état constaté sur le poste le 08/10
+(quatrième passage, détail au §3.10, « Passage du 08/10 sur le poste ») :
 
 | Automatisation | Fréquence | Dernier run | État |
 |---|---|---|---|
-| `FUSEAU_Files_ETL` (`run_etl_scheduled.ps1`, fait aussi le `git pull`) | 02h00 | 24/09 08:11, `0x0` | ✅ OK, mais sur l'ancien code du 22 au 24/09 : un `.docx` non suivi bloquait le pull (corrigé PR #7) |
-| `FUSEAU_Daily_ETL` (`run_daily_etl.ps1`) | 07h00 | 24/09 08:11, `0x1` | ⚠️ `crawl_drive_qualite` échoue : `DRIVE_QUALITE_ROOT_ID` absent du `config\.env`. Artwork et CA passent |
-| `FUSEAU_Gmail_ETL` (`run_gmail_etl.ps1`) | 2 h, 08h-18h | 22/09 16:07, `0x800710E0` | ❌ **Ne tourne plus.** Mode Interactive, `DisallowStartIfOnBatteries`, `StartWhenAvailable` désactivé : chaque créneau saute dès que la session est fermée, verrouillée ou sur batterie |
-| `fuseau-gmail-threads-achat` (Cowork) | cron 8-18/2, lun-ven | 24/09 08:47 | ✅ 5 runs OK le 23/09, aucun rejet |
+| `FUSEAU_Files_ETL` (`run_etl_scheduled.ps1`, fait aussi le `git pull`) | 02h00 | 08/10 08:11, `0x0` | ⚠️ ETL OK, mais **le pull a annoncé `[SUCCES]` sans rien fusionner** (7 commits manqués) : course sur `FETCH_HEAD` avec le preflight Gmail. Corrigé par la PR #47, à merger |
+| `FUSEAU_Daily_ETL` (`run_daily_etl.ps1`) | 07h00 | 08/10 12:31 (lancé à la main), `0x0` | ✅ Artworks rechargés sur `8b92123` : 394, dont 10 en attente. Le run de 08:12 avait relu le gsheet avec l'ancien parseur |
+| `FUSEAU_Gmail_ETL` (`run_gmail_etl.ps1`) | 2 h, 08h-18h | 08/10 12:11, `0x0` | ✅ `StartWhenAvailable` actif |
+| `fuseau-gmail-threads-achat` (Cowork) | cron 8-18/2, lun-ven | 08/10 12:05 | ✅ 10 runs OK depuis le 06/10. Recherche par libellé corrigée sur le poste le 08/10 (5 → 14 fils sur 24 h). Les créneaux sans run correspondent à l'application Claude fermée |
 | ~~`FUSEAU-API`~~ | — | — | Arrêtée et désactivée le 24/09 (pas supprimée, pour le retour arrière). Plus rien n'écoute sur 5050 |
+
+Le poste est éteint la nuit : les trois tâches `FUSEAU_*` partent ensemble à
+l'ouverture de session (`StartWhenAvailable`). Depuis la PR #47, le pull est
+sérialisé par un verrou et Daily_ETL attend le code du jour.
 
 **Le risque numéro un du projet n'est pas fonctionnel, il est structurel** :
 l'API en est sortie, mais l'ETL et le pipeline Gmail tournent encore sur la
@@ -560,13 +565,13 @@ copies MyReport de `public`.
 |---|---|---|
 | Événements des mails (corps de mail, tâche Cowork) | ✅ Vivants : `transport_evenement` alimentée le jour même à 08:09 ; décisions qualité, design et commerce jusqu'au 02/10 | Rien |
 | ETA des pièces jointes Gmail | ✅ Le conteneur MSMU3526021 faisait un aller-retour d'ETA chaque matin (9 événements identiques depuis le 10/08) : un PDF du 20/05, relu à chaque passage, prenait l'heure du chargement comme date de transmission | PR #20. Purges appliquées (constaté le 06/10) : 8 doublons et la ligne `test_script` supprimés, archivés dans `achat._archive_transport_evenement_20261005` et `_test_20261005` |
-| Montants de facture | ❌ `achat.facture_fournisseur` est vide : l'étape n'a jamais tourné (flag `facture_auto.flag`) | **Activation décidée par Antho le 06/10.** Prompt `docs/20261006_FUSEAU_Prompt_SessionPosteMarlene_v3.md`, étape 3 : contrôles (clé Gemini, dépendance, table), dry-run d'octobre, rattrapage réel juillet à octobre, puis création du flag. Le flag ne traite que le mois courant, d'où le rattrapage |
+| Montants de facture | ❌ `achat.facture_fournisseur` est vide : l'étape n'a jamais tourné (flag `facture_auto.flag`) | **Activation décidée par Antho le 06/10, pas encore faite.** Le prompt v3 n'a pas été exécuté ; le passage du 08/10 n'a fait que le repérage : 51 pièces sur 60 jours (25 factures, 5 notes de crédit, 21 PI), dans 44 fils, presque toutes du bureau HK, 75 % sans libellé. Requête proposée au §3.10 (rappel 44/44, précision ≈ 61 %). Suite : dry-run du tri (`triage_piece`) sur ces 44 fils, puis rattrapage et création du flag. Le flag ne traite que le mois courant, d'où le rattrapage |
 | NCR par mail | ✅ Par conception (enquête du 06/10). Le module regex `load_email_ncr` est écarté depuis le 28/07 (`dc66a7a`, « NE PAS ORDONNANCER »), pour ne pas capter deux fois. Les non-conformités arrivent par la tâche Cowork dans `achat.qualite_decision` : 367 décisions du 22/07 au 06/10, dont 91 non conformes sur 25 PO | 🔧 06/10, branche `feat/non-conformites-commande` : badge « NC » sur la ligne de Suivi commandes (dernière décision mail du stade non conforme, refermée par un conforme postérieur) et fiches Sylob de réception et transporteur (`public.fiche_non_conformite2`) sur la ligne et la fiche Article. 50 lignes (16 PO) avec une NC mail ouverte, 7 avec une fiche Sylob : les NC import se traitent surtout par mail |
 | Réceptions Sylob | ❌ `commande_enrichissement` figée au 28/07, car elle lisait `receptions_detaillees2`, figée au 04/08 | Branche `fix/receptions-sylob-grain-article` : lecture de `vue_reception_detail` des 3 sociétés dans Sylob, repli sur `public.receptions_detaillees4` (même volume que Sylob), grain article. Dry-run : 654 lignes rapprochées sur 964. ✅ `sql/20261005_reception_grain_article.sql` appliqué (constaté le 06/10) : les 98 lignes au grain PO n'ont plus de date, archivées ; 654 lignes au grain article rafraîchies par l'ETL du poste le 06/10 à 06:13. 07/10 : relancé depuis le poste d'Antho, 654 lignes rapprochées, 0 écriture (table déjà à jour, dernière réception Sylob au 28/09) |
 | Droit de l'API sur MyReport | 🔧 05/10 : `dtpf_fuseau_api_prod` n'avait aucun SELECT sur les tables MyReport de `public`. Palliatif le jour même : pont `achat.fn_myreport_*` (SECURITY DEFINER, compte nominal d'Antho). 06/10 : droit posé par Antho dans pgAdmin sous `platform_team`, en `SET ROLE dtpf_sylob_myreport_prod` (membership SET accordée puis retirée dans la même transaction) : `GRANT SELECT` sur les tables existantes et default privilege sur `public`. Les 3 tables répondent `true` | ✅ 07/10 : droit vérifié après recréation nocturne (OID changés sur `articles3`, `commandes6`, `receptions_detaillees4`, SELECT `true` sur les trois). Pont retiré de `app/main.py` (PR #34). `DROP` des deux fonctions accordé le 07/10 : migration `sql/20261007_drop_pont_lecture_myreport.sql` prête, à exécuter par Antho (compte propriétaire). Partie schéma `myreport` non posée (schéma vide, USAGE chez `platform_team`) : à traiter à la bascule MyReport |
 | Saisies depuis Azure | ⚠️ Dernière annotation le 28/07 : aucune saisie depuis la bascule | À tester avec Marlène |
 | Garde-fou OAuth (§4.5) | 🔧 Branche `fix/garde-fou-scope-oauth`. Second défaut trouvé au passage : le preflight ne vérifiait que 2 scopes sur 3 | Reconsentement sur le poste (prompt, étape 3) |
-| Auto-pull (§4.5) | 🔧 Branche `fix/auto-pull-alerte` : un fichier non suivi ne bloque plus le pull ; un pull bloqué termine la tâche en `0x2` et dépose `deploy\logs\PULL_BLOQUE.txt` | Vérifier au premier run |
+| Auto-pull (§4.5) | 🔧 Branche `fix/auto-pull-alerte` : un fichier non suivi ne bloque plus le pull ; un pull bloqué termine la tâche en `0x2` et dépose `deploy\logs\PULL_BLOQUE.txt` | 08/10 : nouveau défaut, faux `[SUCCES]` sur un pull qui n'a rien fusionné (course sur `FETCH_HEAD`). PR #47 : point de pull unique `src.utils.git_sync`, ref privée, contrôle de HEAD, verrou |
 | Mail DEKRA de réservation | Il arrive sur `achat.import@`, pas dans la boîte d'Antho | Exemples à collecter par la session du poste (prompt, étape 6) |
 | BUG-008 : fusion Suivi commandes et Promo/OP | ✅ PR #23 : onglet Promo supprimé, colonne « Intitulé cde » et case « Promo / Opé uniquement ». Règle élargie le 05/10 aux nouveaux produits et nouveaux clients (30 PO) | En ligne après merge de `feat/promo-nouveau-produit` |
 | BUG-007 : onglet Qualité | Cadrage : `docs/20261005_FUSEAU_Cadrage_OngletQualite_BUG007_v1.md`. La CA (commande d'analyse SE vers Cie) existe dans Sylob, intitulé `PO/STADE`, 66 % des PO couverts | Lot 1 livré (`feat/qualite-lot1`) : bloc Évaluation fournisseurs retiré, désignation, filtres PO / stade / statut MAT-SP-BAT, statuts normalisés, décisions mail en infobulle, lien Drive réparé (0 vers 226). Lots 2 et 3 après réponses du métier (§7 du cadrage) |
@@ -696,6 +701,67 @@ Livré, branche `fix/decisions-qualite-cle-dekra` :
   `achat._archive_qualite_decision_doublons_20261008`, garde-fou de volume et
   restauration dans l'en-tête du script.
 
+### Passage du 08/10 sur le poste (quatrième), et suites
+
+Session Cowork sur le poste de 12h29 à 12h50, prompt v4. Compte rendu :
+`docs/Compteren.zip` (non versionné, `docs/*.zip` ignoré). Aucun garde-fou
+atteint. Poste passé de `f43f1cd` à `8b92123` (258 tests OK) : il n'a donc pas
+encore les PR #43 à #46.
+
+Pull automatique :
+- [x] Cause du faux `[SUCCES]` du matin : les trois tâches partent à la même
+  seconde, le `git fetch origin` du preflight Gmail réécrivait `FETCH_HEAD`
+  entre la mesure du retard et le merge. Le fetch/merge ajouté à
+  `run_daily_etl.ps1` par la PR #45 aggravait la course. PR #47 : point de pull
+  unique `src.utils.git_sync` (ref privée `refs/fuseau/deploiement`, merge du
+  sha mesuré, contrôle de HEAD, verrou `deploy\logs\pull.lock`), preflight en
+  `git ls-remote`.
+- [ ] Merger la PR #47, puis **`git pull --ff-only` à la main sur le poste**
+  avant son prochain démarrage : sinon le pull suivant tourne encore avec
+  l'ancien code, exposé à la même course.
+- [ ] Optionnel : faire attendre le verrou à `FUSEAU_Gmail_ETL`, qui ne tire pas
+  le code et peut démarrer pendant le pull d'une autre tâche.
+
+Colonne « Payé ? » du fichier IMPORT :
+- [x] PO 17753 (TJKY, 53 $) : la cellule vaut le texte « Non » dans le fichier
+  enregistré à 11:47 le 08/10. FUSEAU n'a aucune date à afficher.
+- [ ] Voir avec Marlène où elle a saisi le paiement du PO 17753.
+- [ ] Faire corriger par Marlène les 3 cellules anormales : `Julia` (PO 18180,
+  Comp0940), `acompte OUI` (PO 18132, Comp1350031 : un paiement partiel est
+  perdu), le nombre 46282 (ligne 1079, PO « NA », moule bloc alu).
+- [x] PR #48 : une date tapée comme un nombre partait en base au 01/01/1970
+  (`pd.Timestamp` lit le numéro de série Excel en nanosecondes) ; elle est
+  désormais convertie (46282 = 17/09/2026). Les textes `JJ/MM/AAAA` sont lus
+  jour/mois, et « Non » est ignoré sans alerte. Vaut pour toutes les colonnes
+  date de l'IMPORT : des dates saisies en texte peuvent changer au prochain ETL.
+- [ ] Merger la PR #48.
+
+Tâche Cowork `fuseau-gmail-threads-achat` :
+- [x] Recherche par libellé corrigée sur le poste (sauvegarde
+  `SKILL.md.bak_20261008`) ; recherches de référence et pièges du connecteur
+  documentés dans `docs/20260722_FUSEAU_Cartographie_FluxGmail_v1.md` §5.
+- [ ] Recopier le `SKILL.md` de la tâche dans le dépôt au prochain passage : le
+  prompt n'existe que sur le poste, un redéploiement réintroduirait l'ancienne
+  recherche.
+- [ ] DEKRA : aucun devis reçu depuis le 01/10 (fermeture pour la fête nationale
+  chinoise, du 1er au 7). Surveiller la première ligne `reservee` dans
+  `achat.qualite_decision`.
+
+Factures fournisseurs (repérage seul, voir aussi le §3.9) :
+- Requête proposée, à préfixer par `newer_than:3d` dans la tâche :
+  `has:attachment from:(debbie@tb-groupe.fr OR susanna@tb-groupe.fr OR julia@tb-groupe.fr OR sunlordinc.com OR dakoohome.com) ("attached invoice" OR "attached invoices" OR "attached credit note" OR "attached PI" OR "attached signed PI" OR "the P.I." OR filename:invoice OR filename:inovice OR filename:credit OR filename:PI OR filename:CI OR filename:proforma)`.
+  Elle ne ramène ni QUALITAIR ni DEKRA. `label:01-fournisseurs-import` seul
+  n'aurait trouvé que 13 des 51 pièces.
+- Pièges pour le parseur : factures GUANGWEI en `.jpg`, factures HX nommées
+  sans « invoice » (`26046 PO#00179321.pdf`), MINGHAO en `.xls`, beaucoup de
+  factures en réponse dans un fil « NEW ORDER … ».
+- [ ] Dry-run du tri sur les 44 fils (écarter PO signés et relances) avant
+  toute activation.
+
+Divers :
+- [ ] Supprimer les fichiers de travail `fuseau_*` laissés dans `%TEMP%` sur le
+  poste.
+
 ---
 
 ## 3.11 Phase d'écriture : socle préparé le 08/10
@@ -718,9 +784,9 @@ Préparé, **rien n'est activé** :
   uniques. Refuse de tourner tant que le miroir n'a pas d'artwork en attente.
 
 Mise en route des artworks, dans l'ordre :
-- [ ] Le poste de Marlène charge le gsheet avec le parseur corrigé (10 artworks en attente visibles).
+- [x] Le poste de Marlène charge le gsheet avec le parseur corrigé (08/10 12:31) : 394 artworks, 10 en attente, 384 validés. 9 des 10 en attente portent un identifiant `NOUVEAU-<désignation>`, faute de code article (articles en création).
 - [ ] Antho applique la migration SQL.
-- [ ] Reprise en dry-run, puis `--commit`.
+- [ ] Reprise en dry-run, puis `--commit`. La simulation du 08/10 comptait 385 artworks (ancien parseur) : refaire le dry-run sur les 394, et vérifier l'identifiant produit pour les lignes `NOUVEAU-…` sans code article.
 - [ ] `ECRITURE_ARTWORK=1` sur la Web App ; Clarisse et Maxence testent.
 - [ ] Gsheet de Clarisse en lecture seule ; chargement artwork retiré de `run_daily_etl.ps1`.
 
@@ -1084,3 +1150,4 @@ dans `05_ARCHIVES/Versions_Anterieures/`.
 | 06/10 | Migrations du 05/10 constatées appliquées en base : purges `transport_evenement`, réceptions au grain article, pont de lecture MyReport. Droit durable de l'API sur MyReport posé sous `platform_team` (le compte propriétaire n'était pas nécessaire) ; preuve après recréation nocturne attendue le 07/10. Prompt de la deuxième session du poste de Marlène : `docs/20261005_FUSEAU_Prompt_SessionPosteMarlene_v2.md` |
 | 06/10 (suite) | PR #29 : bulles de source alignées sur les données réellement lues (Conteneurs et Prévisionnel annonçaient le gsheet maritime, alors que l'ETL lit encore la copie serveur sans BL). PR #30 : le repli du suivi maritime sur le fichier serveur plantait (`NameError`), corrigé avant d'activer le gsheet. Activation des factures décidée ; prompt v3 du poste pour le 07/10 (gsheet maritime et factures). NCR par mail : faux problème, captées par Cowork dans `qualite_decision`. Quatre documents réalignés sur le code (§4.2). Fichiers SQL du 04/08 rangés dans MyReport. Démo du 06/10 : retours Artwork au §3.10 |
 | 07/10 | Droit MyReport vérifié après recréation nocturne : pont retiré (PR #34), DROP des fonctions prêt. Réceptions Sylob relancées : déjà à jour (l'annonce d'une table figée au 28/07 était une erreur de lecture du plan). ETA du suivi maritime tracée et arbitrée comme les PJ Gmail. Sondes de fraîcheur et de droits. Graphiques Artwork retirés, cadrage de la refonte. Diagnostic de la qualité des OT |
+| 08/10 (poste Marlène) | Quatrième passage : poste à jour sur `8b92123`, artworks rechargés (394, dont 10 en attente). Le pull automatique annonçait un faux succès (course sur `FETCH_HEAD`) : PR #47. « Payé ? » du PO 17753 = « Non » dans le fichier, et une date tapée en nombre partait au 01/01/1970 : PR #48. Recherche Gmail de la tâche Cowork corrigée. Factures : repérage fait, activation pas encore faite |
