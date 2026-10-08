@@ -194,6 +194,13 @@ class Config:
     # allume, FUSEAU devient la source. Revenir en arriere = repasser a 0.
     ECRITURE_ARTWORK: bool = os.getenv("ECRITURE_ARTWORK", "0") == "1"
 
+    # Droits par onglet (roles Entra, app/droits.py), en mode entra seulement :
+    #   off      : aucun controle ;
+    #   journal  : rien n'est bloque, les refus sont journalises (mise en route) ;
+    #   bloquant : 403 hors profil et montants masques.
+    # Toute autre valeur vaut bloquant : une faute de frappe ne doit pas ouvrir l'acces.
+    DROITS_MODE: str = os.getenv("DROITS_MODE", "journal").strip().lower()
+
     API_KEY: str = os.getenv("API_KEY", "")
     # Empreinte du commit reellement servi, posee par le pipeline de deploiement
     # dans les app settings de la Web App.
