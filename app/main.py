@@ -1604,43 +1604,46 @@ def _derniere_maj_commande() -> Optional[str]:
         return None
 
 
-# Statuts par stade affiches dans l'onglet Qualite (BUG-007, lot 1). L'IMPORT
-# ne connait que Conforme / Non recu / Non conforme ; le metier parle de
-# "en cours", "conforme", "FAIL". La decision recue par mail (achat.qualite_decision)
-# ne remplace la valeur de l'IMPORT que lorsque celui-ci est vide.
-STATUT_EN_COURS, STATUT_CONFORME, STATUT_FAIL, STATUT_RECU = "en_cours", "conforme", "fail", "recu"
-STADES_QUALITE = {"MAT": "matiere", "SP": "semi_production", "BAT": "production_bat", "RECEP": "reception"}
-STADE_DECISION = {"MAT": "MAT", "SP": "SP", "BAT": "BAT", "RECEP": "reception"}
+# Statuts par stade affiches dans l'onglet Qualite (BUG-007). Regles donnees
+# par Maxence BRUN le 08/10/2026 :
+# - "Non recu" = on attend les echantillons du fournisseur (pas "en cours") ;
+# - un echec est note "non conforme" dans l'IMPORT (ou "No OK" chez TB CHINA) ;
+# - les decisions recues par mail NE font PAS foi : Eric peut valider une
+#   analyse hors standard TB. Elles restent affichees en infobulle, a titre
+#   indicatif, et ne fabriquent jamais un statut ;
+# - 5 stades : MAT, SP, BAT, Reception, plus l'echantillon de conformite
+#   (validation d'aspect d'un nouveau produit, avant toute production).
+STATUT_NON_RECU, STATUT_EN_ANALYSE = "non_recu", "en_analyse"
+STATUT_CONFORME, STATUT_FAIL, STATUT_RECU = "conforme", "fail", "recu"
+STADES_QUALITE = {"MAT": "matiere", "SP": "semi_production", "BAT": "production_bat",
+                  "RECEP": "reception", "ECH": "echantillon_conformite"}
 
 
-def statut_stade(valeur: Optional[str], decision: Optional[str] = None) -> Optional[str]:
+def statut_stade(valeur: Optional[str]) -> Optional[str]:
     """
     Normalise une valeur de checkpoint qualite de l'IMPORT en statut metier.
 
     Junior Tip : None veut dire "non applicable" (Aucune, "/", vide), ce qui
-    n'est pas la meme chose qu'un stade en cours. L'ecran doit afficher un
-    tiret, pas un faux statut, quand le stade ne concerne pas l'article.
+    n'est pas la meme chose qu'un echantillon attendu. L'ecran affiche alors
+    un tiret, pas un faux statut.
 
     Args:
         valeur: texte brut de la colonne IMPORT (Conforme, Non recu, Analyse...).
-        decision: derniere decision mail du stade (conforme / non_conforme).
 
     Returns:
-        en_cours, conforme, fail, recu, ou None si non applicable.
+        non_recu, en_analyse, conforme, fail, recu, ou None si non applicable.
     """
     v = (valeur or "").strip().lower()
     if not v or v in ("aucune", "/", "-"):
-        if decision == "non_conforme":
-            return STATUT_FAIL
-        if decision == "conforme":
-            return STATUT_CONFORME
         return None
-    if "non conforme" in v or v == "fail":
+    if "non conforme" in v or v in ("fail", "no ok"):
         return STATUT_FAIL
     if v.startswith(("conforme", "valid", "ok", "oui")):
         return STATUT_CONFORME
-    if "non re" in v or v == "analyse":
-        return STATUT_EN_COURS
+    if "non re" in v:
+        return STATUT_NON_RECU
+    if v == "analyse":
+        return STATUT_EN_ANALYSE
     if "receptionne" in v:
         return STATUT_RECU
     return None
@@ -1680,8 +1683,17 @@ def get_qualite(
     with engine.connect() as conn:
         try:
             r = conn.execute(text(f"""
-                SELECT q.*, doc.drive_url, an.conformite, dec.decisions, ana.analyses
+                SELECT q.*, doc.drive_url, an.conformite, dec.decisions, ana.analyses,
+                       cmd.statut AS statut_commande
                 FROM {SCHEMA}.qualite q
+                -- Statut de la commande : une commande annulee s'affiche barree
+                -- (Maxence la barre dans l'IMPORT, mise en forme que l'ETL ne lit pas).
+                LEFT JOIN LATERAL (
+                    SELECT c.statut FROM {SCHEMA}.commande c
+                    WHERE LTRIM(c.po_number::text, '0') = LTRIM(q.po_number, '0')
+                      AND c.code_article = q.code_article
+                    LIMIT 1
+                ) cmd ON true
                 LEFT JOIN LATERAL (
                     SELECT d.drive_url FROM {SCHEMA}.qualite_doc d
                     WHERE d.drive_url IS NOT NULL AND d.type = 'inspection'
@@ -1730,10 +1742,12 @@ def get_qualite(
             """), params)
             rows = rows_to_dicts(r)
             for row in rows:
-                decisions = row.get("decisions") or {}
                 for stade, col in STADES_QUALITE.items():
-                    dec = (decisions.get(STADE_DECISION[stade]) or {}).get("decision")
-                    row[f"statut_{stade.lower()}"] = statut_stade(row.get(col), dec)
+                    row[f"statut_{stade.lower()}"] = statut_stade(row.get(col))
+                # Aucun stade renseigne : article sans analyse (produits GDD,
+                # vis, mitres...), "non concerne" selon Maxence, pas un oubli.
+                row["analyse_concernee"] = any(
+                    row[f"statut_{stade.lower()}"] for stade in STADES_QUALITE)
             return {"data": rows}
         except Exception as e:
             if "does not exist" in str(e):

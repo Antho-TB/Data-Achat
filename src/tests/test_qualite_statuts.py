@@ -1,18 +1,23 @@
 # -*- coding: utf-8 -*-
 """
 [TEST]
-Normalisation des statuts qualite par stade (BUG-007, lot 1).
+Normalisation des statuts qualite par stade (BUG-007).
 
-L'IMPORT ne connait que Conforme / Non recu / Non conforme ; le metier lit
-"en cours", "conforme", "FAIL". Un stade non applicable (Aucune, "/", vide) ne
-doit jamais s'afficher comme un statut.
+Regles de Maxence BRUN (08/10/2026) : "Non recu" = echantillons attendus du
+fournisseur ; un echec est "non conforme" ; les decisions mail ne font pas foi
+et ne doivent jamais fabriquer un statut. Un stade non applicable (Aucune, "/",
+vide) ne doit jamais s'afficher comme un statut.
 """
+import inspect
+
 import pytest
 
 from app.main import (
+    STADES_QUALITE,
     STATUT_CONFORME,
-    STATUT_EN_COURS,
+    STATUT_EN_ANALYSE,
     STATUT_FAIL,
+    STATUT_NON_RECU,
     STATUT_RECU,
     statut_stade,
 )
@@ -24,10 +29,11 @@ from app.main import (
     ("Validé", STATUT_CONFORME),
     ("OK", STATUT_CONFORME),
     ("Oui", STATUT_CONFORME),
-    ("Non reçu", STATUT_EN_COURS),
-    ("Analyse", STATUT_EN_COURS),
+    ("Non reçu", STATUT_NON_RECU),
+    ("Analyse", STATUT_EN_ANALYSE),
     ("Non conforme", STATUT_FAIL),
     ("FAIL", STATUT_FAIL),
+    ("No OK", STATUT_FAIL),
     ("Receptionne Sylob", STATUT_RECU),
 ])
 def test_valeurs_import(valeur, attendu):
@@ -39,11 +45,11 @@ def test_non_applicable_ne_devient_pas_un_statut(valeur):
     assert statut_stade(valeur) is None
 
 
-def test_decision_mail_comble_un_import_vide():
-    assert statut_stade(None, "non_conforme") == STATUT_FAIL
-    assert statut_stade("Aucune", "conforme") == STATUT_CONFORME
+def test_decision_mail_ne_fabrique_plus_de_statut():
+    """Maxence, 08/10 : les decisions mail ne font pas foi."""
+    assert list(inspect.signature(statut_stade).parameters) == ["valeur"]
 
 
-def test_import_renseigne_prime_sur_la_decision_mail():
-    """La decision mail s'affiche en infobulle, elle ne reecrit pas l'IMPORT."""
-    assert statut_stade("Non reçu", "conforme") == STATUT_EN_COURS
+def test_cinq_stades_dont_echantillon_de_conformite():
+    assert set(STADES_QUALITE) == {"MAT", "SP", "BAT", "RECEP", "ECH"}
+    assert STADES_QUALITE["ECH"] == "echantillon_conformite"

@@ -632,10 +632,30 @@ l'API sur les tables MyReport lues. Indicateur discret dans l'en-tête de
 l'interface, détail en infobulle. Contrôle des droits aussi au démarrage de
 l'API, logué en ERROR s'il manque. Mesure du 07/10 : 11 sources sur 11 à jour.
 
-### BUG-007, lots 2 et 3
+### BUG-007, réponses de Maxence (08/10) et suites
 
-Les 9 questions du §7 du cadrage partent à Marlène et Maxence par mail (brouillon
-préparé le 06/10 sur `achat.import@`). Rien à coder avant leurs réponses.
+Réponses reçues par mail le 08/10 (Maxence BRUN). Correctifs livrés le 08/10 :
+- « Non reçu » s'affiche « échantillon non reçu » (on attend les échantillons du
+  fournisseur), « Analyse » devient « en analyse ».
+- Les décisions qualité reçues par mail **ne font pas foi** (Eric peut valider
+  une analyse hors standard TB) : elles ne fabriquent plus de statut, et restent
+  en infobulle à titre indicatif.
+- L'échantillon de conformité devient un stade à part entière (validation
+  d'aspect d'un nouveau produit), avec son filtre.
+- L'évaluation fournisseurs revient, en bloc repliable « Reporting fournisseurs »
+  (« besoin du reporting »). Elle annule la note du 29/09 qui la jugeait inutile.
+- Les articles sans aucun stade (produits GDD : vis, mitres) sont « sans
+  analyse », masqués par défaut. Les commandes annulées s'affichent barrées.
+
+Reste, cadré par ses réponses :
+- [ ] Lot 2 : n° de CA et date d'envoi en analyse depuis Sylob (date de la commande
+  d'analyse).
+- [ ] Lot 3 : trois tableaux, Analyses en cours (archivage manuel une fois traitée),
+  Archives, Facturation (BL qualité CIE contre commande SE, « À facturer » si les
+  montants concordent, « Facturation faite »). Le tableau de facturation est jugé
+  « hyper important » : il révèle les BL CIE qui ne remontent pas vers SE.
+  L'archivage et la case « Facturation faite » demandent que FUSEAU écrive, même
+  décision que la refonte Artwork.
 
 ---
 
