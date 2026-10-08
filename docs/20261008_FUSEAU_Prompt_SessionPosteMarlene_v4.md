@@ -11,7 +11,7 @@
 Quatrième passage sur le poste de Marlène, dépôt C:\Users\mmontbrizon\Documents\Claude\Data-Achat.
 Ce prompt REMPLACE le prompt v3 du 07/10 : ne l'exécute pas, et en particulier ne crée JAMAIS config\facture_auto.flag.
 Garde-fous du premier passage, toujours valables (docs\20261005_FUSEAU_Prompt_SessionPosteMarlene_v1.md) : rien sur le réseau, le VPN, le pare-feu ou Azure (Samuel est absent, l'IP de DTPF ne doit pas bouger) ; aucune écriture en base (requêtes de contrôle en SET TRANSACTION READ ONLY) ; pas de commit, pas de push, pas de suppression ; ne jamais afficher un secret ; ne jamais modifier un document partagé (IMPORT, gsheets) : lecture seule.
-Seules modifications autorisées : lancer la tâche planifiée FUSEAU_Daily_ETL (étape 3), et le prompt de la tâche Cowork fuseau-gmail-threads-achat après sauvegarde datée .bak_20261008 (étape 5).
+Seules modifications autorisées : lancer la tâche planifiée FUSEAU_Daily_ETL (étape 3), écrire le fichier de contrôle data\_artwork_controle.json (étape 3d, s'il le faut), et le prompt de la tâche Cowork fuseau-gmail-threads-achat après sauvegarde datée .bak_20261008 (étape 5).
 Compte rendu : C:\Users\mmontbrizon\Documents\Claude\FUSEAU_retours\20261008_CR_SessionPoste_v4.md, et colle son contenu complet dans ta réponse finale.
 
 ÉTAPE 1 : ÉTAT DES LIEUX
@@ -24,8 +24,11 @@ git pull --ff-only origin main (attendu : 8b92123 ou plus récent). Si le pull r
 
 ÉTAPE 3 : RECHARGER LES ARTWORKS AVEC LE PARSEUR CORRIGÉ
 Le parseur du gsheet de Clarisse a été corrigé le 07/10 (PR #36) : l'onglet « Artworks en attente » était ignoré en entier. Ce matin, le chargement a encore tourné avec l'ancien code.
-a. Seulement si l'étape 2 a réussi : Start-ScheduledTask -TaskName FUSEAU_Daily_ETL, puis attends sa fin (Get-ScheduledTaskInfo, LastTaskResult).
-b. Contrôle en lecture seule dans achat.artwork_statut, sur les lignes du dernier chargement (charge_le à moins de 12 h du maximum) : nombre par statut_artwork. Attendu : environ 10 « En attente » et 384 « Validé ». Liste les « En attente » (code_article, designation, priorite).
+C'est l'étape PRIORITAIRE de ce passage : sans elle, l'onglet Artwork de FUSEAU affiche 0 artwork en attente.
+a. Seulement si l'étape 2 a réussi : Start-ScheduledTask -TaskName FUSEAU_Daily_ETL, puis attends sa fin (Get-ScheduledTaskInfo -TaskName FUSEAU_Daily_ETL : LastTaskResult, 0 attendu).
+b. Recopie les 20 dernières lignes du journal logs\daily_etl_<AAAAMMJJ du jour>.log, et le hash du commit (git rev-parse --short HEAD) au moment du lancement.
+c. Contrôle en lecture seule dans achat.artwork_statut, sur les lignes du dernier chargement (charge_le à moins de 12 h du maximum) : nombre par statut_artwork. Attendu : environ 10 « En attente » et 384 « Validé ». Liste les « En attente » (code_article, designation, priorite).
+d. Si le résultat est encore 0 « En attente » : n'insiste pas, note la sortie complète de .\.venv311\Scripts\python.exe -m src.scripts.etl.transform_artwork --gsheet --out data\_artwork_controle.json (lecture du gsheet seule, sans chargement en base) et le nombre de lignes par statut dans ce fichier.
 
 ÉTAPE 4 : LA LIGNE TJKY À 53 $ ET LA COLONNE « Payé ? » (lecture seule du fichier IMPORT)
 Marlène pense avoir saisi le paiement du PO 17753 (TJKY, article 11400003, 53 $, envoi DHL) dans le fichier IMPORT, mais FUSEAU ne voit aucune date de paiement. L'ETL ne retient dans « Payé ? » que des DATES : un texte (« OUI », « payé », une date tapée en texte) est ignoré sans message.
