@@ -704,7 +704,7 @@ Livré, branche `fix/decisions-qualite-cle-dekra` :
 ### Passage du 08/10 sur le poste (quatrième), et suites
 
 Session Cowork sur le poste de 12h29 à 12h50, prompt v4. Compte rendu :
-`docs/Compteren.zip` (non versionné, `docs/*.zip` ignoré). Aucun garde-fou
+`docs/20261008_FUSEAU_CR_PassagePosteMarlene4_v1.txt`. Aucun garde-fou
 atteint. Poste passé de `f43f1cd` à `8b92123` (258 tests OK) : il n'a donc pas
 encore les PR #43 à #46.
 

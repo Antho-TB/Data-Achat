@@ -1,0 +1,730 @@
+Compte rendu : quatrième passage sur le poste de Marlène (08/10/2026)
+Session menée par Claude (Cowork), à distance sur le poste, le 08/10/2026 de 12h29 à 12h50 environ. Le prompt v3 du 07/10 n'a pas été exécuté.
+Aucun garde-fou n'a été atteint. Rien sur le réseau, le VPN, le pare-feu ou Azure. Aucune écriture en base de ma part : les requêtes de contrôle ont été lancées en SET TRANSACTION READ ONLY. Seules écritures en base : celles de la tâche FUSEAU_Daily_ETL, lancée comme demandé (étape 3). Aucun commit, aucun push, aucune suppression. Le fichier IMPORT a été ouvert en lecture seule et jamais enregistré.
+config\facture_auto.flag n'existe pas et n'a pas été créé. data\_artwork_controle.json n'a pas été créé non plus : l'étape 3d n'était pas nécessaire.
+Modifications faites :
+git pull --ff-only (f43f1cd → 8b92123) ;
+lancement de FUSEAU_Daily_ETL ;
+prompt de la tâche Cowork fuseau-gmail-threads-achat, une seule ligne, après sauvegarde dans SKILL.md.bak_20261008 (hash identique vérifié).
+Synthèse
+Étape
+Objet
+État
+En une ligne
+1
+État des lieux
+OK, avec un défaut confirmé
+Files_ETL et Daily_ETL ont démarré à la même seconde (08:12:08). Le pull de Files_ETL a journalisé [SUCCES] Code mis a jour : f43f1cd -> f43f1cd sans rien fusionner (7 commits de retard). Ta supposition est confirmée, et il y a un 2e défaut. Pas de PULL_BLOQUE.txt
+2
+Mise à jour du code
+OK
+git pull --ff-only : f43f1cd → 8b92123 (20 commits, 27 fichiers). pytest : 258 passed, 0 échec
+3
+Recharger les artworks
+OK
+Daily_ETL lancé à 12:31:28 sur 8b92123, LastTaskResult 0x0, fin 12:33:52. Dernier chargement : 10 « En attente » + 384 « Validé » = 394, comme attendu
+4
+PO 17753 TJKY / « Payé ? »
+OK (constat)
+La cellule « Payé ? » du PO 17753 contient le texte Non, pas une date. Le fichier a été modifié à 11:47:45 aujourd'hui. 239 lignes ont un « Payé ? » rempli mais pas une date (233 Non, 3 non, Julia, acompte OUI, le nombre 46282)
+5
+Tâche Cowork
+OK
+10 runs depuis le 06/10, tous réussis, aucune demande d'autorisation en attente. Recherche par libellé corrigée (5 → 14 fils sur 24 h). Aucun devis DEKRA reçu depuis le 01/10 : rien à capter
+6
+Factures fournisseurs (repérage)
+OK
+60 j : 51 messages / 44 fils (25 factures, 5 notes de crédit, 21 PI), tous venus du bureau HK sauf 4. 75 % en INBOX sans libellé. Requête proposée : rappel 44/44, précision ≈ 61 %
+7
+Compte rendu
+OK
+ce document
+Étape 1 : état des lieux
+
+Tâche
+Déclencheur exact
+Dernier run
+Résultat
+Prochain run
+FUSEAU_Files_ETL
+Quotidien 02:00, sans délai ni délai aléatoire. StartWhenAvailable = True, WakeToRun = True, LogonType Interactive
+08/10 08:11:46
+0x00000000
+09/10 02:00
+FUSEAU_Daily_ETL
+Quotidien 07:00, sans délai ni délai aléatoire. StartWhenAvailable = True, WakeToRun = True, LogonType Interactive
+08/10 08:11:46 (avant mon lancement)
+0x00000000
+09/10 07:00
+FUSEAU_Gmail_ETL
+Quotidien 08:00, répété toutes les 2 h pendant 10 h. StartWhenAvailable = True, WakeToRun = False
+08/10 12:11:47
+0x00000000
+08/10 14:00
+Aucun déclencheur « au démarrage ». Le poste est éteint la nuit. Les trois tâches, rattrapées par StartWhenAvailable, partent donc en même temps à l'ouverture de session.
+Ce matin, d'après les journaux :
+Journal
+Début
+Fin
+deploy\logs\etl_files_20261008.log (Files_ETL, fait le pull)
+08:12:08
+08:13:53 (« FIN ETL fichiers OK »)
+logs\daily_etl_20261008.log (Daily_ETL, artwork)
+08:12:08
+08:14:31 (« FIN ETL quotidien OK »)
+logs\gmail_etl_20261008.log (Gmail_ETL)
+08:12:08
+—
+Ta supposition est confirmée. Daily_ETL n'attend pas Files_ETL. Elle a lu le gsheet à 08:12:23 avec le code déjà en place. Même si le pull avait marché, il serait arrivé après le chargement de Python par Daily_ETL. Résultat de 08:12 : 385 article(s) … 77 ligne(s) sans réf ignorée(s), 385 upserts, tous « Validé ».
+Deuxième défaut, plus grave : le pull a échoué en annonçant un succès. Extrait de etl_files_20261008.log :
+08:12:10  [INFO] HEAD local avant synchro : f43f1cd (cible main)
+08:12:15  [INFO] main distant : 0d917de, retard du poste : 7 commit(s)
+08:12:16  [SUCCES] Code mis a jour : f43f1cd -> f43f1cd
+08:12:17  [INFO] HEAD local apres synchro (code execute par l'ETL) : f43f1cd
+Le git reflog ne contient aucun mouvement de HEAD le 08/10. Le dernier date du 07/10 08:25:58 (fast-forward vers f43f1cd).
+Cause la plus probable : une course sur .git\FETCH_HEAD.
+run_etl_scheduled.ps1 (l. 176-193) fait git fetch origin main, puis mesure le retard sur FETCH_HEAD, puis lance git merge --ff-only FETCH_HEAD.
+Au même moment, preflight_gmail.py (l. 123), lancé par FUSEAU_Gmail_ETL à 08:12:10, exécute git fetch origin, toutes branches. Son contrôle de synchro se termine à 08:12:19.
+Ce second fetch réécrit FETCH_HEAD. La première ligne n'est alors plus forcément main. Le merge fusionne une ref déjà contenue dans HEAD, répond « Already up to date », exit 0, et le script affiche [SUCCES].
+Ce n'est pas prouvé ligne à ligne, mais tout est cohérent : HEAD inchangé, exit 0, un fetch concurrent dans la même fenêtre de 3 s.
+Corrections à faire dans le code (Antho, non appliquées) :
+run_etl_scheduled.ps1 : après le merge, vérifier HeadApres -eq Distant, sinon appeler Set-PullBloque. Fusionner origin/$Branche, ou le hash $Distant mesuré, plutôt que FETCH_HEAD.
+preflight_gmail.py : ne pas réécrire FETCH_HEAD. Utiliser git fetch --no-write-fetch-head origin main ou git ls-remote origin main.
+Ordonnancement : Daily_ETL (et Gmail_ETL) doivent partir après Files_ETL. Par exemple, Files_ETL lance Daily_ETL en fin de parcours, ou chaque script attend un verrou ou un marqueur « pull fait aujourd'hui ».
+
+git rev-parse --short HEAD : f43f1cd
+git fetch puis git rev-parse --short origin/main : 8b92123
+Retard : 20 commits (7 de plus que ce matin, dont PR #36 artwork, #40 à #42)
+git status --porcelain : vide
+
+N'existe pas. C'est normal compte tenu du défaut ci-dessus : le script a cru avoir réussi.
+Étape 2 : mise à jour du code
+
+git pull --ff-only origin main : exit 0, fast-forward f43f1cd → 8b92123, 27 fichiers (+2749 / −265), dont src/scripts/etl/reprise_artwork_gsheet.py, sql/20261008_socle_ecriture.sql et 6 nouveaux fichiers de test.
+.\.venv311\Scripts\python.exe -m pytest src/tests -q -p no:cacheprovider : 258 passed, 1 warning (PendingDeprecationWarning sur import multipart, Starlette), en 28,20 s.
+
+HEAD = origin/main = 8b92123. git status --porcelain vide après le pull et après les tests.
+
+Aucun.
+Étape 3 : recharger les artworks avec le parseur corrigé
+
+a. Start-ScheduledTask -TaskName FUSEAU_Daily_ETL à 12:31:28, avec HEAD = 8b92123 au lancement. Suivi par Get-ScheduledTaskInfo : fin à 12:33:52, LastTaskResult = 0x00000000. Le code 0x00041301 relevé pendant l'exécution signifie « en cours ».
+Étapes du journal : artwork rafraîchi (12:31:59), documents qualité rafraîchis (12:33:11), enrich_dimensions, enrich_from_sylob, enrich_ca en SUCCES, 0 [ERREUR], 0 [ECHEC]. 232 lignes [ATTENTION] ref_rapport non extrait dans le crawl Drive qualité (non bloquant, déjà connu).
+Partie artwork, avec le nouveau parseur :
+  12:31:43 Onglet 'Artworks en attente' : 22 ligne(s).
+  12:31:44 Onglet 'Liste artworks' : 465 ligne(s).
+  12:31:44 [SUCCÈS] Artworks : 394 article(s) (dédoublonnés), 88 ligne(s) sans réf ignorée(s)
+  12:31:59 [COMMIT] 394 article(s) upsert dans achat.artwork_statut.
+Ce matin à 08:12, avec l'ancien code, la même lecture donnait 385 articles.
+
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (2026-10-08 12:3...apping nom->frn:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+2026-10-08 12:33:51,903 [WARNING] [ATTENTION] HUAYING : tous les codes < 2 PO, code le mieux corrobore retenu 
+(GDD/00000887, 1 PO)
+2026-10-08 12:33:51,903 [WARNING] [ATTENTION] TJKY : tous les codes < 2 PO, code le mieux corrobore retenu 
+(GDD/00001147, 1 PO)
+2026-10-08 12:33:51,903 [WARNING] [ATTENTION] DAKOO : tous les codes < 2 PO, code le mieux corrobore retenu 
+(GDD/00001099, 1 PO)
+2026-10-08 12:33:51,903 [INFO] [INFO] 13 lien(s) nom<->frn_code rejete(s) (ambigu, < 2 PO, bruit probable) : GUANGMING 
+METAL (GDD/00000056, 1 PO); GUANGMING METAL (GDD/00000040, 1 PO); GUANGMING METAL (Cie/00000249, 1 PO); JIT GLOBAL 
+(GDD/00000888, 1 PO); GOLD KNIFE (GDD/00000033, 1 PO); GOLD KNIFE (Cie/00000252, 1 PO); HUAYING (SE/00001229, 1 PO); 
+AUZON (GDD/00000054, 1 PO); SMART IRON (GDD/00000888, 1 PO); GUANGWEI (SE/00001217, 1 PO); TJKY (GDD/00000056, 1 PO); 
+TJKY (Cie/00000247, 1 PO); DAKOO (SE/00000592, 1 PO)
+2026-10-08 12:33:51,974 [INFO] [INFO] 5 groupe(s) fusionne(s) (doublon de nom sur un meme frn_code) : GUANGMING / 
+GUANGMING METAL; JIT GLOBAL / SMART IRON; DONGGUAN / JIUSHENG; DIAMOND TRACK / GUANGWEI / POLLYDA; AOYAM / HIAMEA
+2026-10-08 12:33:52,172 [INFO] [SUCCÈS] achat.fournisseur_ca enrichi (full-refresh) : 22 fournisseurs
+2026-10-08 12:33:52  [SUCCES] enrich_ca
+2026-10-08 12:33:52  === FIN ETL quotidien OK ===
+
+max(charge_le) = 2026-10-08 10:31:47 (UTC, soit 12:31 à Paris). Table : 395 lignes au total, dont 394 du dernier chargement. La 395e est une ligne plus ancienne, plus présente dans le gsheet.
+Lignes à moins de 12 h du maximum :
+statut_artwork
+Nb
+Validé
+384
+En attente
+10
+Les 10 « En attente » :
+code_article
+designation
+priorite
+NOUVEAU-BLOC-A-COUTEAUX-VIDE-EN-ALUMINIUM-FINITION-SATINEE
+BLOC À COUTEAUX VIDE EN ALUMINIUM (FINITION SATINÉE)
+3
+NOUVEAU-M16-COUVERTS-LAGUIOLE-HERITAGE-INSPIRATION
+M16 - COUVERTS LAGUIOLE HÉRITAGE - INSPIRATION
+4
+NOUVEAU-M24-COUVERTS-LAGUIOLE-HERITAGE-SELECTION-BRILLANT
+M24 - COUVERTS LAGUIOLE HÉRITAGE - SÉLECTION - BRILLANT
+4
+NOUVEAU-M24-COUVERTS-LAGUIOLE-HERITAGE-SELECTION-SATINE
+M24 - COUVERTS LAGUIOLE HÉRITAGE - SÉLECTION - SATINÉ
+4
+Comp0806
+BOITE DETAIL VIDE POUR 3CTX - GEORGES POM ET BOIS
+5
+NOUVEAU-COFFRET-CARTON-PECKBOARDABLE-THERMO-4-CTX-STEAK-LH-MIF
+COFFRET CARTON PECKBOARDABLE /THERMO 4 CTX STEAK LH MIF
+5
+NOUVEAU-COFFRET-CARTON-PECKBOAR-THERMO-2-CTX-CUISINE-LH-MIF-UNIVERSE
+COFFRET CARTON PECKBOAR/THERMO 2 CTX CUISINE LH MIF (universel et chef)
+5
+NOUVEAU-COFFRET-CARTON-THERMO-3-CTX-CUISINE-LH-MIF-UNIVERSEL-SANTOKU
+COFFRET CARTON/THERMO 3 CTX CUISINE LH MIF (universel,santoku,cuisine 17)
+5
+NOUVEAU-LAGUIOLE-HERITAGE-M20-HERITAGE-PVD-NOIR-COSTCO
+LAGUIOLE HÉRITAGE-M20-HÉRITAGE-PVD NOIR (COSTCO)
+5
+NOUVEAU-LAGUIOLE-HERITAGE-M20-HERITAGE-SABLE-COSTCO
+LAGUIOLE HÉRITAGE-M20-HÉRITAGE-SABLÉ (COSTCO)
+5
+
+9 des 10 « En attente » portent un identifiant construit NOUVEAU-<désignation>, faute de code article : ce sont des articles en création. Si l'onglet Artwork de FUSEAU rapproche les artworks des commandes par code article, ces lignes n'auront pas de commande en face. C'est à vérifier à l'écran.
+
+Le résultat n'était pas 0 « En attente », donc pas de lancement de transform_artwork --out data\_artwork_controle.json. Le fichier n'a pas été créé.
+Point d'attention : demain matin, le même problème d'ordre se reproduira si les 3 tâches repartent ensemble. Le code est maintenant à jour (8b92123), donc l'artwork sera correct. Mais tout nouveau correctif mergé dans la nuit ne sera pris que le surlendemain par Daily_ETL.
+Étape 4 : la ligne TJKY à 53 $ et la colonne « Payé ? »
+
+Ouverture du fichier par la même résolution que le pipeline (pipeline._find_file(Config.DATA_DIR, "import")), puis openpyxl.load_workbook(read_only=True, data_only=True), onglet « IMPORT 2026 », en-tête ligne 4 (comme extract_import, header=3). Le classeur n'a jamais été enregistré.
+Fichier lu : \\Srv-files-pom\partage\ADA\METIER\SUIVI CDES IMPORT\2026\IMPORT 2026.xlsx
+Dernière modification du fichier : 08/10/2026 11:47:45 (851 846 octets)
+Onglets : IMPORT 2026, POINT MIF, STOP REF CARREFOUR, FUSION OP UDPATE
+
+Champ
+Valeur
+PO#
+00017753
+Fournisseur
+TJKY
+REF
+11400003, GARDE MIM BRUTE PN SURVIE
+Quantité / PU / Total
+50 × 1,06 = 53 (Total prix sur facture = 53)
+Etat de la commande
+« Livré le 08/07/2026 »
+Payé ? (valeur brute)
+'Non'
+Type
+texte (str)
+Conclusion : la saisie n'est pas dans le fichier. La cellule contient le texte « Non », pas une date. FUSEAU ne peut donc pas afficher de date de paiement. Le fichier a été enregistré à 11:47 aujourd'hui, mais cette cellule dit toujours « Non ». Soit la saisie a été faite ailleurs (une autre ligne, une copie locale, un fichier non enregistré), soit elle n'a pas été faite. À vérifier avec Marlène. Je n'ai pas cherché d'autres lignes TJKY à 53 $ : une seule ligne porte le PO 17753.
+
+Sur 1 087 lignes avec PO, « Payé ? » est rempli partout : 848 dates et 239 non-dates.
+Total : 239 lignes dont « Payé ? » est rempli sans être une date.
+Valeurs rencontrées : 'Non' × 233, 'non' × 3, 'Julia' × 1, 46282 × 1, 'acompte OUI' × 1
+PO
+Fournisseur
+Valeur brute
+Nb lignes
+Lignes Excel
+Articles
+00145862
+WANXIN
+'Non'
+10
+6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+21450002, 21480002, 21480004, 21549909, 21549910, 21549911, 21549912, 21600002, 21870001, 21870006
+00150073
+WANXIN
+'Non'
+13
+16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 27, 28, 29
+433620, 433640, 20480002, 20890009, 21460017, 21460018, 21480002, 21480003, 21480004, 21850001, 21850004, 21870001, 21870006
+00151554
+WANXIN
+'Non'
+9
+30, 31, 32, 33, 34, 35, 36, 37, 38
+20160008, 21450002, 21450003, 21450004, 21450005, 21460005, 21460009, 21600002, 41460001
+00152202
+WANXIN
+'Non'
+1
+39
+21460014
+00155572
+WANXIN
+'Non'
+4
+40, 42, 43, 44
+433651, 21860001, 21860002, 21860004
+00154555
+WANXIN
+'Non'
+1
+41
+21450008
+00156766
+WANXIN
+'Non'
+3
+45, 46, 53
+433610, 21480003, 21520039
+00161059
+WANXIN
+'Non'
+2
+47, 48
+20160007, 21150003
+00161343
+WANXIN
+'Non'
+1
+49
+21460018
+00162318
+WANXIN
+'Non'
+2
+50, 51
+20160001, 20160002
+00163975
+HONGXING
+'Non'
+1
+52
+32210010
+00179321
+HONGXING
+'Non'
+2
+54, 814
+41520003, 32000005
+00169877
+EAST TOP
+'Non'
+1
+55
+32110001
+00000002
+AUZON
+'Non'
+2
+59, 60
+/,  /
+00183024
+HONGXING
+'Non'
+5
+293, 893, 898, 903, 904
+443840, 402010, 535811, 31930002, 31930003
+00184930
+HONGXING
+'Non'
+2
+319, 327
+443840, 443850
+00187324
+HONGXING
+'Non'
+56
+347, 840, 987, 988, 989, 990, 991, 992, 993, 994, 996, 997, 998, 999, 1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011, 1012, 1013, 1014, 1015, 1016, 1017, 1018, 1019, 1020, 1021, 1022, 1023, 1024, 1025, 1026, 1027, 1028, 1029, 1030, 1031, 1032, 1033, 1034, 1035, 1036, 1037, 1038, 1064, 1065, 1066
+402010, 402660, 424340, 430525, 430526, 430534, 430546, 430555, 444330, 444850, 445706, 535811, 10020115, 21970001, 21970002, 21970003, 21970005, 30101077, 30101108, 30101110, 30150008, 30170024, 30170028, 30170029, 30170039, 30170044, 30363708, 30363723, 30730006, 31050010, 31260010, 31260022, 31930001, 31930016, 31930017, 31930019, 31930021, 31930024, 32000002, 32000005, 32000030, 32000031, 32030001, 32070007, 32070041, 32070042, 32070045, 32070048, 32210002, 32210003, 32210004, 32210008, 32210024, 31930002, 31930003, 31930005
+00183641
+NOSKI
+'Non'
+1
+507
+20110062
+00017753
+TJKY
+'Non'
+1
+697
+11400003
+00185602
+HONGXING
+'Non'
+25
+801, 927, 928, 929, 930, 931, 932, 933, 935, 936, 937, 938, 939, 940, 941, 942, 943, 944, 945, 946, 947, 948, 949, 950, 951
+30090017, 430521, 430531, 430556, 20100003, 20100004, 21970002, 21970004, 30101105, 30150010, 30150011, 30170030, 30170038, 30190001, 30190003, 31090010, 31090011, 31090012, 31260007, 31930009, 32000013, 32030006, 32070046, 32210014, 32210020
+00180941
+NOSKI
+'Non'
+1
+853
+41520005
+00182222
+HONGXING
+'Non'
+1
+881
+Comp1490061
+00182534
+NOSKI
+'Non'
+5
+884, 885, 886, 887, 919
+32000035, 32000036, 32000037, 32000038, 32000034
+00182725
+NOSKI
+'Non'
+1
+888
+20110064
+00183352
+GUANGWEI
+'Non'
+3
+907, 908, 909
+10050034, 447780, 433580
+00183365
+JIT GLOBAL
+'Non'
+3
+910, 911, 912
+10590004, 10340037, 10340034
+00183424
+NOSKI
+'Non'
+4
+915, 916, 917, 918
+439814, 400530, 21460004, 21150002
+00184684
+NOSKI
+'Non'
+3
+921, 922, 925
+22040001, 22040002, 22040001
+00186151
+SCIKIO
+'Non'
+1
+952
+10110026
+00186152
+GUANGWEI
+'Non'
+1
+953
+10110032
+00183618
+SURPASS
+'Non'
+1
+955
+10010198
+00187096
+SURPASS
+'Non'
+4
+956, 957, 958, 959
+10010153, 10010154, 10010155, 441823
+00187135
+GUANGWEI
+'Non'
+1
+960
+433570
+00187157
+NOSKI
+'Non'
+18
+961, 962, 963, 964, 965, 966, 967, 968, 969, 970, 971, 972, 973, 974, 975, 976, 977, 978
+21130003, 21130004, 21130005, 20890005, 21810005, 20110034, 20110047, 20110048, 20110049, 20110050, 427640, 433820, 400550, 21130002, 427650, 21460015, 21160003, 21520007
+00187177
+JIT GLOBAL
+'Non'
+1
+979
+Comp1000001
+00018180
+DONGGUAN
+'Julia'
+1
+980
+Comp0940
+00187132
+JIT GLOBAL
+'Non'
+4
+983, 984, 985, 986
+404610, 10340037, 421310, 10320041
+00181381
+HONGXING
+'Non'
+1
+1040
+32070044
+00188421
+GUANGWEI
+'Non'
+2
+1043, 1044
+60110001, 30110003
+00188397
+HONGXING
+'Non'
+3
+1045, 1046, 1047
+10110030, 30110005, 32000039
+00188396
+NOSKI
+'Non'
+3
+1048, 1049, 1050
+20110065, 20110066, 20110042
+00188416
+SCIKIO
+'Non'
+2
+1051, 1052
+10110041, 10110027
+00189441
+GUANGWEI
+'Non'
+2
+1053, 1054
+10050033, 10050013
+00189452
+AOYAM
+'Non'
+2
+1055, 1056
+Acce0610003, 422980
+00189636
+JIT GLOBAL
+'Non'
+1
+1057
+404530
+00189638
+NOSKI
+'Non'
+4
+1058, 1059, 1060, 1061
+20710004, 21460003, 20110047, 21150003
+00189493
+HONGXING
+'Non'
+12
+1062, 1063, 1067, 1068, 1069, 1070, 1071, 1072, 1073, 1074, 1075, 1076
+40020036, 430551, 30730008, 30101112, 32210034, 32210036, 32000014, 32000015, 32000017, 32000032, 30363713, 444860
+00190026
+JIT GLOBAL
+'Non'
+1
+1077
+10340032
+NA
+GUANGWEI
+46282
+1
+1079
+MOULE BLOC ALU
+00018457
+GUANGMING
+'non'
+2
+1080, 1081
+10500093, 10500070
+00018132
+CHUANGHE
+'acompte OUI'
+1
+1082
+Comp1350031
+00190441
+GUANGWEI
+'Non'
+6
+1085, 1086, 1087, 1088, 1089, 1090
+12000001, 12000002, 12000003, 12000004, 12000005, 12000006
+00018502
+GOLD KNIFE
+'non'
+1
+1091
+11380058
+Lecture :
+les 236 Non / non sont normaux : ce sont des commandes non payées, ignorées à juste titre par l'ETL.
+Les 3 vraies anomalies sont les suivantes : 
+PO 00018180 (Comp0940) : « Payé ? » = Julia.
+PO 00018132 (Comp1350031) : « Payé ? » = acompte OUI. Un paiement partiel est perdu.
+ligne 1079, PO « NA » (MOULE BLOC ALU) : « Payé ? » = le nombre 46282. C'est probablement une date tapée sans format date ; en numéro de série Excel, 46282 correspond au 17/09/2026. L'ETL l'ignore.
+Aucun « OUI » ni « payé » texte, hors « acompte OUI ».
+Étape 5 : tâche Cowork fuseau-gmail-threads-achat
+
+Source : scheduled-tasks.json (enabled = true, lastRunAt = 08/10 10:05:38 UTC, observedToolUse.runsObserved = 9 depuis le nouveau promptHash) et les sessions local_*.json liées à la tâche, avec leurs transcripts.
+Début
+Fin
+Session
+Résultat
+Chargé (d'après le run)
+06/10 09:58
+10:03
+3f6f47c5
+réussi, ancien prompt (le prompt a été modifié à 10:02:51)
+qualite=1, commerce=1, design=5
+06/10 10:03
+10:05
+e693612d
+réussi
+7 envoyés, 0 nouveau (déjà en base)
+06/10 12:05
+12:11
+68ee6ff7
+réussi
+qualite=1, transport=1, design=4
+07/10 08:16
+08:20
+076a9326
+réussi
+qualite=3, design=3
+07/10 10:06
+10:10
+bc656caa
+réussi
+6 envoyés, 4 nouveaux
+07/10 12:06
+12:10
+9348c159
+réussi
+qualite=8, transport=5, design=1
+07/10 14:06
+14:11
+6edc8bbf
+réussi
+qualite=9, commerce=1, transport=4
+07/10 16:06
+16:11
+b1e9c424
+réussi
+15 envoyés, 0 nouveau
+08/10 10:28
+10:33
+a76213e6
+réussi
+transport=6, qualite=11
+08/10 12:05
+12:10
+fce484d0
+réussi
+qualite=3, design=1 (2 nouveaux)
+10 runs, 10 réussis. Aucun échec, aucune demande d'autorisation d'outil en attente. Les seules erreurs d'outil sont bénignes : un hook Write et un fichier lu trop gros, contournés dans le run.
+Créneaux sans run : 06/10 14h, 16h et 18h ; 07/10 18h ; 08/10 08h. Il n'y a ni session ni trace pour ces créneaux. C'est cohérent avec un poste ou une application Claude fermés : la tâche Cowork ne tourne que si l'application est ouverte.
+Recherche a) : tous les runs lancent label:04-FOURNISSEURS OR label:03-TRANSITAIRES. Le run du 07/10 08:16 écrit qu'elle « n'a rien trouvé ». Le run du 06/10 12:05 a tenté de lui-même des ID Label_…, sans succès.
+
+Libellés « fournisseurs » de la boîte, avec leur activité :
+Libellé
+ID
+Messages
+Activité récente
+01-FOURNISSEURS/IMPORT
+Label_509
+768
+oui (fils du 07 et 08/10)
+01-FOURNISSEURS/HORS IMPORT
+Label_510
+189
+oui
+01-FOURNISSEURS/DHL
+Label_5132148731994547717
+74
+oui
+01-FOURNISSEURS (parent)
+Label_508
+0
+vide
+04-FOURNISSEURS (parent)
+Label_7629240935976424573
+0
+vide
+04-FOURNISSEURS/1-DIVERS HK, /1-PROJETS/…, /GUANGWEI, /DIAMOND/POLLYFINE, /AUZON/QYPACKING, /BONLY, /GOLD KNIFE… (≈ 35 sous-libellés)
+divers
+4 087 pour DIVERS HK
+aucun message sur 30 j : ancienne arborescence
+03-TRANSITAIRES
+Label_3203782228087186485
+2 497
+oui
+(pour mémoire) 03-LOGISTIQUE / 04-QUALITE
+Label_512 / Label_513
+275 / 126
+oui
+Pourquoi l'ancienne recherche ratait les fournisseurs :
+04-FOURNISSEURS est un libellé parent vide. Gmail n'inclut pas les sous-libellés dans label:parent, et la nouvelle arborescence est 01-FOURNISSEURS/…. Seul 03-TRANSITAIRES ramenait quelque chose.
+Dans ce connecteur, label: n'accepte pas les ID Label_xxx, contrairement à ce que dit la documentation de l'outil. Je l'ai vérifié : label:Label_509 renvoie 0 résultat. Il faut le nom normalisé, en minuscules, avec « / » et espaces remplacés par « - ». Exemple : label:01-fournisseurs-import.
+Test sur 24 h (08/10 vers 12h40) : l'ancienne requête renvoie 5 fils (tous 03-TRANSITAIRES), la nouvelle 14 fils.
+Diff exact du prompt (avant SKILL.md.bak_20261008 / après SKILL.md). Rien d'autre n'a changé :
+diff
+--- a/SKILL.md.bak_20261008
++++ b/SKILL.md
+@@ -13,7 +13,7 @@ PRÉREQUIS / GARDE-FOUS
+ 
+ ÉTAPE 1 — LIRE LES THREADS (contenu complet)
+ - search_threads sur `newer_than:1d` (l'idempotence couvre les recouvrements), plusieurs recherches :
+-  a) `newer_than:1d (label:04-FOURNISSEURS OR label:03-TRANSITAIRES)`
++  a) `newer_than:1d (label:01-fournisseurs-import OR label:01-fournisseurs-hors-import OR label:01-fournisseurs-dhl OR label:03-transitaires)` (libellés écrits en minuscules, « / » et espaces remplacés par « - » : l'outil Gmail n'accepte ni l'ID Label_xxx ni le libellé parent vide 04-FOURNISSEURS)
+   b) `newer_than:1d (from:qualitairsea.com OR from:dekra.com)`
+   c) `newer_than:1d (from:tb-groupe.fr)` (échanges internes Eric T/Commerce, Emmanuelle/Supply, Clarisse/Design)
+ - Pour CHAQUE thread : get_thread en FULL_CONTENT (corps complet de TOUS les messages du fil, pas seulement le dernier).
+Limite à connaître : les libellés sont posés par message. Environ 75 % des mails fournisseurs récents restent en INBOX sans libellé (voir étape 6). La recherche c) from:tb-groupe.fr reste donc indispensable : elle couvre le bureau HK.
+
+from:dekra.com subject:FRI after:2026/10/05 : 0 fil. from:dekra.com after:2026/10/01 : 0 fil.
+Aucun devis DEKRA n'est arrivé, donc la tâche n'a rien raté. Explication probable : DEKRA Chine était fermé du 1er au 7 octobre (fête nationale, annoncée dans le devis du 29/09). L'activité devrait reprendre à partir du 08/10.
+À surveiller : le premier devis reçu devra produire une ligne reservee. Contrôle possible : SELECT * FROM achat.qualite_decision WHERE decision = 'reservee'.
+Étape 6 : factures fournisseurs, repérage seul
+Recherche Gmail en lecture seule du 09/08 au 08/10/2026, par un sous-agent : environ 95 fils ouverts, noms de pièces jointes contrôlés. Je n'ai rien modifié : ni deploy\run_gmail_etl.ps1, ni le flag.
+
+51 messages dans 44 fils portent une facture, une note de crédit ou une PI fournisseur en pièce jointe :
+Type
+Messages
+Factures (dont 4 renvois, 2 rectifications, 1 facture d'outillage)
+25
+Notes de crédit
+5 (Smart Iron, Guangwei, HX ×2, Noski)
+PI / proformas d'acompte
+21
+Expéditeur
+Messages
+susanna@ (bureau HK)
+22
+debbie@ (bureau HK)
+17
+julia@ (bureau HK)
+8
+SURPASS (sunlordinc.com, en direct)
+3
+DAKOO (dakoohome.com, en direct)
+1
+Libellé du message
+Messages
+INBOX seul, sans libellé utilisateur
+38 (75 %)
+01-FOURNISSEURS/IMPORT
+13
+Fournisseurs : NOSKI 10, GUANGWEI 10, JIT GLOBAL / SMART IRON 9, HX 6, GUANGMING 3, SURPASS 3, AOYAM 2, JIUSHENG 2, puis YINHONG, MINGHAO, SICKIO, CHUANGHE, DAKOO et GOLD KNIFE (1 chacun).
+ Comptés à part : 2 factures mensuelles DEKRA (prestataire) et 2 envois de commissions TB China (agent).
+Pièges pour un futur parseur :
+les factures GUANGWEI arrivent en .jpg ;
+les factures HX sont nommées « 26046 PO#00179321.pdf », sans « invoice » ;
+MINGHAO envoie un .xls ;
+beaucoup de factures arrivent en réponse dans un fil « NEW ORDER … ».
+
+has:attachment from:(debbie@tb-groupe.fr OR susanna@tb-groupe.fr OR julia@tb-groupe.fr OR sunlordinc.com OR dakoohome.com) ("attached invoice" OR "attached invoices" OR "attached credit note" OR "attached PI" OR "attached signed PI" OR "the P.I." OR filename:invoice OR filename:inovice OR filename:credit OR filename:PI OR filename:CI OR filename:proforma)
+(à préfixer par newer_than:3d dans la tâche)
+72 fils remontés, dont les 44 pertinents. Rappel 44/44, précision ≈ 61 % (28 faux positifs : PO signés, fils où la facture n'est que citée, réclamations). Elle ne ramène ni QUALITAIR, ni DEKRA.
+Variante plus large : 88 fils, précision 50 %. Variante sans filtre d'expéditeur : environ 400 fils, précision ≈ 12 %, inutilisable.
+label:01-fournisseurs-import seul n'aurait trouvé que 13 des 51 messages.
+Limites :
+le rappel est mesuré sur le jeu trouvé par des recherches proches : une facture sans aucun mot-clé (PJ au nom de hash, corps vide) a pu échapper ;
+3 noms de PJ n'ont pas été vérifiés ;
+le contenu des PJ n'a pas été ouvert ;
+les filtres filename:PI et filename:CI sont courts, donc bruyants.
+Avant activation : la précision de 61 % suppose que le tri (triage_piece) et le modèle écartent les PO signés et les relances. Il faut mesurer ce tri en dry-run sur ces 44 fils.
+Étape 7 : compte rendu
+
+HEAD = origin/main = 8b92123, git status --porcelain vide.
+config\facture_auto.flag : absent. data\_artwork_controle.json : absent. deploy\logs\PULL_BLOQUE.txt : absent.
+FUSEAU_Daily_ETL : Ready, LastTaskResult 0x0.
+Prompt Cowork : SKILL.md modifié sur une ligne, SKILL.md.bak_20261008 créé. scheduled-tasks.json non modifié.
+Fichiers de travail laissés dans %TEMP%, non supprimés : fuseau_import_paye.py, fuseau_nondate.py, fuseau_nondate.md, fuseau_q_artwork.py, fuseau_runs.py, fuseau_runs*.txt, fuseau_edit_skill2.py, fuseau_daily_tail.txt.
+Points à remonter à Antho
+Le pull automatique peut échouer en affichant [SUCCES]. C'est arrivé ce matin : 7 commits non pris. Cause probable : git fetch origin du preflight Gmail qui réécrit FETCH_HEAD au même moment. Correctif : vérifier HEAD après le merge, et ne plus utiliser FETCH_HEAD des deux côtés.
+Ordonnancement : Files_ETL, Daily_ETL et Gmail_ETL partent ensemble au démarrage du poste. Daily_ETL doit attendre le pull.
+Artwork : 10 « En attente » / 384 « Validé » en base. 9 des 10 n'ont pas de code article (NOUVEAU-…).
+PO 17753 : la cellule « Payé ? » vaut « Non » (texte). Il n'y a aucune date à afficher. 3 cellules anormales sont à faire corriger par Marlène : Julia, acompte OUI et 46282.
+Tâche Cowork : 10 runs OK. Recherche par libellé corrigée. Pas de devis DEKRA depuis le 01/10 (fermeture du 1er au 7 octobre).
+Factures fournisseurs : 51 pièces en 60 jours, presque toutes du bureau HK, 75 % sans libellé. Une requête est proposée (rappel 44/44, précision 61 %), à valider en dry-run avant toute activation.
