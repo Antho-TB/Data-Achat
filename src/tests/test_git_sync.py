@@ -9,9 +9,12 @@ collision) et verifie le statut, le marqueur et le HEAD final.
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -22,6 +25,7 @@ from src.utils.git_sync import (
     STATUT_ECHEC,
     STATUT_MIS_A_JOUR,
     chemin_marqueur,
+    chemin_verrou,
     fichiers_suivis_modifies,
     synchroniser,
 )
@@ -158,3 +162,79 @@ def test_fetch_impossible_est_un_echec(tmp_path: Path) -> None:
     assert resultat.statut == STATUT_ECHEC
     assert "fetch" in resultat.message
     assert chemin_marqueur(poste).exists()
+
+
+def test_pulls_concurrents_finissent_tous_sur_le_distant(depots: tuple[Path, Path]) -> None:
+    """
+    Cas du 08/10 : Files_ETL et Daily_ETL tirent a la meme seconde. Le verrou
+    les serialise, le second constate qu'il est deja a jour, et aucun des deux
+    n'annonce un succes sans que HEAD ait rejoint le distant.
+    """
+    poste, dev = depots
+    _pousser_evolution(dev)
+    attendu = _git(dev, "rev-parse", "HEAD")
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        resultats = list(pool.map(lambda o: synchroniser(poste, "main", origine=o), ["a", "b", "c"]))
+
+    assert all(r.ok for r in resultats)
+    assert sorted(r.statut for r in resultats) == [STATUT_A_JOUR, STATUT_A_JOUR, STATUT_MIS_A_JOUR]
+    assert _git(poste, "rev-parse", "HEAD") == attendu
+    assert not chemin_verrou(poste).exists()
+
+
+def test_fetch_head_reecrit_ne_trompe_plus_le_pull(depots: tuple[Path, Path]) -> None:
+    """Un fetch tiers qui reecrit FETCH_HEAD vers l'ancien commit ne change plus la cible."""
+    poste, dev = depots
+    ancien = _git(poste, "rev-parse", "HEAD")
+    _pousser_evolution(dev)
+    (poste / ".git" / "FETCH_HEAD").write_text(f"{ancien}\t\tbranch 'main' of x\n", encoding="utf-8")
+
+    resultat = synchroniser(poste, "main")
+
+    assert resultat.statut == STATUT_MIS_A_JOUR
+    assert _git(poste, "rev-parse", "HEAD") == _git(dev, "rev-parse", "HEAD")
+
+
+def test_verrou_tenu_est_un_echec_signale(depots: tuple[Path, Path]) -> None:
+    poste, dev = depots
+    _pousser_evolution(dev)
+    verrou = chemin_verrou(poste)
+    verrou.parent.mkdir(parents=True, exist_ok=True)
+    verrou.write_text("pid=autre", encoding="utf-8")
+
+    resultat = synchroniser(poste, "main", attente_verrou_s=0.5)
+
+    assert resultat.statut == STATUT_ECHEC
+    assert "verrou" in resultat.message
+    assert chemin_marqueur(poste).exists()
+    assert verrou.exists(), "le verrou d'un autre processus ne doit pas etre supprime"
+
+
+def test_verrou_perime_est_repris(depots: tuple[Path, Path]) -> None:
+    poste, dev = depots
+    _pousser_evolution(dev)
+    verrou = chemin_verrou(poste)
+    verrou.parent.mkdir(parents=True, exist_ok=True)
+    verrou.write_text("pid=mort", encoding="utf-8")
+    vieux = time.time() - 3600
+    os.utime(verrou, (vieux, vieux))
+
+    resultat = synchroniser(poste, "main", attente_verrou_s=0.5)
+
+    assert resultat.statut == STATUT_MIS_A_JOUR
+    assert not verrou.exists()
+
+
+def test_cible_tag(depots: tuple[Path, Path]) -> None:
+    """BRANCHE_DEPLOIEMENT peut pointer un tag de release (annote ici)."""
+    poste, dev = depots
+    _pousser_evolution(dev)
+    _git(dev, "tag", "-a", "v1", "-m", "release")
+    _git(dev, "push", "-q", "origin", "v1")
+    _pousser_evolution(dev, contenu="v3 non publiee\n")
+
+    resultat = synchroniser(poste, "v1")
+
+    assert resultat.statut == STATUT_MIS_A_JOUR
+    assert (poste / "app.py").read_text(encoding="utf-8") == "v2\n"

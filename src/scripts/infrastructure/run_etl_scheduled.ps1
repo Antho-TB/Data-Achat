@@ -115,107 +115,35 @@ Write-Log "=== DEBUT ETL fichiers FUSEAU ==="
 Write-Log ("[INFO] Racine du depot : {0}" -f $Repo)
 
 # --- 1. Synchronisation du code ----------------------------------------------
-# --ff-only : on n'invente pas un merge automatique sur un poste sans personne
-# pour le resoudre.
-#
-# --untracked-files=no : seuls les fichiers SUIVIS modifies bloquent le pull.
-# Un fichier non suivi ne gene pas une avance rapide, et c'est pourtant ce qui
-# a annule la synchro trois fois (un .log.err le 28/07, une sauvegarde .env le
-# 06/08, un .docx du 22 au 24/09 : deux jours d'ETL sur l'ancien code). Si un
-# fichier non suivi porte le meme chemin qu'un fichier ajoute par le distant,
-# git refuse le merge et on passe par la branche d'erreur.
+# Le pull est fait par src\utils\git_sync.py, seul point de pull du poste
+# (aussi appele par run_daily_etl.ps1 et run_api.py) :
+#   - --ff-only : pas de merge automatique sur un poste sans personne pour le
+#     resoudre ;
+#   - seuls les fichiers SUIVIS modifies bloquent (un .log.err le 28/07, une
+#     sauvegarde .env le 06/08, un .docx du 22 au 24/09 l'avaient annule) ;
+#   - fetch dans une ref privee, merge du sha mesure puis controle que HEAD l'a
+#     bien rejoint, sous verrou : le 08/10, un fetch concurrent avait reecrit
+#     FETCH_HEAD et le pull avait annonce [SUCCES] en laissant 7 commits.
 #
 # Un pull bloque n'arrete PAS l'ETL : les donnees du jour comptent plus que la
 # version du code. Mais le script finit en exit 2 au lieu de 0, pour que la
 # tache passe en anomalie dans le Planificateur ("Dernier resultat" 0x2), et
-# laisse deploy\logs\PULL_BLOQUE.txt. Avant, l'echec n'etait visible qu'en
-# lisant le journal, donc jamais.
-#
-# Meme logique cote Python : src\utils\git_sync.py (utilise par run_api.py).
-$Branche = if ($env:BRANCHE_DEPLOIEMENT) { $env:BRANCHE_DEPLOIEMENT } else { "main" }
+# git_sync laisse deploy\logs\PULL_BLOQUE.txt.
 $Marqueur = Join-Path $LogDir "PULL_BLOQUE.txt"
-$PullBloque = $false
-
-function Join-GitOutput($o) { (($o | ForEach-Object { "$_" }) -join " | ").Trim() }
-
-function Set-PullBloque([string]$Raison, [string[]]$Fichiers, [string]$HeadLocal, [string]$Distant, $Retard) {
-    $script:PullBloque = $true
-    Write-Log "[ATTENTION] PULL BLOQUE : $Raison"
-    foreach ($f in $Fichiers) { Write-Log "[ATTENTION]   fichier en cause : $f" }
-    Write-Log "[ATTENTION] L'ETL tourne sur le code local ($HeadLocal), pas sur $Branche ($Distant). Marqueur : $Marqueur"
-    $lignes = @(
-        "PULL AUTOMATIQUE BLOQUE : le poste ne tourne PAS sur le code de la branche cible.",
-        ("Horodatage   : {0}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss")),
-        "Origine      : run_etl_scheduled.ps1 (tache FUSEAU_Files_ETL)",
-        "Branche      : $Branche",
-        "HEAD local   : $HeadLocal",
-        "Distant      : $Distant",
-        "Retard       : $Retard commit(s)",
-        "Detail       : $Raison",
-        "Fichiers en cause :"
-    )
-    if ($Fichiers -and $Fichiers.Count -gt 0) {
-        $lignes += ($Fichiers | ForEach-Object { "  - $_" })
-    } else {
-        $lignes += "  (aucun, voir Detail)"
-    }
-    $lignes += @(
-        "",
-        "A faire : 'git status' a la racine du depot, ranger ou annuler les fichiers",
-        "listes ('git restore <fichier>' si la modification est inutile), puis",
-        "'git pull origin $Branche --ff-only'. Ce fichier disparait au prochain pull reussi."
-    )
-    $lignes | Out-File -FilePath $Marqueur -Encoding utf8
-}
-
-$HeadAvant = Join-GitOutput (& git -C $Repo rev-parse --short HEAD 2>&1)
-Write-Log "[INFO] HEAD local avant synchro : $HeadAvant (cible $Branche)"
-
-# Un seul fetch, puis fusion de FETCH_HEAD : le retard mesure est exactement
-# ce qui sera fusionne, y compris si BRANCHE_DEPLOIEMENT pointe un tag.
-$FetchOutput = & git -C $Repo fetch origin $Branche 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Set-PullBloque -Raison ("fetch impossible (VPN, reseau, droits ?) : {0}" -f (Join-GitOutput $FetchOutput)) `
-        -Fichiers @() -HeadLocal $HeadAvant -Distant "inconnu" -Retard "inconnu"
-} else {
-    $Distant = Join-GitOutput (& git -C $Repo rev-parse --short FETCH_HEAD 2>&1)
-    $Retard = Join-GitOutput (& git -C $Repo rev-list --count "HEAD..FETCH_HEAD" 2>&1)
-    Write-Log "[INFO] $Branche distant : $Distant, retard du poste : $Retard commit(s)"
-
-    # Format porcelain v1 : deux caracteres d'etat, un espace, puis le chemin.
-    $Modifs = @(& git -C $Repo status --porcelain --untracked-files=no | Where-Object { $_.Length -gt 3 } | ForEach-Object { $_.Substring(3).Trim() })
-    if ($Modifs.Count -gt 0) {
-        Set-PullBloque -Raison "fichiers suivis modifies localement, pull annule" `
-            -Fichiers $Modifs -HeadLocal $HeadAvant -Distant $Distant -Retard $Retard
-    } elseif ($Retard -eq "0") {
-        Write-Log "[SUCCES] Deja a jour sur $Branche ($HeadAvant)."
-    } else {
-        $MergeOutput = & git -C $Repo merge --ff-only FETCH_HEAD 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            $HeadApres = Join-GitOutput (& git -C $Repo rev-parse --short HEAD 2>&1)
-            Write-Log "[SUCCES] Code mis a jour : $HeadAvant -> $HeadApres"
-        } else {
-            # Cas typique : fichier non suivi en collision avec un fichier
-            # ajoute par le distant, ou commits locaux divergents.
-            Set-PullBloque -Raison ("merge --ff-only refuse : {0}" -f (Join-GitOutput $MergeOutput)) `
-                -Fichiers @() -HeadLocal $HeadAvant -Distant $Distant -Retard $Retard
-        }
-    }
-}
-
-if (-not $PullBloque -and (Test-Path $Marqueur)) {
-    Remove-Item -LiteralPath $Marqueur -Force
-    Write-Log "[INFO] Marqueur PULL_BLOQUE.txt supprime : la synchro est retablie."
-}
-$HeadExecute = Join-GitOutput (& git -C $Repo rev-parse --short HEAD 2>&1)
-Write-Log "[INFO] HEAD local apres synchro (code execute par l'ETL) : $HeadExecute"
-
-# --- 2. Pipeline ETL ----------------------------------------------------------
 $Py = Join-Path $Repo ".venv311\Scripts\python.exe"
 if (-not (Test-Path $Py)) {
     Write-Log "[ECHEC] venv introuvable ($Py). Lancer 'pip install -r requirements.txt' d'abord."
     exit 1
 }
+
+& $Py -m src.utils.git_sync --origine "FUSEAU_Files_ETL" *>> $Log
+$PullBloque = ($LASTEXITCODE -ne 0)
+if ($PullBloque) {
+    Write-Log "[ATTENTION] PULL BLOQUE (exit=$LASTEXITCODE) : l'ETL tourne sur le code local. Voir $Marqueur"
+}
+$HeadExecute = (& git -C $Repo rev-parse --short HEAD 2>&1 | ForEach-Object { "$_" }) -join " "
+
+# --- 2. Pipeline ETL ----------------------------------------------------------
 
 Write-Log "[INFO] Lancement du pipeline fichiers..."
 & $Py -m src.scripts.etl.pipeline *>> $Log
@@ -229,7 +157,7 @@ if ($LASTEXITCODE -ne 0) {
 # que l'anomalie remonte dans le Planificateur sans etre confondue avec un
 # echec du pipeline (exit 1).
 if ($PullBloque) {
-    Write-Log "[ECHEC] ETL termine mais PULL BLOQUE : code $HeadExecute au lieu de $Branche. Voir $Marqueur. exit=2"
+    Write-Log "[ECHEC] ETL termine mais PULL BLOQUE : code $HeadExecute au lieu de la branche cible. Voir $Marqueur. exit=2"
     exit 2
 }
 
