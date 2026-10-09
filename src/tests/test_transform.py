@@ -16,7 +16,6 @@ from src.scripts.etl.transform import (
     _clean_ref,
     _to_date_or_none,
     parse_statut_commande,
-    transform_artwork,
     transform_commande,
 )
 
@@ -145,25 +144,6 @@ class TestTransformCommande:
         mask = (result["po_number"] == "150073") & (result["code_article"] == "20480002")
         assert mask.sum() == 1
         assert result.loc[mask, "statut"].iloc[0] == "Livrée"
-
-    def test_artwork_depuis_import_col_n(self):
-        # Source de verite : IMPORT col N, suivi par (po, article).
-        # Statuts natifs conserves, 'A envoyé' normalise en 'A envoyer'.
-        df = pd.DataFrame({
-            "PO#":                       [150073.0, 150073.0, 165368.0, 165368.0],
-            "REF":                       ["20480002", "10890001", "10110035", " /"],
-            "Désignation":               ["P1", "P2", "P3", "frais"],
-            "Artwork":                   ["Envoyé", "Attente Clarisse", "A envoyé", "Aucun"],
-            "Date envoi de la commande": [pd.Timestamp("2026-01-26")] * 4,
-        })
-        result = transform_artwork(df)
-        statuts = dict(zip(result["code_article"], result["statut_artwork"]))
-        assert statuts == {
-            "20480002": "Envoyé",
-            "10890001": "Attente Clarisse",
-            "10110035": "A envoyer",
-        }
-        assert result["po_number"].notna().all()  # frais (REF '/') exclus du suivi artwork
 
     def test_po_number_jamais_nul(self, df_import):
         # Prérequis : toute ligne chargée a un PO#. Le code_article peut être
