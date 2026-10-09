@@ -15,6 +15,39 @@
 
 ---
 
+## 0. Reprise au retour du week-end (état du 09/10 au soir)
+
+À lire en premier. Détail dans les sections citées.
+
+1. **Allumer l'écriture des artworks** (§3.11) : CLI Azure déconnectée, se reconnecter
+   avec `--use-device-code`, poser `ECRITURE_ARTWORK=1`, vérifier l'onglet. Avant :
+   comparer gsheet (miroir `artwork_statut`) et `artwork_fuseau`, la copie date du 09/10 11h08.
+2. **Réécrire puis envoyer le mail à Clarisse** (brouillon Gmail, §3.11) : bascule faite,
+   ne plus saisir dans le gsheet ; puis gsheet en lecture seule et chargement artwork
+   retiré de `run_daily_etl.ps1`.
+3. **Poste de Marlène** : `git pull --ff-only` (dernier état connu : `8b92123` le 08/10, avant les PR #46 à #52 ; le pull automatique de la nuit n'a pas pu être vérifié).
+   Débloque les badges DEKRA et arrête le chargement de l'ancienne `achat.artwork`.
+   Lire le code de sortie des tâches et `deploy\logs\PULL_BLOQUE.txt`.
+4. **Ensuite, en base** (compte nominal) : `sql/20261009_drop_artwork_import.sql`,
+   `sql/20261007_drop_pont_lecture_myreport.sql`, puis
+   `sql/20261008_dedoublonnage_qualite_decision.sql` après une nouvelle mesure
+   (400 lignes au 09/10 contre 383 dans le script).
+5. **Avoirs et factures** (§3.7, « Avoirs et factures depuis Sylob ») : sources validées le
+   09/10, `public.factures3` et `factures_detaillees3` identiques à Sylob (documents,
+   lignes, montants réglés). Prochain dev : les exposer par PO dans l'API puis le
+   prévisionnel. Rien n'est codé.
+6. **Divers** : libellé `source_fichier` codé en dur dans `transform.py`
+   (`transform_ot_transport`) ; BL `TEMU7385996` absent ; 51 conteneurs sur 60 sans BL ;
+   test de saisie depuis Azure avec Marlène ; références équivalentes à valider en démo.
+
+Pièges notés le 09/10 :
+- Sous PowerShell, `curl` est un alias de `Invoke-WebRequest` : utiliser `curl.exe`.
+- Deux merges à quelques secondes d'écart font échouer l'étape « Estampiller la version
+  déployée » (429 d'Azure) : `/api/health` affiche alors un ancien commit alors que le
+  code est parti. Relance : `gh run rerun <id> --failed`.
+- Les textes gris de la zone de saisie de Claude sont des suggestions, pas des messages
+  envoyés.
+
 ## 1. Où on en est
 
 **L'application est en production sur Azure App Service** :
@@ -841,8 +874,29 @@ Mise en route des artworks, dans l'ordre :
 - [ ] Ancienne table `achat.artwork` (IMPORT col N, 1 129 lignes, plus lue depuis
   le 22/07) : plus chargée par l'ETL depuis cette branche. Une fois le poste à jour,
   `sql/20261009_drop_artwork_import.sql` (archive complète, puis DROP).
-- [ ] `--commit` de la reprise, juste avant d'allumer le flag (sinon le gsheet continue de bouger après la copie). La simulation du 08/10 comptait 385 artworks (ancien parseur) : refaire le dry-run sur les 394, et vérifier l'identifiant produit pour les lignes `NOUVEAU-…` sans code article.
-- [ ] `ECRITURE_ARTWORK=1` sur la Web App ; Clarisse et Maxence testent.
+- [x] PR #52 mergée et déployée le 09/10 (`7a9e6ff`, `/api/health` à jour).
+- [x] Reprise `--commit` le 09/10 à 11h08 : 394 artworks dans `achat.artwork_fuseau`
+  (10 en attente, 384 validés, identifiants distincts), 394 lignes `reprise` au journal.
+  ⚠️ **La copie est figée à 11h08** : une saisie de Clarisse dans le gsheet après cette
+  heure n'est pas dans FUSEAU, et le script refuse de rejouer sur une table non vide.
+  Avant d'allumer le flag, comparer `achat.artwork_statut` (relu chaque matin à 07h)
+  et `achat.artwork_fuseau` pour reporter les écarts à la main.
+- [ ] **`ECRITURE_ARTWORK=1` sur la Web App : PAS posé au 09/10 au soir.** Bloqué par
+  la MFA (AADSTS50076 sur l'API Azure Resource Manager) : `az login` sous Windows
+  passe par le broker WAM, qui ne refait pas la MFA. Antho a lancé
+  `az config set core.enable_broker_on_windows=false` puis `az logout` : **la CLI
+  est déconnectée**. Reprendre par
+  `az login --use-device-code --scope https://management.core.windows.net//.default`
+  (abonnement `shsv-prod`), puis
+  `az webapp config appsettings set --subscription shsv-prod -g rg-shsv-fuseau-prod -n app-shsv-fuseau-prod --settings ECRITURE_ARTWORK=1 -o none`.
+  Ou par le portail : Web App, Variables d'environnement, `ECRITURE_ARTWORK` = `1`.
+  Contrôle : l'onglet Artwork propose « Nouvel artwork » ; `/api/artworks/mode`.
+- [ ] Mail à Clarisse (cc Maxence) : **brouillon Gmail** en réponse au fil du 08/10
+  « FUSEAU - Onglet Artwork : vos retours… », pas envoyé. Il lui demande quand basculer :
+  à réécrire, la copie étant faite (« bascule faite, ne plus saisir dans le gsheet »).
+  Il demande aussi si l'identifiant `NOUVEAU-20261009-n` convient pour les 9 artworks
+  sans code article.
+- [ ] Clarisse et Maxence testent.
 - [ ] Gsheet de Clarisse en lecture seule ; chargement artwork retiré de `run_daily_etl.ps1`.
 
 Ensuite, sur le même socle : écrans de saisie du suivi des analyses et de
@@ -1207,3 +1261,4 @@ dans `05_ARCHIVES/Versions_Anterieures/`.
 | 07/10 | Droit MyReport vérifié après recréation nocturne : pont retiré (PR #34), DROP des fonctions prêt. Réceptions Sylob relancées : déjà à jour (l'annonce d'une table figée au 28/07 était une erreur de lecture du plan). ETA du suivi maritime tracée et arbitrée comme les PJ Gmail. Sondes de fraîcheur et de droits. Graphiques Artwork retirés, cadrage de la refonte. Diagnostic de la qualité des OT |
 | 08/10 (poste Marlène) | Quatrième passage : poste à jour sur `8b92123`, artworks rechargés (394, dont 10 en attente). Le pull automatique annonçait un faux succès (course sur `FETCH_HEAD`) : PR #47. « Payé ? » du PO 17753 = « Non » dans le fichier, et une date tapée en nombre partait au 01/01/1970 : PR #48. Recherche Gmail de la tâche Cowork corrigée. Factures : repérage fait, activation pas encore faite |
 | 09/10 | Revue des actions du 04 au 09/10. Runs de 02h et 07h passés à l'heure, sondes de fraîcheur et droits MyReport au vert. Gsheet maritime constaté actif (86 BL chargés cette nuit) ; PR #47 et #48 mergées. Non appliqués : DROP du pont MyReport, dédoublonnage des décisions qualité (400 lignes), socle d'écriture, activation des factures, recette de saisie Azure. Migration du socle corrigée : collision avec l'ancienne `achat.artwork`, table renommée `artwork_fuseau` |
+| 09/10 (suite) | PR #52 mergée et déployée (`7a9e6ff`), déploiement de la PR #48 relancé (faux échec 429 sur l'estampille). Reprise des artworks faite à 11h08 (394). Flag `ECRITURE_ARTWORK` non posé : MFA Azure, CLI déconnectée. Factures et avoirs MyReport comparés à Sylob : identiques. Brouillon de mail à Clarisse à réécrire. Point de reprise au §0 |
