@@ -2,13 +2,13 @@
 """
 [ETL]
 =============================================================================
-REPRISE UNIQUE DES ARTWORKS DU GSHEET VERS achat.artwork
+REPRISE UNIQUE DES ARTWORKS DU GSHEET VERS achat.artwork_fuseau
 =============================================================================
 
 Phase d'ecriture (docs/20261008_FUSEAU_Cadrage_PhaseEcriture_v1.md) : FUSEAU
 devient la source des artworks. Ce script copie UNE FOIS le miroir du gsheet de
 Clarisse (achat.artwork_statut, dernier chargement uniquement) dans la table
-achat.artwork, saisie ensuite dans FUSEAU. Le gsheet passe alors en lecture
+achat.artwork_fuseau, saisie ensuite dans FUSEAU. Le gsheet passe alors en lecture
 seule : pas de synchronisation dans les deux sens.
 
 Regles de reprise :
@@ -21,7 +21,7 @@ Regles de reprise :
 - chaque ligne reprise est tracee dans le journal (action "reprise").
 
 Garde-fous : dry-run par defaut (tout est annule a la fin) ; refus si
-achat.artwork contient deja des lignes, la reprise etant unique ; refus si le
+achat.artwork_fuseau contient deja des lignes, la reprise etant unique ; refus si le
 miroir ne contient aucun artwork en attente (chargement du gsheet incomplet).
 
 Usage :
@@ -91,20 +91,20 @@ def convertir(ligne: dict[str, Any], identifiants: set[str], aujourdhui: date) -
 
 def reprendre(commit: bool, accepter_sans_attente: bool = False) -> dict[str, int]:
     """
-    Reprend le miroir du gsheet dans achat.artwork.
+    Reprend le miroir du gsheet dans achat.artwork_fuseau.
 
     Returns:
         Compteurs {"lues", "reprises", "en_attente", "valide"}.
 
     Raises:
-        RuntimeError: si achat.artwork n'est pas vide (reprise deja faite).
+        RuntimeError: si achat.artwork_fuseau n'est pas vide (reprise deja faite).
     """
     engine = get_engine()
     with engine.begin() as conn:
-        deja = conn.execute(text("SELECT COUNT(*) FROM achat.artwork")).scalar() or 0
+        deja = conn.execute(text("SELECT COUNT(*) FROM achat.artwork_fuseau")).scalar() or 0
         if deja:
             raise RuntimeError(
-                f"achat.artwork contient deja {deja} artwork(s) : la reprise est unique. "
+                f"achat.artwork_fuseau contient deja {deja} artwork(s) : la reprise est unique. "
                 "Rien n'a ete ecrit.")
         source = [dict(r) for r in conn.execute(text(SQL_SOURCE)).mappings()]
         nb_attente = sum(1 for l in source
@@ -121,7 +121,7 @@ def reprendre(commit: bool, accepter_sans_attente: bool = False) -> dict[str, in
         identifiants: set[str] = set()
         artworks = [convertir(l, identifiants, aujourdhui) for l in source]
         for artwork in artworks:
-            creer(conn, "artwork", artwork, AUTEUR, cle_col="identifiant", action="reprise")
+            creer(conn, "artwork_fuseau", artwork, AUTEUR, cle_col="identifiant", action="reprise")
         compte = Counter(a["statut"] for a in artworks)
         stats = {"lues": len(source), "reprises": len(artworks),
                  "en_attente": compte["en_attente"], "valide": compte["valide"]}
@@ -137,7 +137,7 @@ def reprendre(commit: bool, accepter_sans_attente: bool = False) -> dict[str, in
 
 def main() -> None:
     setup_logging()
-    ap = argparse.ArgumentParser(description="Reprise unique des artworks du gsheet vers achat.artwork")
+    ap = argparse.ArgumentParser(description="Reprise unique des artworks du gsheet vers achat.artwork_fuseau")
     ap.add_argument("--commit", action="store_true", help="Ecrit reellement (sinon dry-run).")
     ap.add_argument("--accepter-sans-attente", action="store_true",
                     help="Reprendre meme si aucun artwork en attente n'est present.")

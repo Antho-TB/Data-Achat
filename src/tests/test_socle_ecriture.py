@@ -73,7 +73,7 @@ LIGNE = {"identifiant": "32030006-20261008", "designation": "Coffret", "priorite
 def test_conflit_si_la_version_a_change():
     conn = _ConnFactice(dict(LIGNE))
     with pytest.raises(ConflitVersion) as exc:
-        modifier(conn, "artwork", "identifiant", LIGNE["identifiant"], {"priorite": 1},
+        modifier(conn, "artwork_fuseau", "identifiant", LIGNE["identifiant"], {"priorite": 1},
                  version_attendue=1, auteur="maxence", champs_autorises=["priorite"])
     assert exc.value.actuelle["maj_par"] == "clarisse@tb-groupe.fr"
     assert not any(r.lstrip().startswith("UPDATE") for r in conn.requetes)
@@ -81,19 +81,19 @@ def test_conflit_si_la_version_a_change():
 
 def test_champ_non_autorise_refuse():
     with pytest.raises(ValueError):
-        modifier(_ConnFactice(dict(LIGNE)), "artwork", "identifiant", "x", {"statut": "archive"},
+        modifier(_ConnFactice(dict(LIGNE)), "artwork_fuseau", "identifiant", "x", {"statut": "archive"},
                  version_attendue=2, auteur="maxence", champs_autorises=["priorite"])
 
 
 def test_ligne_introuvable():
     with pytest.raises(LigneIntrouvable):
-        modifier(_ConnFactice(None), "artwork", "identifiant", "x", {"priorite": 1},
+        modifier(_ConnFactice(None), "artwork_fuseau", "identifiant", "x", {"priorite": 1},
                  version_attendue=1, auteur="maxence", champs_autorises=["priorite"])
 
 
 def test_modification_journalisee_et_version_incrementee():
     conn = _ConnFactice(dict(LIGNE))
-    ligne = modifier(conn, "artwork", "identifiant", LIGNE["identifiant"], {"priorite": 1},
+    ligne = modifier(conn, "artwork_fuseau", "identifiant", LIGNE["identifiant"], {"priorite": 1},
                      version_attendue=2, auteur="maxence", champs_autorises=["priorite"])
     assert ligne["priorite"] == 1 and ligne["version"] == 3
     assert any("journal_modification" in r for r in conn.requetes)
@@ -101,7 +101,7 @@ def test_modification_journalisee_et_version_incrementee():
 
 def test_sans_changement_reel_rien_n_est_ecrit():
     conn = _ConnFactice(dict(LIGNE))
-    modifier(conn, "artwork", "identifiant", LIGNE["identifiant"], {"priorite": 3},
+    modifier(conn, "artwork_fuseau", "identifiant", LIGNE["identifiant"], {"priorite": 3},
              version_attendue=2, auteur="maxence", champs_autorises=["priorite"])
     assert not any(r.lstrip().startswith("UPDATE") or "journal_modification" in r for r in conn.requetes)
 

@@ -16,7 +16,7 @@ aucun autre système, ou qui sont tenues aujourd'hui dans des gsheets fragiles :
 
 | Domaine | Aujourd'hui | Demain | Qui saisit |
 |---|---|---|---|
-| Artworks | gsheet `LIS-CON-28-0` de Clarisse, relu chaque matin | Table `achat.artwork`, saisie dans FUSEAU, gsheet figé en archive | Clarisse (création, validation), Maxence (archivage) |
+| Artworks | gsheet `LIS-CON-28-0` de Clarisse, relu chaque matin | Table `achat.artwork_fuseau`, saisie dans FUSEAU, gsheet figé en archive | Clarisse (création, validation), Maxence (archivage) |
 | Suivi des analyses | gsheet SUIVI DES ANALYSES, onglets « en attente » et « archives » | Table `achat.analyse_suivi` : urgence, état produit, état analyse, archivage | Maxence, service qualité |
 | Facturation intersite | Cases « à facturer » et « facturation faite » du gsheet | Table `achat.facturation_intersite_suivi` ; les montants restent lus dans Sylob | Maxence |
 | Paiements, ETD, commentaires | Déjà saisis dans FUSEAU | Inchangé | Achats |
@@ -72,7 +72,7 @@ de saisie viendront avec le lot 3 de BUG-007, sur le même socle.
    gsheet artwork est retiré de `run_daily_etl.ps1`.
 
 Retour arrière : `ECRITURE_ARTWORK=0`. FUSEAU relit le miroir du gsheet, rien
-n'est perdu dans la table `achat.artwork`.
+n'est perdu dans la table `achat.artwork_fuseau`.
 
 ## 5. Décisions déjà prises
 

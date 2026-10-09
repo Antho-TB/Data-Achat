@@ -32,14 +32,14 @@ Automatisations du poste de Marlène, état constaté sur le poste le 08/10
 
 | Automatisation | Fréquence | Dernier run | État |
 |---|---|---|---|
-| `FUSEAU_Files_ETL` (`run_etl_scheduled.ps1`, fait aussi le `git pull`) | 02h00 | 08/10 08:11, `0x0` | ⚠️ ETL OK, mais **le pull a annoncé `[SUCCES]` sans rien fusionner** (7 commits manqués) : course sur `FETCH_HEAD` avec le preflight Gmail. Corrigé par la PR #47, à merger |
-| `FUSEAU_Daily_ETL` (`run_daily_etl.ps1`) | 07h00 | 08/10 12:31 (lancé à la main), `0x0` | ✅ Artworks rechargés sur `8b92123` : 394, dont 10 en attente. Le run de 08:12 avait relu le gsheet avec l'ancien parseur |
+| `FUSEAU_Files_ETL` (`run_etl_scheduled.ps1`, fait aussi le `git pull`) | 02h00 | 09/10 02:00 (constaté en base : `commande`, `qualite`, historique de prix rechargés) | ✅ ETL OK. Le 08/10, le pull avait annoncé `[SUCCES]` sans rien fusionner (course sur `FETCH_HEAD`) : PR #47 mergée. Code de sortie du 09/10 et `PULL_BLOQUE.txt` à lire sur le poste |
+| `FUSEAU_Daily_ETL` (`run_daily_etl.ps1`) | 07h00 | 09/10 07:00 (constaté en base) | ✅ 395 artworks. Le 08/10 : relancé à la main à 12:31 sur `8b92123`, le run de 08:12 avait relu le gsheet avec l'ancien parseur |
 | `FUSEAU_Gmail_ETL` (`run_gmail_etl.ps1`) | 2 h, 08h-18h | 08/10 12:11, `0x0` | ✅ `StartWhenAvailable` actif |
 | `fuseau-gmail-threads-achat` (Cowork) | cron 8-18/2, lun-ven | 08/10 12:05 | ✅ 10 runs OK depuis le 06/10. Recherche par libellé corrigée sur le poste le 08/10 (5 → 14 fils sur 24 h). Les créneaux sans run correspondent à l'application Claude fermée |
 | ~~`FUSEAU-API`~~ | — | — | Arrêtée et désactivée le 24/09 (pas supprimée, pour le retour arrière). Plus rien n'écoute sur 5050 |
 
-Le poste est éteint la nuit : les trois tâches `FUSEAU_*` partent ensemble à
-l'ouverture de session (`StartWhenAvailable`). Depuis la PR #47, le pull est
+Le poste est en général éteint la nuit : les trois tâches `FUSEAU_*` partent alors ensemble à
+l'ouverture de session (`StartWhenAvailable`). Dans la nuit du 08 au 09/10, il est resté allumé et les runs sont partis à l'heure. Depuis la PR #47, le pull est
 sérialisé par un verrou et Daily_ETL attend le code du jour.
 
 **Le risque numéro un du projet n'est pas fonctionnel, il est structurel** :
@@ -347,7 +347,7 @@ Notes brutes de la séance, à trier avec Marlène. Andréa doit envoyer les sie
 - [x] **Priorité d'affichage** : les lignes en retard remontent en tête quel que soit leur statut, puis en production, en cours de livraison, livré, payé, annulé. À rang égal, l'échéance la plus proche d'abord.
 - [x] **Discrimination BL / conteneur** (ISO 6346) et purge des 27 lignes fautives.
 
-### Bascule sur le gsheet maritime — codée, reste à activer
+### Bascule sur le gsheet maritime — activée (constaté le 09/10)
 
 Classeur confirmé par Antho le 28/07 : « SUIVI MARITIME TARRERIAS 2026 » est bien
 le gsheet `1hP73oivXrB8o8I7pkrGh7y6nPzn0ccfW` déjà documenté. Sa structure à 18
@@ -357,13 +357,19 @@ BL en M, date confirmée en P, heure en Q.
 - [x] **Lecture directe du gsheet** dans `extract_suivi_maritime`, avec repli automatique sur le fichier serveur si Google est injoignable
 - [x] **Date et heure de livraison confirmées** assemblées en horodatage (`date_livraison` est déjà un timestamp). Gère `08:00`, `14h30`, `8h`
 - [x] **Plusieurs BL par conteneur** : table `achat.ot_transport_bl` (grain conteneur + BL), 29 BL repris de l'existant. `ot_transport.n_bl` conserve le BL principal pour ne pas casser les vues. L'API agrège et le front affiche un compteur quand il y en a plusieurs
-- [ ] ⚠️ **Toujours pas fait au 05/10, et c'est la cause des erreurs de BL signalées
-  en démo le 22/09 (§3.8).** Le chargement du matin vient encore de
+- [x] **Activé, constaté en base le 09/10** : `ot_transport_bl` porte 86 BL
+  chargés à 02h00, alors que la copie serveur n'a plus de colonne BL ; seul le
+  gsheet peut les fournir. Le libellé `source_fichier` vaut toujours
+  « 2026 SUIVI MARITIME.xlsx », car il est codé en dur dans
+  `transform.py` (`transform_ot_transport`) quelle que soit la source lue : à
+  corriger, sinon la provenance reste invérifiable depuis la base.
+  Historique : ⚠️ toujours pas fait au 05/10, et c'était la cause des erreurs de BL signalées
+  en démo le 22/09 (§3.8). Le chargement du matin vient encore de
   `2026 SUIVI MARITIME.xlsx` : **52 conteneurs sur 60 de cette source sont sans BL**,
   car la copie serveur n'a plus la colonne. **Activer sur le poste de Marlène** : mettre `SUIVI_MARITIME_PATH=gsheet` dans `config/.env` et renseigner `SUIVI_MARITIME_PATH_FICHIER` avec le chemin serveur comme repli. Le défaut du code est déjà `gsheet`, mais le `.env` existant surcharge avec le chemin fichier
-- [ ] **Prérequis OAuth commun avec l'artwork** : le scope `spreadsheets.readonly` exige un reconsentement manuel une fois (cf. §3.4)
-- [ ] Vérifier que le classeur est partagé avec le compte Google de FUSEAU
-- [ ] Après la première exécution : contrôler que les BL manquants signalés en démo (`SZSE2608065`, `TEMU7385996`) remontent bien
+- [x] **Prérequis OAuth commun avec l'artwork** : le scope `spreadsheets.readonly` exige un reconsentement manuel une fois (cf. §3.4). Fait : le gsheet maritime et le gsheet artwork sont lus chaque nuit (09/10)
+- [x] Vérifier que le classeur est partagé avec le compte Google de FUSEAU (lu le 09/10)
+- [ ] Après la première exécution : contrôler que les BL manquants signalés en démo (`SZSE2608065`, `TEMU7385996`) remontent bien. **09/10 : `SZSE2608065` présent, `TEMU7385996` absent** de `ot_transport` comme de `ot_transport_bl` : à chercher dans le gsheet
 
 ### À faire lors de la prochaine session sur le poste de Marlène
 
@@ -465,7 +471,7 @@ donc invisible. Les BL que Marlène voyait « hier » venaient du bootstrap du
       colonne N° BL porte une infobulle qui distingue « le fournisseur n'a pas
       émis son BL » de « la source chargée ne porte pas de colonne BL », et le
       compteur multi-BL est affiché.
-- [ ] **Action bloquante, sur le poste de Marlène** : `SUIVI_MARITIME_PATH=gsheet`
+- [x] (Fait, constaté en base le 09/10, voir §3.6.) **Action bloquante, sur le poste de Marlène** : `SUIVI_MARITIME_PATH=gsheet`
       dans `config/.env`, `SUIVI_MARITIME_PATH_FICHIER` renseigné en repli, puis
       relance de l'ETL maritime. Impossible depuis le poste d'Antho :
       `config/credentials.json` y est absent, le gsheet est illisible. Prérequis
@@ -568,7 +574,7 @@ copies MyReport de `public`.
 | Montants de facture | ❌ `achat.facture_fournisseur` est vide : l'étape n'a jamais tourné (flag `facture_auto.flag`) | **Activation décidée par Antho le 06/10, pas encore faite.** Le prompt v3 n'a pas été exécuté ; le passage du 08/10 n'a fait que le repérage : 51 pièces sur 60 jours (25 factures, 5 notes de crédit, 21 PI), dans 44 fils, presque toutes du bureau HK, 75 % sans libellé. Requête proposée au §3.10 (rappel 44/44, précision ≈ 61 %). Suite : dry-run du tri (`triage_piece`) sur ces 44 fils, puis rattrapage et création du flag. Le flag ne traite que le mois courant, d'où le rattrapage |
 | NCR par mail | ✅ Par conception (enquête du 06/10). Le module regex `load_email_ncr` est écarté depuis le 28/07 (`dc66a7a`, « NE PAS ORDONNANCER »), pour ne pas capter deux fois. Les non-conformités arrivent par la tâche Cowork dans `achat.qualite_decision` : 367 décisions du 22/07 au 06/10, dont 91 non conformes sur 25 PO | 🔧 06/10, branche `feat/non-conformites-commande` : badge « NC » sur la ligne de Suivi commandes (dernière décision mail du stade non conforme, refermée par un conforme postérieur) et fiches Sylob de réception et transporteur (`public.fiche_non_conformite2`) sur la ligne et la fiche Article. 50 lignes (16 PO) avec une NC mail ouverte, 7 avec une fiche Sylob : les NC import se traitent surtout par mail |
 | Réceptions Sylob | ❌ `commande_enrichissement` figée au 28/07, car elle lisait `receptions_detaillees2`, figée au 04/08 | Branche `fix/receptions-sylob-grain-article` : lecture de `vue_reception_detail` des 3 sociétés dans Sylob, repli sur `public.receptions_detaillees4` (même volume que Sylob), grain article. Dry-run : 654 lignes rapprochées sur 964. ✅ `sql/20261005_reception_grain_article.sql` appliqué (constaté le 06/10) : les 98 lignes au grain PO n'ont plus de date, archivées ; 654 lignes au grain article rafraîchies par l'ETL du poste le 06/10 à 06:13. 07/10 : relancé depuis le poste d'Antho, 654 lignes rapprochées, 0 écriture (table déjà à jour, dernière réception Sylob au 28/09) |
-| Droit de l'API sur MyReport | 🔧 05/10 : `dtpf_fuseau_api_prod` n'avait aucun SELECT sur les tables MyReport de `public`. Palliatif le jour même : pont `achat.fn_myreport_*` (SECURITY DEFINER, compte nominal d'Antho). 06/10 : droit posé par Antho dans pgAdmin sous `platform_team`, en `SET ROLE dtpf_sylob_myreport_prod` (membership SET accordée puis retirée dans la même transaction) : `GRANT SELECT` sur les tables existantes et default privilege sur `public`. Les 3 tables répondent `true` | ✅ 07/10 : droit vérifié après recréation nocturne (OID changés sur `articles3`, `commandes6`, `receptions_detaillees4`, SELECT `true` sur les trois). Pont retiré de `app/main.py` (PR #34). `DROP` des deux fonctions accordé le 07/10 : migration `sql/20261007_drop_pont_lecture_myreport.sql` prête, à exécuter par Antho (compte propriétaire). Partie schéma `myreport` non posée (schéma vide, USAGE chez `platform_team`) : à traiter à la bascule MyReport |
+| Droit de l'API sur MyReport | 🔧 05/10 : `dtpf_fuseau_api_prod` n'avait aucun SELECT sur les tables MyReport de `public`. Palliatif le jour même : pont `achat.fn_myreport_*` (SECURITY DEFINER, compte nominal d'Antho). 06/10 : droit posé par Antho dans pgAdmin sous `platform_team`, en `SET ROLE dtpf_sylob_myreport_prod` (membership SET accordée puis retirée dans la même transaction) : `GRANT SELECT` sur les tables existantes et default privilege sur `public`. Les 3 tables répondent `true` | ✅ 07/10 : droit vérifié après recréation nocturne (OID changés sur `articles3`, `commandes6`, `receptions_detaillees4`, SELECT `true` sur les trois). Pont retiré de `app/main.py` (PR #34). `DROP` des deux fonctions accordé le 07/10 : migration `sql/20261007_drop_pont_lecture_myreport.sql` prête, à exécuter par Antho (compte propriétaire), **pas encore exécutée au 09/10** (les deux fonctions sont toujours en base). Partie schéma `myreport` non posée (schéma vide, USAGE chez `platform_team`) : à traiter à la bascule MyReport |
 | Saisies depuis Azure | ⚠️ Dernière annotation le 28/07 : aucune saisie depuis la bascule | À tester avec Marlène |
 | Garde-fou OAuth (§4.5) | 🔧 Branche `fix/garde-fou-scope-oauth`. Second défaut trouvé au passage : le preflight ne vérifiait que 2 scopes sur 3 | Reconsentement sur le poste (prompt, étape 3) |
 | Auto-pull (§4.5) | 🔧 Branche `fix/auto-pull-alerte` : un fichier non suivi ne bloque plus le pull ; un pull bloqué termine la tâche en `0x2` et dépose `deploy\logs\PULL_BLOQUE.txt` | 08/10 : nouveau défaut, faux `[SUCCES]` sur un pull qui n'a rien fusionné (course sur `FETCH_HEAD`). PR #47 : point de pull unique `src.utils.git_sync`, ref privée, contrôle de HEAD, verrou |
@@ -694,7 +700,9 @@ Livré, branche `fix/decisions-qualite-cle-dekra` :
   Suivi commandes : badge bleu « inspection le JJ/MM » à côté du statut, tant que
   la date n'est pas passée et la ligne pas livrée.
 - [ ] **À exécuter par Antho, dans cet ordre** : déployer le code sur le poste,
-  puis `sql/20261008_dedoublonnage_qualite_decision.sql`. Mesure du 08/10 sur 383
+  puis `sql/20261008_dedoublonnage_qualite_decision.sql`. **Pas exécuté au 09/10** :
+  pas de table d'archive, et la table est passée de 383 à 400 lignes. Refaire la
+  mesure en dry-run avant d'exécuter, les volumes du script ont bougé. Mesure du 08/10 sur 383
   lignes : 64 supprimées (56 doublons, 8 lignes « tout le PO »), 8 requalifiées
   en « conforme sous réserve », 15 PO et 8 stades renormalisés, 319 clés
   recalculées toutes distinctes. Archive dans
@@ -716,7 +724,8 @@ Pull automatique :
   unique `src.utils.git_sync` (ref privée `refs/fuseau/deploiement`, merge du
   sha mesuré, contrôle de HEAD, verrou `deploy\logs\pull.lock`), preflight en
   `git ls-remote`.
-- [ ] Merger la PR #47, puis **`git pull --ff-only` à la main sur le poste**
+- [x] PR #47 mergée.
+- [ ] **`git pull --ff-only` à la main sur le poste**
   avant son prochain démarrage : sinon le pull suivant tourne encore avec
   l'ancien code, exposé à la même course.
 - [ ] Optionnel : faire attendre le verrou à `FUSEAU_Gmail_ETL`, qui ne tire pas
@@ -734,7 +743,7 @@ Colonne « Payé ? » du fichier IMPORT :
   désormais convertie (46282 = 17/09/2026). Les textes `JJ/MM/AAAA` sont lus
   jour/mois, et « Non » est ignoré sans alerte. Vaut pour toutes les colonnes
   date de l'IMPORT : des dates saisies en texte peuvent changer au prochain ETL.
-- [ ] Merger la PR #48.
+- [x] PR #48 mergée.
 
 Tâche Cowork `fuseau-gmail-threads-achat` :
 - [x] Recherche par libellé corrigée sur le poste (sauvegarde
@@ -773,7 +782,7 @@ tenues aujourd'hui dans des gsheets. Cadrage :
 
 Préparé, **rien n'est activé** :
 - [x] Migration `sql/20261008_socle_ecriture.sql` : journal des modifications,
-  tables `artwork`, `analyse_suivi`, `facturation_intersite_suivi` ; l'API reçoit
+  tables `artwork_fuseau`, `analyse_suivi`, `facturation_intersite_suivi` ; l'API reçoit
   SELECT, INSERT, UPDATE, jamais DELETE. À appliquer par Antho (compte nominal).
 - [x] `app/ecriture.py` : création, modification versionnée (conflit = 409 au
   lieu d'écraser), archivage, journal, identifiant d'artwork.
@@ -785,7 +794,13 @@ Préparé, **rien n'est activé** :
 
 Mise en route des artworks, dans l'ordre :
 - [x] Le poste de Marlène charge le gsheet avec le parseur corrigé (08/10 12:31) : 394 artworks, 10 en attente, 384 validés. 9 des 10 en attente portent un identifiant `NOUVEAU-<désignation>`, faute de code article (articles en création).
-- [ ] Antho applique la migration SQL.
+- [x] Migration corrigée le 09/10 : elle créait `achat.artwork`, nom déjà pris par
+  l'ancienne table de l'IMPORT (1 129 lignes, toujours alimentée par `load_artwork`
+  à 02h). Avec `IF NOT EXISTS`, la création était sautée et l'index sur `statut`
+  faisait échouer la transaction. Table renommée `achat.artwork_fuseau` (migration,
+  `app/artwork_fuseau.py`, `app/ecriture.py`, reprise, tests), `IF NOT EXISTS`
+  retirés pour qu'une collision arrête le script.
+- [ ] Antho applique la migration SQL (non appliquée au 09/10).
 - [ ] Reprise en dry-run, puis `--commit`. La simulation du 08/10 comptait 385 artworks (ancien parseur) : refaire le dry-run sur les 394, et vérifier l'identifiant produit pour les lignes `NOUVEAU-…` sans code article.
 - [ ] `ECRITURE_ARTWORK=1` sur la Web App ; Clarisse et Maxence testent.
 - [ ] Gsheet de Clarisse en lecture seule ; chargement artwork retiré de `run_daily_etl.ps1`.
@@ -1151,3 +1166,4 @@ dans `05_ARCHIVES/Versions_Anterieures/`.
 | 06/10 (suite) | PR #29 : bulles de source alignées sur les données réellement lues (Conteneurs et Prévisionnel annonçaient le gsheet maritime, alors que l'ETL lit encore la copie serveur sans BL). PR #30 : le repli du suivi maritime sur le fichier serveur plantait (`NameError`), corrigé avant d'activer le gsheet. Activation des factures décidée ; prompt v3 du poste pour le 07/10 (gsheet maritime et factures). NCR par mail : faux problème, captées par Cowork dans `qualite_decision`. Quatre documents réalignés sur le code (§4.2). Fichiers SQL du 04/08 rangés dans MyReport. Démo du 06/10 : retours Artwork au §3.10 |
 | 07/10 | Droit MyReport vérifié après recréation nocturne : pont retiré (PR #34), DROP des fonctions prêt. Réceptions Sylob relancées : déjà à jour (l'annonce d'une table figée au 28/07 était une erreur de lecture du plan). ETA du suivi maritime tracée et arbitrée comme les PJ Gmail. Sondes de fraîcheur et de droits. Graphiques Artwork retirés, cadrage de la refonte. Diagnostic de la qualité des OT |
 | 08/10 (poste Marlène) | Quatrième passage : poste à jour sur `8b92123`, artworks rechargés (394, dont 10 en attente). Le pull automatique annonçait un faux succès (course sur `FETCH_HEAD`) : PR #47. « Payé ? » du PO 17753 = « Non » dans le fichier, et une date tapée en nombre partait au 01/01/1970 : PR #48. Recherche Gmail de la tâche Cowork corrigée. Factures : repérage fait, activation pas encore faite |
+| 09/10 | Revue des actions du 04 au 09/10. Runs de 02h et 07h passés à l'heure, sondes de fraîcheur et droits MyReport au vert. Gsheet maritime constaté actif (86 BL chargés cette nuit) ; PR #47 et #48 mergées. Non appliqués : DROP du pont MyReport, dédoublonnage des décisions qualité (400 lignes), socle d'écriture, activation des factures, recette de saisie Azure. Migration du socle corrigée : collision avec l'ancienne `achat.artwork`, table renommée `artwork_fuseau` |
