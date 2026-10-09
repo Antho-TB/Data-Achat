@@ -40,8 +40,8 @@ Toute nouvelle fonctionnalité prod doit rester validée avec le métier avant g
 ## ⚠️ Alertes actives
 
 - Qualité de donnée `achat.ot_transport` : la colonne `n_bl` mélange BL, numéros
-  de commande et codes transitaire, et `ot_transport_bl` ne couvre que 29 lignes
-  sur 147 avec un `fournisseur` nul. Constaté le 2026-09-03 depuis le projet
+  de commande et codes transitaire, et `ot_transport_bl` (115 BL au 09/10, gsheet
+  maritime actif) a un `fournisseur` nul sur toutes ses lignes. Constaté le 2026-09-03 depuis le projet
   `fiche_de_controle`, qui lit ces tables. À traiter avant de s'appuyer dessus :
   `docs/20260903_FUSEAU_QualiteDonnee_OtTransport_v1.md`.
 - `fiche_de_controle` (service qualité) LIT désormais `achat.ot_transport` et

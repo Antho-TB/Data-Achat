@@ -35,7 +35,7 @@ from app.ecriture import (
 from src.utils.config_manager import Config
 
 SCHEMA = Config.PG_SCHEMA
-TABLE = "artwork"
+TABLE = "artwork_fuseau"
 STATUTS = ("en_attente", "valide", "archive")
 CHAMPS_MODIFIABLES = (
     "designation", "code_article", "priorite", "valideur", "commentaire_acheteur",
@@ -122,7 +122,7 @@ def construire_router(require_utilisateur: Callable[..., str], get_engine: Calla
                 SELECT a.*,
                        (SELECT string_agg(DISTINCT c.po_number, ', ' ORDER BY c.po_number)
                           FROM {SCHEMA}.commande c WHERE c.code_article = a.code_article) AS po_number
-                FROM {SCHEMA}.artwork a
+                FROM {SCHEMA}.{TABLE} a
                 WHERE (:statut IS NULL OR a.statut = :statut)
                 ORDER BY a.statut, a.priorite NULLS LAST, a.maj_le DESC
             """), {"statut": statut}).mappings().all()
@@ -135,7 +135,7 @@ def construire_router(require_utilisateur: Callable[..., str], get_engine: Calla
         with get_engine().begin() as conn:
             prefixe = f"{(payload.code_article or 'NOUVEAU').strip().upper()}-{aujourdhui:%Y%m%d}"
             existants = [r[0] for r in conn.execute(text(f"""
-                SELECT identifiant FROM {SCHEMA}.artwork WHERE identifiant LIKE :p
+                SELECT identifiant FROM {SCHEMA}.{TABLE} WHERE identifiant LIKE :p
             """), {"p": prefixe + "%"})]
             valeurs = payload.model_dump()
             valeurs.update({

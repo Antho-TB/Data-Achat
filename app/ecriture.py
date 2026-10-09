@@ -35,7 +35,7 @@ from src.utils.config_manager import Config
 logger = logging.getLogger(__name__)
 
 SCHEMA = Config.PG_SCHEMA
-TABLES_ECRITURE = frozenset({"artwork", "analyse_suivi", "facturation_intersite_suivi"})
+TABLES_ECRITURE = frozenset({"artwork_fuseau", "analyse_suivi", "facturation_intersite_suivi"})
 _RE_IDENT = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 

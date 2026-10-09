@@ -176,22 +176,9 @@ FROM achat.commande c
 GROUP BY c.code_article, c.fournisseur;
 """
 
-# Suivi artwork (plan P5) -- table EDITEE PAR LE METIER via l'ERP. L'ETL ne fait
-# que l'alimenter en insert-only.
-DDL_ARTWORK = """
-CREATE TABLE IF NOT EXISTS achat.artwork (
-    id              SERIAL PRIMARY KEY,
-    po_number       TEXT NOT NULL,
-    code_article    TEXT NOT NULL,
-    designation     TEXT,
-    statut_artwork  TEXT DEFAULT 'À traiter',
-    responsable     TEXT,
-    commentaire     TEXT,
-    date_demande    DATE,
-    updated_at      TIMESTAMPTZ DEFAULT now(),
-    CONSTRAINT uq_artwork_po_article UNIQUE (po_number, code_article)
-);
-"""
+# L'ancienne table achat.artwork (IMPORT col N, statut d'envoi au fournisseur)
+# n'est plus chargee depuis le 09/10 : plus aucune lecture depuis le 22/07, et
+# son nom genait le socle d'ecriture. Suppression : sql/20261009_drop_artwork_import.sql.
 
 # Suivi maritime / transitaire (manque n7 carto BI) -- table ALIMENTEE PAR ETL.
 # Grain = 1 ligne PAR CONTENEUR. Source cible = 2026 SUIVI MARITIME.xlsx (feuille
@@ -247,7 +234,6 @@ GRANTS_PLATFORM_TEAM = """
 GRANT USAGE ON SCHEMA achat TO platform_team;
 GRANT SELECT ON ALL TABLES IN SCHEMA achat TO platform_team;
 GRANT SELECT, INSERT, UPDATE ON achat.commande_annotation TO platform_team;
-GRANT SELECT, INSERT, UPDATE ON achat.artwork TO platform_team;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA achat TO platform_team;
 ALTER DEFAULT PRIVILEGES IN SCHEMA achat GRANT SELECT ON TABLES TO platform_team;
 """
@@ -271,7 +257,6 @@ def create_tables_if_not_exist(engine: Engine) -> None:
         conn.execute(text(DDL_PRODUIT))
         conn.execute(text(DDL_COMMANDE))
         conn.execute(text(DDL_COMMANDE_ANNOTATION))
-        conn.execute(text(DDL_ARTWORK))
         conn.execute(text(DDL_OT_TRANSPORT))
         conn.execute(text(DDL_ACOMPTE))
         conn.execute(text(DDL_FOURNISSEUR_CA))
@@ -334,41 +319,6 @@ def load_produit(df: pd.DataFrame, engine: Engine) -> int:
     count = len(df)
     logger.info("[SUCCES] Produit charge : %d articles.", count)
     return count
-
-
-def load_artwork(df: pd.DataFrame, engine: Engine) -> int:
-    """
-    Insert-only de achat.artwork (ON CONFLICT DO NOTHING sur la cle metier).
-
-    Junior Tip : ON CONFLICT DO NOTHING est le pendant non-destructif de DO UPDATE,
-    ideal quand la base fait foi sur les lignes existantes et que la source ne sert
-    qu'a decouvrir les nouveautes.
-
-    Args:
-        df: DataFrame issu de transform_artwork().
-        engine: SQLAlchemy engine PostgreSQL.
-    Returns:
-        Nombre de lignes nouvellement inserees.
-    """
-    if df.empty:
-        logger.warning("[ATTENTION] DataFrame artwork vide -- rien a charger.")
-        return 0
-
-    logger.info("[INFO] Chargement artwork (insert-only) : %d candidats...", len(df))
-    cols = list(df.columns)
-    tmp_table = "achat._tmp_artwork"
-    with engine.begin() as conn:
-        df.to_sql("_tmp_artwork", conn, schema="achat",
-                  if_exists="replace", index=False, method="multi")
-        result = conn.execute(text(f"""
-            INSERT INTO achat.artwork ({', '.join(cols)})
-            SELECT {', '.join(cols)} FROM {tmp_table}
-            ON CONFLICT (po_number, code_article) DO NOTHING;
-        """))
-        conn.execute(text(f"DROP TABLE IF EXISTS {tmp_table};"))
-
-    logger.info("[SUCCES] Artwork : %d nouvelle(s) ligne(s) inseree(s).", result.rowcount)
-    return result.rowcount
 
 
 def _load_ot_transport_bl(df: pd.DataFrame, engine: Engine) -> int:

@@ -305,51 +305,6 @@ def transform_produit(
     return result
 
 
-def transform_artwork(df_import: pd.DataFrame) -> pd.DataFrame:
-    """
-    Suivi artwork depuis IMPORT 2026, colonne N 'Artwork' (source de verite
-    confirmee par Antho le 2026-06-10 -- la colonne Artwork de la Matrice est
-    quasi vide et ne reflete pas le workflow reel).
-
-    C'est un workflow d'ENVOI d'artwork au fournisseur, suivi par ligne de
-    commande (po_number, code_article). Statuts natifs observes :
-    Aucun / Envoyé / Attente Clarisse / A envoyer / Attente Carrefour.
-    On conserve les libelles natifs ('A envoyé' normalise en 'A envoyer').
-
-    La table cible est editee par le metier via l'ERP : chargement insert-only
-    (voir load_artwork), jamais d'ecrasement des statuts saisis.
-
-    Args:
-        df_import: Resultat de extract_import() (IMPORT 2026.xlsx).
-    Returns:
-        DataFrame (po_number, code_article, designation, statut_artwork, date_demande).
-    """
-    logger.info("[INFO] Transformation artwork (IMPORT col N)...")
-    df = df_import.copy()
-    df.columns = [str(c).strip().replace("\n", " ") for c in df.columns]
-
-    _NORMALISATION = {"a envoyé": "A envoyer", "a envoyer": "A envoyer"}
-
-    def map_statut(val: object) -> str:
-        if val is None or (isinstance(val, float) and pd.isna(val)):
-            return "Aucun"
-        s = str(val).strip()
-        return _NORMALISATION.get(s.lower(), s) if s else "Aucun"
-
-    result = pd.DataFrame({
-        "po_number":      df["PO#"].apply(_clean_ref),
-        "code_article":   df.get("REF").apply(_clean_ref),
-        "designation":    df.get("Désignation"),
-        "statut_artwork": df.get("Artwork").apply(map_statut),
-        "date_demande":   df.get("Date envoi de la commande").apply(_to_date_or_none),
-    })
-    result["date_demande"] = pd.to_datetime(result["date_demande"], errors="coerce").dt.date
-    result = result.dropna(subset=["po_number", "code_article"])
-    result = result.drop_duplicates(subset=["po_number", "code_article"], keep="last")
-
-    logger.info("[SUCCÈS] Artwork transformés : %d lignes de commande", len(result))
-    return result
-
 
 def transform_commande(df_import: pd.DataFrame) -> pd.DataFrame:
     """
