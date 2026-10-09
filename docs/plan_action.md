@@ -834,11 +834,14 @@ Mise en route des artworks, dans l'ordre :
   faisait échouer la transaction. Table renommée `achat.artwork_fuseau` (migration,
   `app/artwork_fuseau.py`, `app/ecriture.py`, reprise, tests), `IF NOT EXISTS`
   retirés pour qu'une collision arrête le script.
-- [ ] Antho applique la migration SQL (non appliquée au 09/10).
+- [x] Migration appliquée le 09/10 vers 10h (compte nominal d'Antho) : 4 tables, l'API a
+  INSERT et pas DELETE. Reprise en dry-run : 394 artworks, 10 en attente, 384 validés,
+  identifiants distincts ; les 9 lignes sans code article prennent
+  `NOUVEAU-<date de la reprise>-n`, faute de date dans le gsheet.
 - [ ] Ancienne table `achat.artwork` (IMPORT col N, 1 129 lignes, plus lue depuis
   le 22/07) : plus chargée par l'ETL depuis cette branche. Une fois le poste à jour,
   `sql/20261009_drop_artwork_import.sql` (archive complète, puis DROP).
-- [ ] Reprise en dry-run, puis `--commit`. La simulation du 08/10 comptait 385 artworks (ancien parseur) : refaire le dry-run sur les 394, et vérifier l'identifiant produit pour les lignes `NOUVEAU-…` sans code article.
+- [ ] `--commit` de la reprise, juste avant d'allumer le flag (sinon le gsheet continue de bouger après la copie). La simulation du 08/10 comptait 385 artworks (ancien parseur) : refaire le dry-run sur les 394, et vérifier l'identifiant produit pour les lignes `NOUVEAU-…` sans code article.
 - [ ] `ECRITURE_ARTWORK=1` sur la Web App ; Clarisse et Maxence testent.
 - [ ] Gsheet de Clarisse en lecture seule ; chargement artwork retiré de `run_daily_etl.ps1`.
 
